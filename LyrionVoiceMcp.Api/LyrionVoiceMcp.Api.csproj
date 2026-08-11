@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.1.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LyrionVoiceMcp.Abstractions\LyrionVoiceMcp.Abstractions.csproj" />
+    <ProjectReference Include="..\LyrionVoiceMcp.Contracts\LyrionVoiceMcp.Contracts.csproj" />
+    <ProjectReference Include="..\LyrionVoiceMcp.Lms\LyrionVoiceMcp.Lms.csproj" />
+    <ProjectReference Include="..\LyrionVoiceMcp.Services\LyrionVoiceMcp.Services.csproj" />
+  </ItemGroup>
+</Project>
+

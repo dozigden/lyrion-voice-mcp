@@ -1,0 +1,12 @@
+<Solution>
+  <Project Path="LyrionVoiceMcp.Abstractions/LyrionVoiceMcp.Abstractions.csproj" />
+  <Project Path="LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj" />
+  <Project Path="LyrionVoiceMcp.Api.Tests/LyrionVoiceMcp.Api.Tests.csproj" />
+  <Project Path="LyrionVoiceMcp.Contracts/LyrionVoiceMcp.Contracts.csproj" />
+  <Project Path="LyrionVoiceMcp.Dev/LyrionVoiceMcp.Dev.csproj" />
+  <Project Path="LyrionVoiceMcp.Dev.Tests/LyrionVoiceMcp.Dev.Tests.csproj" />
+  <Project Path="LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj" />
+  <Project Path="LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj" />
+  <Project Path="LyrionVoiceMcp.Services/LyrionVoiceMcp.Services.csproj" />
+  <Project Path="LyrionVoiceMcp.Services.Tests/LyrionVoiceMcp.Services.Tests.csproj" />
+</Solution>

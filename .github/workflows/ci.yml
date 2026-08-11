@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (.NET)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Validate backend
+        run: node scripts/run-tests.mjs --backend-only
+
+  frontend:
+    name: Frontend (Vue)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: LyrionVoiceMcp.Web/package-lock.json
+      - name: Install dependencies
+        working-directory: LyrionVoiceMcp.Web
+        run: npm ci
+      - name: Validate frontend
+        run: node scripts/run-tests.mjs --web-only
+
+  image:
+    name: Image (${{ matrix.platform }})
+    needs:
+      - backend
+      - frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build native image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          platforms: ${{ matrix.platform }}
+          push: false
+          tags: lyrion-voice-mcp:ci-${{ matrix.architecture }}
+          build-args: |
+            LVM_VERSION=0.1.0
+            LVM_CHANNEL=ci
+            LVM_BUILD=github-${{ github.run_number }}
+            LVM_COMMIT=${{ github.sha }}
+      - name: Smoke-test native image
+        run: ./scripts/smoke-container.sh lyrion-voice-mcp:ci-${{ matrix.architecture }} ${{ matrix.architecture }}

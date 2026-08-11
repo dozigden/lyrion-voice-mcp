@@ -1,0 +1,14 @@
+.git
+.github
+.agents
+.codex
+.data
+**/bin
+**/obj
+**/node_modules
+**/dist
+TestResults
+test-results
+*.user
+*.log
+

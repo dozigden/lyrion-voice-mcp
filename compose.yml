@@ -1,0 +1,16 @@
+services:
+  lyrion-voice-mcp:
+    build:
+      context: .
+      args:
+        LVM_VERSION: 0.1.0-dev
+        LVM_CHANNEL: development
+        LVM_BUILD: compose
+        LVM_COMMIT: local
+    ports:
+      - "5600:5600"
+    environment:
+      LyrionVoiceMcpLms__ServerId: "${LVM_LMS_SERVER_ID:-}"
+      LyrionVoiceMcpLms__BaseUrl: "${LVM_LMS_BASE_URL:-}"
+      LyrionVoiceMcpLms__RequestTimeoutSeconds: "${LVM_LMS_REQUEST_TIMEOUT_SECONDS:-5}"
+    restart: unless-stopped
