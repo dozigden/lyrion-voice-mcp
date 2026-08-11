@@ -16,7 +16,7 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Runtime configuration keys are `LyrionVoiceMcpLms:ServerId`, `LyrionVoiceMcpLms:BaseUrl`, and optional `LyrionVoiceMcpLms:RequestTimeoutSeconds` (default 5, range 1–30).
 - Environment variables use .NET's double-underscore form, for example `LyrionVoiceMcpLms__BaseUrl`.
 - Development launchers load the ignored `.data/dev/appsettings.local.json`; do not require interactive developers to export LMS variables for normal `dev.sh` use.
-- `ServerId` is the stable environment identity that later media references must carry; do not derive it from a mutable hostname.
+- `ServerId` currently labels the configured environment in operational diagnostics. It is not part of public media references.
 - Both identity and base URL may be absent for an unconfigured development runtime. If either is supplied, both are required and invalid configuration must fail at startup.
 - `ILmsConnectionProbe` sends `serverstatus 0 0`; `/api/lms` exposes its state for the operational UI. This is not an MCP tool.
 - Keep `/api/health` independent of LMS reachability.
@@ -26,7 +26,7 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Development LMS contains artificial media and is suitable for deterministic protocol and mutation tests.
 - Live LMS contains the representative library and may be queried for read-only evaluation.
 - Playback against discovered live players is allowed only in explicit integration work; never invent a player identifier.
-- References must carry server identity so a reference from one environment cannot be used silently against another.
+- Each MCP deployment targets one LMS server. Result references contain no server identity and are not supported across deployments.
 
 ## Parsing and tests
 

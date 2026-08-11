@@ -22,8 +22,10 @@ The skeleton intentionally exposes no tools. Add the three tools only through th
 ## Tool behaviour
 
 - Keep tool handlers thin and use application services.
-- Return structured, agent-friendly results and stable typed references.
+- Treat [MCP_CONTRACT.md](../MCP_CONTRACT.md) as the working public contract until implemented schemas replace it.
+- Return structured, agent-friendly results and opaque per-candidate result references.
 - Propagate cancellation and map expected validation/upstream failures to useful tool errors without leaking stack traces.
-- Search trace correlation is separate from stable media identity.
+- A result reference carries both the candidate correlation and underlying LMS playback identity. These remain separate internal concepts but require no separate public `searchId`.
+- Result references are short-lived hand-off values. Do not add a format version or LMS server identity.
+- `get_player_status` and `play` use the raw LMS player ID; do not wrap it in an application reference.
 - Tool contracts must survive replacing LMS pass-through search with an indexed resolver.
-
