@@ -62,4 +62,35 @@ internal static class LmsJson
 
         return null;
     }
+
+    public static bool ReadRequiredBoolean(
+        JsonElement element,
+        string name,
+        string responseName)
+    {
+        if (!element.TryGetProperty(name, out var property))
+        {
+            throw new InvalidOperationException(
+                $"LMS {responseName} response contained an item without {name}.");
+        }
+
+        if (property.ValueKind == JsonValueKind.True)
+        {
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.False)
+        {
+            return false;
+        }
+
+        var value = ReadString(element, name);
+        return value switch
+        {
+            "1" => true,
+            "0" => false,
+            _ => throw new InvalidOperationException(
+                $"LMS {responseName} response contained an invalid {name} value.")
+        };
+    }
 }

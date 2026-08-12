@@ -1,6 +1,6 @@
 # Initial MCP Contract
 
-This is the agreed working boundary for the first three public tools. `search` is implemented; `get_player_status` and `play` remain planned.
+This is the agreed working boundary for the first three public tools. `search` and `get_player_status` are implemented; `play` remains planned.
 
 ## Tool flow
 
@@ -41,7 +41,7 @@ Confidence may be reconsidered later alongside indexed search and ranking. Preci
 
 ## `get_player_status`
 
-`get_player_status` takes no input and returns all players discovered from the configured LMS.
+The implemented `get_player_status` takes no input and returns all players discovered from the configured LMS.
 
 First-pass status contains only the raw LMS player ID, friendly name, power state, and playback state.
 

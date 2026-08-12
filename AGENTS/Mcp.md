@@ -17,7 +17,7 @@ The intended initial surface is exactly:
 2. `get_player_status`
 3. `play`
 
-The server currently exposes only `search`. Add `get_player_status` and `play` through their implementation stories. Do not expose health, diagnostics, raw LMS commands, experimental search, or provider administration as MCP tools.
+The server currently exposes `search` and `get_player_status`. Add `play` through its implementation story. Do not expose health, diagnostics, raw LMS commands, experimental search, or provider administration as MCP tools.
 
 ## Tool behaviour
 

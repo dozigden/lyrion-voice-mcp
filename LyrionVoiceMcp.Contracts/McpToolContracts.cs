@@ -24,6 +24,7 @@ public sealed record SearchResponse(IReadOnlyList<SearchCandidate> Results);
 
 public sealed record GetPlayerStatusResponse(IReadOnlyList<PlayerStatus> Players);
 
+[JsonConverter(typeof(JsonStringEnumConverter<PlayerPlaybackMode>))]
 public enum PlayerPlaybackMode
 {
     Playing,

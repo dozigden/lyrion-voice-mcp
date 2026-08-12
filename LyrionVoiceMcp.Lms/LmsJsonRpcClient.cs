@@ -12,6 +12,12 @@ public sealed class LmsJsonRpcClient(
 
     public async Task<JsonElement> SendAsync(
         object[] command,
+        CancellationToken cancellationToken) =>
+        await SendAsync(string.Empty, command, cancellationToken);
+
+    public async Task<JsonElement> SendAsync(
+        string playerId,
+        object[] command,
         CancellationToken cancellationToken)
     {
         if (!settings.IsConfigured || settings.JsonRpcUrl is null)
@@ -29,7 +35,7 @@ public sealed class LmsJsonRpcClient(
                     method = "slim.request",
                     @params = new object[]
                     {
-                        string.Empty,
+                        playerId,
                         command
                     }
                 }, options: JsonOptions)

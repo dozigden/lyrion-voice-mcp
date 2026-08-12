@@ -43,7 +43,7 @@ public sealed class McpEndpointTests : IClassFixture<WebApplicationFactory<Progr
     }
 
     [Fact]
-    public async Task ListToolsShouldAdvertiseOnlySearchWithRequiredQuery()
+    public async Task ListToolsShouldAdvertiseSearchAndNoInputPlayerStatus()
     {
         // Arrange
         using var client = factory.CreateClient();
@@ -62,7 +62,7 @@ public sealed class McpEndpointTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"name\":\"search\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"query\"]", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("get_player_status", body, StringComparison.Ordinal);
+        Assert.Contains("\"name\":\"get_player_status\"", body, StringComparison.Ordinal);
         Assert.DoesNotContain("\"name\":\"play\"", body, StringComparison.Ordinal);
     }
 
@@ -97,6 +97,42 @@ public sealed class McpEndpointTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Contains("opaque-reference", body, StringComparison.Ordinal);
         Assert.Contains("The Copper Lines", body, StringComparison.Ordinal);
         Assert.DoesNotContain("confidence", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetPlayerStatusShouldReturnStructuredMinimalPlayers()
+    {
+        // Arrange
+        await using var playerFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IPlayerStatusService>();
+                services.AddSingleton<IPlayerStatusService>(new StubPlayerStatusService());
+            }));
+        using var client = playerFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            4,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"get_player_status","arguments":{}}
+            """,
+            "get_player_status");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected an OK MCP response but received {(int)response.StatusCode}: {body}");
+        Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
+        Assert.Contains("00:11:22:33:44:55", body, StringComparison.Ordinal);
+        Assert.Contains("North Room", body, StringComparison.Ordinal);
+        Assert.Contains("\"poweredOn\":true", body, StringComparison.Ordinal);
+        Assert.Contains("\"mode\":\"Stopped\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("volume", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("queue", body, StringComparison.OrdinalIgnoreCase);
     }
 
     private static HttpRequestMessage CreateRequest(
@@ -141,6 +177,24 @@ public sealed class McpEndpointTests : IClassFixture<WebApplicationFactory<Progr
                     null)
             ];
             return Task.FromResult(results);
+        }
+    }
+
+    private sealed class StubPlayerStatusService : IPlayerStatusService
+    {
+        public Task<IReadOnlyList<LmsPlayerStatus>> GetPlayersAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<LmsPlayerStatus> players =
+            [
+                new(
+                    "00:11:22:33:44:55",
+                    "North Room",
+                    true,
+                    PlayerPlaybackState.Stopped)
+            ];
+            return Task.FromResult(players);
         }
     }
 }
