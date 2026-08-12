@@ -14,9 +14,10 @@ public sealed class LmsConnectionProbeTests
         var handler = new StubHttpMessageHandler(_ =>
             throw new InvalidOperationException("No request was expected."));
         using var client = new HttpClient(handler);
+        var settings = LmsConnectionSettings.FromValues(null, null, null);
         var probe = new LmsConnectionProbe(
-            LmsConnectionSettings.FromValues(null, null, null),
-            client);
+            settings,
+            new LmsJsonRpcClient(settings, client));
 
         // Act
         var result = await probe.CheckAsync(TestContext.Current.CancellationToken);
@@ -47,12 +48,13 @@ public sealed class LmsConnectionProbeTests
             };
         });
         using var client = new HttpClient(handler);
+        var settings = LmsConnectionSettings.FromValues(
+            "development",
+            "http://music.test:9000",
+            null);
         var probe = new LmsConnectionProbe(
-            LmsConnectionSettings.FromValues(
-                "development",
-                "http://music.test:9000",
-                null),
-            client);
+            settings,
+            new LmsJsonRpcClient(settings, client));
 
         // Act
         var result = await probe.CheckAsync(TestContext.Current.CancellationToken);
@@ -73,21 +75,22 @@ public sealed class LmsConnectionProbeTests
             new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{}", Encoding.UTF8, "application/json")
-            });
+        });
         using var client = new HttpClient(handler);
+        var settings = LmsConnectionSettings.FromValues(
+            "development",
+            "http://music.test:9000",
+            null);
         var probe = new LmsConnectionProbe(
-            LmsConnectionSettings.FromValues(
-                "development",
-                "http://music.test:9000",
-                null),
-            client);
+            settings,
+            new LmsJsonRpcClient(settings, client));
 
         // Act
         var result = await probe.CheckAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(LmsConnectionState.Unavailable, result.State);
-        Assert.Equal("LMS serverstatus response did not include a result object.", result.Message);
+        Assert.Equal("LMS JSON-RPC response did not include a result object.", result.Message);
     }
 
     private sealed class StubHttpMessageHandler(

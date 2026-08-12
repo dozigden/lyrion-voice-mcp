@@ -1,5 +1,6 @@
 using LyrionVoiceMcp.Api.Configuration;
 using LyrionVoiceMcp.Api.Endpoints;
+using LyrionVoiceMcp.Api.Tools;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Lms;
 using LyrionVoiceMcp.Services;
@@ -34,11 +35,13 @@ var lmsSettings = LmsConnectionSettings.FromValues(
 
 builder.Services.AddSingleton(buildInfo);
 builder.Services.AddSingleton(lmsSettings);
-builder.Services.AddHttpClient<ILmsConnectionProbe, LmsConnectionProbe>(client =>
+builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
 {
     client.Timeout = lmsSettings.RequestTimeout;
     client.DefaultRequestHeaders.UserAgent.ParseAdd($"LyrionVoiceMcp/{buildInfo.Version}");
 });
+builder.Services.AddTransient<ILmsConnectionProbe, LmsConnectionProbe>();
+builder.Services.AddTransient<ILmsSearchClient, LmsSearchClient>();
 builder.Services.AddLyrionVoiceMcpServices();
 builder.Services
     .AddMcpServer(options =>
@@ -50,14 +53,7 @@ builder.Services
         };
     })
     .WithHttpTransport()
-    .WithListToolsHandler((_, cancellationToken) =>
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new ListToolsResult
-        {
-            Tools = []
-        });
-    });
+    .WithTools<SearchTools>();
 
 var app = builder.Build();
 

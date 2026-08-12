@@ -1,6 +1,6 @@
 # Initial MCP Contract
 
-This is the agreed working boundary for the first three public tools. It describes planned behaviour; the running skeleton still advertises no tools.
+This is the agreed working boundary for the first three public tools. `search` is implemented; `get_player_status` and `play` remain planned.
 
 ## Tool flow
 
@@ -29,9 +29,9 @@ Its exact encoding is private implementation detail and remains undecided.
 
 `search` resolves voice-derived text into ordered media candidates.
 
-The first-pass input consists only of a required query. It searches the whole configured LMS library and passes the query through to LMS.
+The implemented first-pass input consists only of a required query. It searches the whole configured LMS library and passes the query through to LMS.
 
-Each ordered result carries its opaque candidate reference, media kind, and display information. An empty list represents no match.
+Each ordered result carries its opaque candidate reference, media kind, and display information. An empty list represents no match. LMS artist, album, and track results retain their category order, followed by matching playlists.
 
 The first-pass LMS pass-through does not invent a confidence rating which LMS cannot support. The server does not silently select or play a result.
 

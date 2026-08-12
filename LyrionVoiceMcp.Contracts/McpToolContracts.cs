@@ -1,5 +1,8 @@
+using System.Text.Json.Serialization;
+
 namespace LyrionVoiceMcp.Contracts;
 
+[JsonConverter(typeof(JsonStringEnumConverter<SearchEntityKind>))]
 public enum SearchEntityKind
 {
     Artist,

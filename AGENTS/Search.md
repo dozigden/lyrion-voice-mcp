@@ -2,7 +2,8 @@
 
 Read this before changing search contracts, ranking, observation capture, catalogue ingestion, or search storage.
 
-- The first implementation deliberately passes queries directly to LMS to produce a usable baseline and real failure examples.
+- The implemented first pass deliberately sends the query to LMS `search` plus playlist search to produce a usable baseline and real failure examples.
+- The first-pass result order is artists, albums, tracks, then playlists, preserving LMS order within each category.
 - Keep the public result contract independent of LMS response shapes and any later search engine.
 - Search returns one opaque result reference per candidate; it does not return a separate public search identifier.
 - Each result reference combines candidate correlation with the underlying LMS playback identity so a later `play` can record which returned candidate was selected.

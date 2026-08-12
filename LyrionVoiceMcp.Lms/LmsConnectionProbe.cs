@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
 
@@ -6,10 +5,8 @@ namespace LyrionVoiceMcp.Lms;
 
 public sealed class LmsConnectionProbe(
     LmsConnectionSettings settings,
-    HttpClient httpClient) : ILmsConnectionProbe
+    LmsJsonRpcClient jsonRpcClient) : ILmsConnectionProbe
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public async Task<LmsConnectionStatus> CheckAsync(CancellationToken cancellationToken)
     {
         if (!settings.IsConfigured)
@@ -24,31 +21,10 @@ public sealed class LmsConnectionProbe(
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, settings.JsonRpcUrl)
-            {
-                Content = JsonContent.Create(new
-                {
-                    id = 1,
-                    method = "slim.request",
-                    @params = new object[]
-                    {
-                        string.Empty,
-                        new object[] { "serverstatus", 0, 0 }
-                    }
-                }, options: JsonOptions)
-            };
-
-            using var response = await httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                return Unavailable($"LMS returned HTTP {(int)response.StatusCode}.");
-            }
-
-            await using var content = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var document = await JsonDocument.ParseAsync(
-                content,
-                cancellationToken: cancellationToken);
-            var version = ReadServerVersion(document.RootElement);
+            var result = await jsonRpcClient.SendAsync(
+                ["serverstatus", 0, 0],
+                cancellationToken);
+            var version = ReadServerVersion(result);
 
             return new LmsConnectionStatus(
                 LmsConnectionState.Online,
@@ -57,41 +33,14 @@ public sealed class LmsConnectionProbe(
                 version,
                 "The configured LMS JSON-RPC endpoint is responding.");
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return Unavailable(
-                $"LMS did not respond within {settings.RequestTimeout.TotalSeconds:0} seconds.");
-        }
-        catch (HttpRequestException)
-        {
-            return Unavailable("LMS could not be reached at the configured base URL.");
-        }
-        catch (JsonException)
-        {
-            return Unavailable("LMS returned an invalid JSON response.");
-        }
-        catch (InvalidOperationException exception)
+        catch (LmsRequestException exception)
         {
             return Unavailable(exception.Message);
         }
     }
 
-    private static string? ReadServerVersion(JsonElement root)
+    private static string? ReadServerVersion(JsonElement result)
     {
-        if (root.ValueKind != JsonValueKind.Object
-            || !root.TryGetProperty("result", out var result)
-            || result.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidOperationException(
-                "LMS serverstatus response did not include a result object.");
-        }
-
-        if (root.TryGetProperty("error", out var error)
-            && error.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
-        {
-            throw new InvalidOperationException("LMS returned a JSON-RPC error.");
-        }
-
         if (!result.TryGetProperty("version", out var version))
         {
             return null;

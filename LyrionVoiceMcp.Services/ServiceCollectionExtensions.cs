@@ -9,6 +9,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton<IOperationalStatusService, OperationalStatusService>();
         services.AddTransient<ILmsConnectionStatusService, LmsConnectionStatusService>();
+        services.AddTransient<ISearchService, SearchService>();
+        services.AddSingleton<ISearchResultReferenceCodec, SearchResultReferenceCodec>();
         return services;
     }
 }
