@@ -34,12 +34,12 @@ public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
         return Prefix + EncodeBase64Url(bytes);
     }
 
-    public SearchResultReferenceValue Decode(string reference)
+    public SearchResultReferenceValue? TryDecode(string reference)
     {
         if (string.IsNullOrWhiteSpace(reference)
             || !reference.StartsWith(Prefix, StringComparison.Ordinal))
         {
-            throw InvalidReference();
+            return null;
         }
 
         try
@@ -51,7 +51,7 @@ public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
                 || !Enum.IsDefined(payload.Kind)
                 || string.IsNullOrWhiteSpace(payload.MediaId))
             {
-                throw InvalidReference();
+                return null;
             }
 
             return new SearchResultReferenceValue(
@@ -60,11 +60,11 @@ public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
         }
         catch (JsonException)
         {
-            throw InvalidReference();
+            return null;
         }
         catch (FormatException)
         {
-            throw InvalidReference();
+            return null;
         }
     }
 
@@ -87,9 +87,6 @@ public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
 
         return Convert.FromBase64String(base64);
     }
-
-    private static FormatException InvalidReference() =>
-        new("The search-result reference is invalid.");
 
     private sealed record ReferencePayload(
         string CorrelationId,

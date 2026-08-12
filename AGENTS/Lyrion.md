@@ -11,7 +11,7 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Do not bake lab hostnames, addresses, player identifiers, or library paths into product code.
 - KST's LMS client is useful reference code, not a runtime or project dependency.
 
-## Implemented configuration, probe, search, and player discovery
+## Implemented configuration, probe, search, player discovery, and playback
 
 - Runtime configuration keys are `LyrionVoiceMcpLms:ServerId`, `LyrionVoiceMcpLms:BaseUrl`, and optional `LyrionVoiceMcpLms:RequestTimeoutSeconds` (default 5, range 1–30).
 - Environment variables use .NET's double-underscore form, for example `LyrionVoiceMcpLms__BaseUrl`.
@@ -22,6 +22,10 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - `LmsJsonRpcClient` owns JSON-RPC request creation, transport failure mapping, and response-envelope validation for both the probe and search adapter.
 - First-pass local search issues the LMS `search` command for artists, albums, and tracks plus a `playlists search:` query. It requests at most 20 results per category and preserves category and LMS result order.
 - Player discovery issues `players 0`, then parallel read-only `mode ?` queries so paused and stopped players remain distinguishable. Public player state remains limited to raw LMS ID, name, power, and playback mode.
+- Playback preflight uses one-item filtered `titles` or `playlists tracks` queries to verify that each referenced LMS item remains playable without materialising collection contents.
+- Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. LMS owns collection expansion and internal ordering.
+- Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue.
+- Batched replace loads the first reference and adds later references. Append adds each reference and, for an off or stopped player, starts at the queue index recorded before the additions.
 - Keep `/api/health` independent of LMS reachability.
 
 ## Environments

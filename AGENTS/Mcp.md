@@ -17,7 +17,7 @@ The intended initial surface is exactly:
 2. `get_player_status`
 3. `play`
 
-The server currently exposes `search` and `get_player_status`. Add `play` through its implementation story. Do not expose health, diagnostics, raw LMS commands, experimental search, or provider administration as MCP tools.
+The server exposes all three tools. Do not expose health, diagnostics, raw LMS commands, experimental search, or provider administration as MCP tools.
 
 ## Tool behaviour
 
@@ -28,4 +28,7 @@ The server currently exposes `search` and `get_player_status`. Add `play` throug
 - A result reference carries both the candidate correlation and underlying LMS playback identity. These remain separate internal concepts but require no separate public `searchId`.
 - Result references are short-lived hand-off values. Do not add a format version or LMS server identity.
 - `get_player_status` and `play` use the raw LMS player ID; do not wrap it in an application reference.
+- `play` accepts a non-empty ordered reference list and lowercase `replace` or `append`, defaulting to `replace`. Its result is only the selected player's updated minimal status.
+- Register `PlaybackTools` through `PlaybackToolRegistration`. It ring-fences the SDK enum-binding workaround, preserves the generated schema's `replace`/`append` enum, and allows the tool to return a corrective `isError` result for malformed mode values.
+- Model expected search and playback validation or business rejection as application outcomes, not exceptions. Tools map rejections to `CallToolResult` with `IsError = true`; keep `OutputSchemaType` set to their successful response contracts.
 - Tool contracts must survive replacing LMS pass-through search with an indexed resolver.

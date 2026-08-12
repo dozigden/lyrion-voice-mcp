@@ -23,16 +23,17 @@ public sealed class SearchServiceTests
             NullLogger<SearchService>.Instance);
 
         // Act
-        var results = await service.SearchAsync(
+        var outcome = await service.SearchAsync(
             "  silver static  ",
             TestContext.Current.CancellationToken);
 
         // Assert
+        var results = Assert.IsType<SearchSucceeded>(outcome).Results;
         Assert.Equal("silver static", lmsClient.Query);
         Assert.Equal(2, results.Count);
         Assert.NotEqual(results[0].Reference, results[1].Reference);
-        Assert.Equal(identity, codec.Decode(results[0].Reference).Identity);
-        Assert.Equal(identity, codec.Decode(results[1].Reference).Identity);
+        Assert.Equal(identity, codec.TryDecode(results[0].Reference)?.Identity);
+        Assert.Equal(identity, codec.TryDecode(results[1].Reference)?.Identity);
     }
 
     [Fact]
@@ -46,11 +47,14 @@ public sealed class SearchServiceTests
             NullLogger<SearchService>.Instance);
 
         // Act
-        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.SearchAsync("   ", TestContext.Current.CancellationToken));
+        var outcome = await service.SearchAsync(
+            "   ",
+            TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal("query", exception.ParamName);
+        var rejection = Assert.IsType<SearchRejected>(outcome);
+        Assert.Equal(SearchRejectionReason.InvalidQuery, rejection.Reason);
+        Assert.Equal("The search query must not be empty.", rejection.Message);
         Assert.Null(lmsClient.Query);
     }
 
@@ -83,7 +87,7 @@ public sealed class SearchResultReferenceCodecTests
 
         // Act
         var reference = codec.Encode(expected);
-        var decoded = codec.Decode(reference);
+        var decoded = codec.TryDecode(reference);
 
         // Assert
         Assert.StartsWith("result_", reference, StringComparison.Ordinal);
@@ -93,15 +97,15 @@ public sealed class SearchResultReferenceCodecTests
     }
 
     [Fact]
-    public void DecodeShouldRejectMalformedReference()
+    public void TryDecodeShouldReturnNullForMalformedReference()
     {
         // Arrange
         var codec = new SearchResultReferenceCodec();
 
         // Act
-        var exception = Assert.Throws<FormatException>(() => codec.Decode("result_not-base64"));
+        var decoded = codec.TryDecode("result_not-base64");
 
         // Assert
-        Assert.Equal("The search-result reference is invalid.", exception.Message);
+        Assert.Null(decoded);
     }
 }

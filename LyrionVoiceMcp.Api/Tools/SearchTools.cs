@@ -1,7 +1,10 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Contracts;
 using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ContractSearchCandidate = LyrionVoiceMcp.Contracts.SearchCandidate;
 using ContractSearchEntityKind = LyrionVoiceMcp.Contracts.SearchEntityKind;
@@ -18,26 +21,49 @@ public sealed class SearchTools(ISearchService searchService)
         Destructive = false,
         Idempotent = true,
         OpenWorld = false,
-        UseStructuredContent = true)]
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(SearchResponse))]
     [Description("Search the whole configured Lyrion Music Server library for artists, albums, tracks, and playlists.")]
-    public async Task<SearchResponse> SearchAsync(
+    public async Task<CallToolResult> SearchAsync(
         [Description("The artist, album, track, or playlist text to search for.")] string query,
         CancellationToken cancellationToken)
     {
         try
         {
-            var results = await searchService.SearchAsync(query, cancellationToken);
-            return new SearchResponse(results.Select(MapCandidate).ToArray());
-        }
-        catch (ArgumentException exception)
-        {
-            throw new McpException(exception.Message);
+            var outcome = await searchService.SearchAsync(query, cancellationToken);
+            return outcome switch
+            {
+                SearchSucceeded succeeded => SuccessResult(
+                    new SearchResponse(succeeded.Results.Select(MapCandidate).ToArray())),
+                SearchRejected rejected => ErrorResult(rejected.Message),
+                _ => throw new UnreachableException(
+                    $"Unsupported search outcome {outcome.GetType().Name}.")
+            };
         }
         catch (LmsRequestException exception)
         {
-            throw new McpException(exception.Message);
+            return ErrorResult(exception.Message);
         }
     }
+
+    private static CallToolResult SuccessResult(SearchResponse response)
+    {
+        var structuredContent = JsonSerializer.SerializeToElement(
+            response,
+            McpJsonUtilities.DefaultOptions);
+        return new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = structuredContent.GetRawText() }],
+            StructuredContent = structuredContent
+        };
+    }
+
+    private static CallToolResult ErrorResult(string message) =>
+        new()
+        {
+            Content = [new TextContentBlock { Text = message }],
+            IsError = true
+        };
 
     private static ContractSearchCandidate MapCandidate(SearchCandidateResult candidate) =>
         new(

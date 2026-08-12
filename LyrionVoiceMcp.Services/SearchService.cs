@@ -9,13 +9,15 @@ public sealed class SearchService(
     ISearchResultReferenceCodec referenceCodec,
     ILogger<SearchService> logger) : ISearchService
 {
-    public async Task<IReadOnlyList<SearchCandidateResult>> SearchAsync(
+    public async Task<SearchOutcome> SearchAsync(
         string query,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
-            throw new ArgumentException("The search query must not be empty.", nameof(query));
+            return new SearchRejected(
+                SearchRejectionReason.InvalidQuery,
+                "The search query must not be empty.");
         }
 
         var normalisedQuery = query.Trim();
@@ -42,6 +44,6 @@ public sealed class SearchService(
             results.Length,
             stopwatch.ElapsedMilliseconds);
 
-        return results;
+        return new SearchSucceeded(results);
     }
 }

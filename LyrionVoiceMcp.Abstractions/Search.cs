@@ -32,9 +32,23 @@ public sealed record SearchCandidateResult(
     string? Artist,
     string? Album);
 
+public enum SearchRejectionReason
+{
+    InvalidQuery
+}
+
+public abstract record SearchOutcome;
+
+public sealed record SearchSucceeded(
+    IReadOnlyList<SearchCandidateResult> Results) : SearchOutcome;
+
+public sealed record SearchRejected(
+    SearchRejectionReason Reason,
+    string Message) : SearchOutcome;
+
 public interface ISearchService
 {
-    Task<IReadOnlyList<SearchCandidateResult>> SearchAsync(
+    Task<SearchOutcome> SearchAsync(
         string query,
         CancellationToken cancellationToken);
 }
@@ -47,7 +61,7 @@ public interface ISearchResultReferenceCodec
 {
     string Encode(SearchResultReferenceValue value);
 
-    SearchResultReferenceValue Decode(string reference);
+    SearchResultReferenceValue? TryDecode(string reference);
 }
 
 public sealed class LmsRequestException : Exception

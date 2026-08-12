@@ -41,6 +41,7 @@ builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
     client.DefaultRequestHeaders.UserAgent.ParseAdd($"LyrionVoiceMcp/{buildInfo.Version}");
 });
 builder.Services.AddTransient<ILmsConnectionProbe, LmsConnectionProbe>();
+builder.Services.AddTransient<ILmsPlaybackClient, LmsPlaybackClient>();
 builder.Services.AddTransient<ILmsPlayerClient, LmsPlayerClient>();
 builder.Services.AddTransient<ILmsSearchClient, LmsSearchClient>();
 builder.Services.AddLyrionVoiceMcpServices();
@@ -55,7 +56,8 @@ builder.Services
     })
     .WithHttpTransport()
     .WithTools<SearchTools>()
-    .WithTools<PlayerTools>();
+    .WithTools<PlayerTools>()
+    .WithTools([PlaybackToolRegistration.Create()]);
 
 var app = builder.Build();
 
