@@ -1,12 +1,31 @@
 using LyrionVoiceMcp.Abstractions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LyrionVoiceMcp.Services;
 
 public sealed class PlaybackService(
     ILmsPlayerClient lmsPlayerClient,
     ILmsPlaybackClient lmsPlaybackClient,
-    ISearchResultReferenceCodec referenceCodec) : IPlaybackService
+    ISearchResultReferenceCodec referenceCodec,
+    ISearchObservationStore observationStore,
+    TimeProvider timeProvider,
+    ILogger<PlaybackService> logger) : IPlaybackService
 {
+    public PlaybackService(
+        ILmsPlayerClient lmsPlayerClient,
+        ILmsPlaybackClient lmsPlaybackClient,
+        ISearchResultReferenceCodec referenceCodec)
+        : this(
+            lmsPlayerClient,
+            lmsPlaybackClient,
+            referenceCodec,
+            NullSearchObservationStore.Instance,
+            TimeProvider.System,
+            NullLogger<PlaybackService>.Instance)
+    {
+    }
+
     public async Task<PlaybackOutcome> PlayAsync(
         string playerId,
         IReadOnlyList<string> references,
@@ -34,7 +53,7 @@ public sealed class PlaybackService(
                 "The playback queue mode is invalid.");
         }
 
-        var identities = new MediaIdentity[references.Count];
+        var decodedReferences = new SearchResultReferenceValue[references.Count];
         for (var index = 0; index < references.Count; index++)
         {
             var value = referenceCodec.TryDecode(references[index]);
@@ -45,8 +64,10 @@ public sealed class PlaybackService(
                     $"Search-result item {index + 1} has an invalid reference.");
             }
 
-            identities[index] = value.Identity;
+            decodedReferences[index] = value;
         }
+
+        var identities = decodedReferences.Select(value => value.Identity).ToArray();
 
         var playersTask = lmsPlayerClient.GetPlayersAsync(cancellationToken);
         var playableItemsTask = Task.WhenAll(identities.Select(identity =>
@@ -115,7 +136,29 @@ public sealed class PlaybackService(
         }
 
         var updatedPlayers = await lmsPlayerClient.GetPlayersAsync(cancellationToken);
+        await TryMarkSelectedAsync(
+            decodedReferences.Select(value => value.CorrelationId).ToArray(),
+            cancellationToken);
         return new PlaybackSucceeded(FindUpdatedPlayer(updatedPlayers, player.Id));
+    }
+
+    private async Task TryMarkSelectedAsync(
+        IReadOnlyCollection<string> correlationIds,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await observationStore.MarkSelectedAsync(
+                correlationIds,
+                timeProvider.GetUtcNow(),
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                exception,
+                "Could not mark search-result correlations as selected after successful playback.");
+        }
     }
 
     private static LmsPlayerStatus? FindPlayer(

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Diagnostics;
 using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Lms;
@@ -7,23 +8,103 @@ public sealed class LmsSearchClient(LmsJsonRpcClient jsonRpcClient) : ILmsSearch
 {
     private const int ItemsPerCategory = 20;
 
-    public async Task<IReadOnlyList<LmsSearchCandidate>> SearchAsync(
+    public async Task<LmsSearchResponse> SearchAsync(
         string query,
         CancellationToken cancellationToken)
     {
-        var librarySearch = jsonRpcClient.SendAsync(
-            ["search", 0, ItemsPerCategory, $"term:{query}"],
-            cancellationToken);
-        var playlistSearch = jsonRpcClient.SendAsync(
-            ["playlists", 0, ItemsPerCategory, $"search:{query}"],
-            cancellationToken);
+        object[] libraryCommand = ["search", 0, ItemsPerCategory, $"term:{query}"];
+        object[] playlistCommand = ["playlists", 0, ItemsPerCategory, $"search:{query}"];
+        var retrievalStopwatch = Stopwatch.StartNew();
+        var librarySearch = SendObservedAsync(libraryCommand, cancellationToken);
+        var playlistSearch = SendObservedAsync(playlistCommand, cancellationToken);
 
         await Task.WhenAll(librarySearch, playlistSearch);
+        retrievalStopwatch.Stop();
 
         var candidates = new List<LmsSearchCandidate>();
-        AppendLibraryCandidates(candidates, await librarySearch);
-        AppendPlaylistCandidates(candidates, await playlistSearch);
-        return candidates;
+        var library = await librarySearch;
+        var playlist = await playlistSearch;
+        var libraryObservation = AppendObservedCandidates(
+            candidates,
+            "library",
+            libraryCommand,
+            library,
+            AppendLibraryCandidates);
+        var playlistObservation = AppendObservedCandidates(
+            candidates,
+            "playlists",
+            playlistCommand,
+            playlist,
+            AppendPlaylistCandidates);
+
+        var response = new LmsSearchResponse(
+            candidates,
+            [libraryObservation.Observation, playlistObservation.Observation],
+            retrievalStopwatch.ElapsedMilliseconds);
+
+        var failure = libraryObservation.Failure ?? playlistObservation.Failure;
+        if (failure is not null)
+        {
+            var failedSources = response.Requests
+                .Where(request => request.Status == LmsSearchRequestStatus.Failed)
+                .Select(request => request.Source);
+            throw new LmsSearchFailedException(
+                $"LMS search failed for {string.Join(" and ", failedSources)}.",
+                response,
+                failure);
+        }
+
+        return response;
+    }
+
+    private async Task<ObservedResponse> SendObservedAsync(
+        object[] command,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var result = await jsonRpcClient.SendAsync(command, cancellationToken);
+            stopwatch.Stop();
+            return new ObservedResponse(result, null, stopwatch.ElapsedMilliseconds);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            stopwatch.Stop();
+            return new ObservedResponse(null, exception, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    private static ObservedCandidateAppend AppendObservedCandidates(
+        List<LmsSearchCandidate> candidates,
+        string source,
+        object[] command,
+        ObservedResponse response,
+        Action<List<LmsSearchCandidate>, JsonElement> append)
+    {
+        var start = candidates.Count;
+        var failure = response.Failure;
+        if (failure is null && response.Result is { } result)
+        {
+            try
+            {
+                append(candidates, result);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failure = exception;
+            }
+        }
+
+        return new ObservedCandidateAppend(
+            new LmsSearchRequestObservation(
+                source,
+                JsonSerializer.Serialize(command),
+                failure is null ? LmsSearchRequestStatus.Completed : LmsSearchRequestStatus.Failed,
+                failure?.Message,
+                response.DurationMilliseconds,
+                candidates.Count - start),
+            failure);
     }
 
     private static void AppendLibraryCandidates(
@@ -106,4 +187,13 @@ public sealed class LmsSearchClient(LmsJsonRpcClient jsonRpcClient) : ILmsSearch
                 album));
         }
     }
+
+    private sealed record ObservedResponse(
+        JsonElement? Result,
+        Exception? Failure,
+        long DurationMilliseconds);
+
+    private sealed record ObservedCandidateAppend(
+        LmsSearchRequestObservation Observation,
+        Exception? Failure);
 }

@@ -58,19 +58,84 @@ public sealed class SearchServiceTests
         Assert.Null(lmsClient.Query);
     }
 
+    [Fact]
+    public async Task SearchShouldRecordOriginalQueryAndOrderedCorrelations()
+    {
+        // Arrange
+        var store = new RecordingSearchObservationStore();
+        var client = new StubLmsSearchClient([
+            new LmsSearchCandidate(new MediaIdentity(MediaEntityKind.Artist, "7"), "ZYRAQ", null, null)
+        ]);
+        var service = new SearchService(
+            client,
+            new SearchResultReferenceCodec(),
+            store,
+            TimeProvider.System,
+            NullLogger<SearchService>.Instance);
+
+        // Act
+        await service.SearchAsync("  zyrack  ", TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal("  zyrack  ", store.Recorded?.OriginalQuery);
+        Assert.Equal("zyrack", store.Recorded?.NormalisedQuery);
+        Assert.Equal("lms-pass-through", store.Recorded?.Resolver);
+        Assert.Equal(1, Assert.Single(store.Recorded!.Candidates).Position);
+    }
+
+    [Fact]
+    public async Task FailedSearchShouldPreservePerRequestEvidenceAndRecoveredCandidates()
+    {
+        // Arrange
+        var store = new RecordingSearchObservationStore();
+        var response = new LmsSearchResponse(
+            [new LmsSearchCandidate(new MediaIdentity(MediaEntityKind.Playlist, "9"), "Morning Signals", null, null)],
+            [
+                new LmsSearchRequestObservation(
+                    "library", "[\"search\"]", LmsSearchRequestStatus.Failed, "Synthetic failure.", 8, 0),
+                new LmsSearchRequestObservation(
+                    "playlists", "[\"playlists\"]", LmsSearchRequestStatus.Completed, null, 4, 1)
+            ],
+            8);
+        var service = new SearchService(
+            new FailingLmsSearchClient(response),
+            new SearchResultReferenceCodec(),
+            store,
+            TimeProvider.System,
+            NullLogger<SearchService>.Instance);
+
+        // Act
+        await Assert.ThrowsAsync<LmsSearchFailedException>(() =>
+            service.SearchAsync("signals", TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Equal(SearchObservationStatus.Failed, store.Recorded?.Status);
+        Assert.Equal(2, store.Recorded?.Requests.Count);
+        Assert.Equal("Morning Signals", Assert.Single(store.Recorded!.Candidates).Title);
+    }
+
     private sealed class StubLmsSearchClient(
         IReadOnlyList<LmsSearchCandidate> results) : ILmsSearchClient
     {
         public string? Query { get; private set; }
 
-        public Task<IReadOnlyList<LmsSearchCandidate>> SearchAsync(
+        public Task<LmsSearchResponse> SearchAsync(
             string query,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Query = query;
-            return Task.FromResult(results);
+            return Task.FromResult(new LmsSearchResponse(results, [], 0));
         }
+    }
+
+    private sealed class FailingLmsSearchClient(LmsSearchResponse response) : ILmsSearchClient
+    {
+        public Task<LmsSearchResponse> SearchAsync(string query, CancellationToken cancellationToken) =>
+            Task.FromException<LmsSearchResponse>(new LmsSearchFailedException(
+                "LMS search failed for library.",
+                response,
+                new LmsRequestException("Synthetic failure.")));
     }
 }
 

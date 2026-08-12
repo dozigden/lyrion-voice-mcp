@@ -12,7 +12,9 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IPlaybackService, PlaybackService>();
         services.AddTransient<IPlayerStatusService, PlayerStatusService>();
         services.AddTransient<ISearchService, SearchService>();
+        services.AddTransient<ISearchObservationReviewService, SearchObservationReviewService>();
         services.AddSingleton<ISearchResultReferenceCodec, SearchResultReferenceCodec>();
+        services.AddSingleton(TimeProvider.System);
         return services;
     }
 }

@@ -33,9 +33,10 @@ public sealed class LmsSearchClientTests
         var searchClient = new LmsSearchClient(new LmsJsonRpcClient(settings, client));
 
         // Act
-        var results = await searchClient.SearchAsync(
+        var response = await searchClient.SearchAsync(
             "copper",
             TestContext.Current.CancellationToken);
+        var results = response.Candidates;
 
         // Assert
         Assert.Equal(4, results.Count);
@@ -55,6 +56,14 @@ public sealed class LmsSearchClientTests
             },
             result => AssertCandidate(result, MediaEntityKind.Playlist, "44", "Morning Signals"));
         Assert.All(handler.Commands, command => Assert.Contains("copper", command.Body, StringComparison.Ordinal));
+        Assert.Collection(
+            response.Requests,
+            request => Assert.Equal(
+                ("library", LmsSearchRequestStatus.Completed, 3),
+                (request.Source, request.Status, request.ResultCount)),
+            request => Assert.Equal(
+                ("playlists", LmsSearchRequestStatus.Completed, 1),
+                (request.Source, request.Status, request.ResultCount)));
     }
 
     [Fact]
@@ -67,12 +76,12 @@ public sealed class LmsSearchClientTests
         var searchClient = new LmsSearchClient(new LmsJsonRpcClient(settings, client));
 
         // Act
-        var results = await searchClient.SearchAsync(
+        var response = await searchClient.SearchAsync(
             "missing",
             TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Empty(results);
+        Assert.Empty(response.Candidates);
         Assert.Equal(2, handler.Commands.Count);
     }
 
@@ -82,19 +91,29 @@ public sealed class LmsSearchClientTests
         // Arrange
         var handler = new StubHttpMessageHandler(command => command == "search"
             ? JsonResponse("""{"id":1,"result":{"tracks_loop":{}}}""")
-            : JsonResponse("""{"id":1,"result":{}}"""));
+            : JsonResponse("""{"id":1,"result":{"playlists_loop":[{"id":"44","playlist":"Morning Signals"}]}}"""));
         using var client = new HttpClient(handler);
         var settings = ConfiguredSettings();
         var searchClient = new LmsSearchClient(new LmsJsonRpcClient(settings, client));
 
         // Act
-        var exception = await Assert.ThrowsAsync<LmsRequestException>(() =>
+        var exception = await Assert.ThrowsAsync<LmsSearchFailedException>(() =>
             searchClient.SearchAsync("broken", TestContext.Current.CancellationToken));
 
         // Assert
+        Assert.Equal("LMS search failed for library.", exception.Message);
         Assert.Equal(
             "LMS search response did not include a valid tracks_loop array.",
-            exception.Message);
+            exception.InnerException?.Message);
+        Assert.Collection(
+            exception.Response.Requests,
+            request =>
+            {
+                Assert.Equal(LmsSearchRequestStatus.Failed, request.Status);
+                Assert.Contains("tracks_loop", request.FailureMessage, StringComparison.Ordinal);
+            },
+            request => Assert.Equal(LmsSearchRequestStatus.Completed, request.Status));
+        Assert.Equal("Morning Signals", Assert.Single(exception.Response.Candidates).Title);
     }
 
     [Fact]

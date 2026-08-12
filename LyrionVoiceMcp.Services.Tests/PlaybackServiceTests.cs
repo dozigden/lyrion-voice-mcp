@@ -1,5 +1,6 @@
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LyrionVoiceMcp.Services.Tests;
 
@@ -106,6 +107,31 @@ public sealed class PlaybackServiceTests
 
         // Assert
         Assert.Equal(["check:Track:51", "add:Track:51"], playbackClient.Operations);
+    }
+
+    [Fact]
+    public async Task SuccessfulPlaybackShouldMarkItsSearchCorrelationSelected()
+    {
+        // Arrange
+        var codec = new SearchResultReferenceCodec();
+        var store = new RecordingSearchObservationStore();
+        var service = new PlaybackService(
+            new StubPlayerClient(Player(true, PlayerPlaybackState.Playing), Player(true, PlayerPlaybackState.Playing)),
+            new StubPlaybackClient(),
+            codec,
+            store,
+            TimeProvider.System,
+            NullLogger<PlaybackService>.Instance);
+
+        // Act
+        await service.PlayAsync(
+            PlayerId,
+            [Reference(codec, new MediaIdentity(MediaEntityKind.Track, "51"), 0)],
+            PlaybackQueueMode.Replace,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(["00000000000000000000000000000001"], store.SelectedCorrelationIds);
     }
 
     [Fact]

@@ -9,14 +9,15 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Abstractions`: domain-facing interfaces and transport-neutral models.
 - `LyrionVoiceMcp.Services`: application orchestration and policy.
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
+- `LyrionVoiceMcp.Persistence`: SQLite-backed operational search-observation storage behind abstractions.
 - `LyrionVoiceMcp.Web`: Vue administration and review UI.
 - `LyrionVoiceMcp.Dev`: local API/Vite process supervisor only.
 
 ## Dependency rules
 
 - Contracts and Abstractions have no project references.
-- Services and Lms may depend on Abstractions.
-- Api composes Contracts, Abstractions, Services, and Lms.
+- Services, Lms, and Persistence may depend on Abstractions.
+- Api composes Contracts, Abstractions, Services, Lms, and Persistence.
 - Only Api owns ASP.NET and MCP SDK transport wiring.
 - Endpoint and MCP handlers stay thin and delegate behaviour to Services.
 - Services must not depend on ASP.NET, MCP SDK types, Vue, or a concrete future search engine.
@@ -28,8 +29,8 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - A deployment targets one configured LMS server. Do not build cross-server routing into the initial runtime.
 - Health is process liveness and must not depend on LMS availability.
 - LMS connectivity is reported separately by `/api/lms`; an unavailable LMS must not make `/api/health` fail.
-- There is currently no persistence layer. Do not add EF Core, SQLite, or another store as an incidental implementation detail.
+- Operational search observations use SQLite through `ISearchObservationStore`. Do not let persistence types leak into Services or reuse this database as a future catalogue or search index.
 
 ## Planned boundaries
 
-Search observations, a canonical catalogue, and a replaceable search index are planned but not implemented. Add them only through explicit stories and keep the catalogue independent of the selected index technology.
+A canonical catalogue and replaceable search index are planned but not implemented. Keep both independent of the operational observation store and selected index technology.

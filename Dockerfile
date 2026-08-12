@@ -22,6 +22,8 @@ COPY LyrionVoiceMcp.Contracts/ LyrionVoiceMcp.Contracts/
 COPY LyrionVoiceMcp.Dev/ LyrionVoiceMcp.Dev/
 COPY LyrionVoiceMcp.Dev.Tests/ LyrionVoiceMcp.Dev.Tests/
 COPY LyrionVoiceMcp.Lms/ LyrionVoiceMcp.Lms/
+COPY LyrionVoiceMcp.Persistence/ LyrionVoiceMcp.Persistence/
+COPY LyrionVoiceMcp.Persistence.Tests/ LyrionVoiceMcp.Persistence.Tests/
 COPY LyrionVoiceMcp.Services/ LyrionVoiceMcp.Services/
 COPY LyrionVoiceMcp.Services.Tests/ LyrionVoiceMcp.Services.Tests/
 RUN dotnet restore LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj --locked-mode -maxcpucount:1 -nodeReuse:false
@@ -33,6 +35,7 @@ ARG LVM_CHANNEL
 ARG LVM_BUILD
 ARG LVM_COMMIT
 WORKDIR /app
+RUN mkdir -p /data && chown $APP_UID:$APP_UID /data
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /src/LyrionVoiceMcp.Web/dist ./wwwroot
 ENV ASPNETCORE_URLS=http://0.0.0.0:5600
@@ -40,7 +43,8 @@ ENV LyrionVoiceMcpBuild__Version=$LVM_VERSION
 ENV LyrionVoiceMcpBuild__Channel=$LVM_CHANNEL
 ENV LyrionVoiceMcpBuild__Build=$LVM_BUILD
 ENV LyrionVoiceMcpBuild__Commit=$LVM_COMMIT
+ENV LyrionVoiceMcpObservations__DatabasePath=/data/search-observations.db
 EXPOSE 5600
+VOLUME ["/data"]
 USER $APP_UID
 ENTRYPOINT ["dotnet", "LyrionVoiceMcp.Api.dll"]
-

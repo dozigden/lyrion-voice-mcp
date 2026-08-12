@@ -1,0 +1,30 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
+
+namespace LyrionVoiceMcp.Api.Tests;
+
+public sealed class LyrionVoiceMcpApiFactory : WebApplicationFactory<Program>
+{
+    private readonly string directory = Path.Combine(
+        Path.GetTempPath(),
+        $"lyrion-voice-mcp-api-tests-{Guid.NewGuid():N}");
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        Directory.CreateDirectory(directory);
+        builder.UseSetting(
+            "LyrionVoiceMcpObservations:DatabasePath",
+            Path.Combine(directory, "search-observations.db"));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing && Directory.Exists(directory))
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}

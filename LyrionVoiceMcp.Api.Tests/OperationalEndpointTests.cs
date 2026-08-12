@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace LyrionVoiceMcp.Api.Tests;
 
-public sealed class OperationalEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
 {
-    private readonly WebApplicationFactory<Program> factory;
+    private readonly LyrionVoiceMcpApiFactory factory;
 
-    public OperationalEndpointTests(WebApplicationFactory<Program> factory)
+    public OperationalEndpointTests(LyrionVoiceMcpApiFactory factory)
     {
         this.factory = factory;
     }
@@ -90,5 +90,22 @@ public sealed class OperationalEndpointTests : IClassFixture<WebApplicationFacto
 
         // Assert
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchObservationBrowseShouldExposeRetentionWithoutChangingMcpSurface()
+    {
+        // Arrange
+        using var client = factory.CreateClient();
+
+        // Act
+        var response = await client.GetFromJsonAsync<SearchObservationPageResponse>(
+            "/api/search-observations?review=unreviewed&result=no-results",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(response);
+        Assert.Equal(90, response.RetentionDays);
+        Assert.NotNull(response.Items);
     }
 }

@@ -13,4 +13,10 @@ services:
       LyrionVoiceMcpLms__ServerId: "${LVM_LMS_SERVER_ID:-}"
       LyrionVoiceMcpLms__BaseUrl: "${LVM_LMS_BASE_URL:-}"
       LyrionVoiceMcpLms__RequestTimeoutSeconds: "${LVM_LMS_REQUEST_TIMEOUT_SECONDS:-5}"
+      LyrionVoiceMcpObservations__RetentionDays: "${LVM_SEARCH_RETENTION_DAYS:-90}"
+    volumes:
+      - search-observations:/data
     restart: unless-stopped
+
+volumes:
+  search-observations:

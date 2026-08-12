@@ -114,9 +114,9 @@
     </aside>
 
     <footer>
-      <span>Connectivity baseline</span>
+      <span>Trusted-LAN service</span>
       <span aria-hidden="true">·</span>
-      <span>Search and playback tools follow next</span>
+      <span>Search, player status and playback available</span>
     </footer>
   </main>
 </template>

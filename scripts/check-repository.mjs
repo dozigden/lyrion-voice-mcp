@@ -10,6 +10,8 @@ const requiredPaths = [
   'LyrionVoiceMcp.Services/LyrionVoiceMcp.Services.csproj',
   'LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj',
   'LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj',
+  'LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj',
+  'LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj',
   'LyrionVoiceMcp.Web/package.json',
   'LyrionVoiceMcp.Dev/LyrionVoiceMcp.Dev.csproj',
   'scripts/test-fast.sh',
@@ -51,6 +53,7 @@ for (const project of [
   'LyrionVoiceMcp.Abstractions',
   'LyrionVoiceMcp.Services',
   'LyrionVoiceMcp.Lms',
+  'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Web',
   'LyrionVoiceMcp.Dev'
 ]) {
@@ -70,10 +73,17 @@ assertProjectReferences('LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj', [
 assertProjectReferences('LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj', [
   'LyrionVoiceMcp.Lms'
 ]);
+assertProjectReferences('LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj', [
+  'LyrionVoiceMcp.Abstractions'
+]);
+assertProjectReferences('LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj', [
+  'LyrionVoiceMcp.Persistence'
+]);
 assertProjectReferences('LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj', [
   'LyrionVoiceMcp.Abstractions',
   'LyrionVoiceMcp.Contracts',
   'LyrionVoiceMcp.Lms',
+  'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Services'
 ]);
 

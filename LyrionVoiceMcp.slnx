@@ -7,6 +7,8 @@
   <Project Path="LyrionVoiceMcp.Dev.Tests/LyrionVoiceMcp.Dev.Tests.csproj" />
   <Project Path="LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj" />
   <Project Path="LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj" />
+  <Project Path="LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj" />
+  <Project Path="LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj" />
   <Project Path="LyrionVoiceMcp.Services/LyrionVoiceMcp.Services.csproj" />
   <Project Path="LyrionVoiceMcp.Services.Tests/LyrionVoiceMcp.Services.Tests.csproj" />
 </Solution>

@@ -1,19 +1,18 @@
 using System.Net;
 using System.Text;
 using LyrionVoiceMcp.Abstractions;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace LyrionVoiceMcp.Api.Tests;
 
-public sealed class McpEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
 {
     private const string ProtocolVersion = "2026-07-28";
-    private readonly WebApplicationFactory<Program> factory;
+    private readonly LyrionVoiceMcpApiFactory factory;
 
-    public McpEndpointTests(WebApplicationFactory<Program> factory)
+    public McpEndpointTests(LyrionVoiceMcpApiFactory factory)
     {
         this.factory = factory;
     }

@@ -18,9 +18,28 @@ public sealed record LmsSearchCandidate(
     string? Artist,
     string? Album);
 
+public enum LmsSearchRequestStatus
+{
+    Completed,
+    Failed
+}
+
+public sealed record LmsSearchRequestObservation(
+    string Source,
+    string Command,
+    LmsSearchRequestStatus Status,
+    string? FailureMessage,
+    long DurationMilliseconds,
+    int ResultCount);
+
+public sealed record LmsSearchResponse(
+    IReadOnlyList<LmsSearchCandidate> Candidates,
+    IReadOnlyList<LmsSearchRequestObservation> Requests,
+    long RetrievalDurationMilliseconds);
+
 public interface ILmsSearchClient
 {
-    Task<IReadOnlyList<LmsSearchCandidate>> SearchAsync(
+    Task<LmsSearchResponse> SearchAsync(
         string query,
         CancellationToken cancellationToken);
 }
@@ -64,7 +83,7 @@ public interface ISearchResultReferenceCodec
     SearchResultReferenceValue? TryDecode(string reference);
 }
 
-public sealed class LmsRequestException : Exception
+public class LmsRequestException : Exception
 {
     public LmsRequestException(string message)
         : base(message)
@@ -75,4 +94,18 @@ public sealed class LmsRequestException : Exception
         : base(message, innerException)
     {
     }
+}
+
+public sealed class LmsSearchFailedException : LmsRequestException
+{
+    public LmsSearchFailedException(
+        string message,
+        LmsSearchResponse response,
+        Exception innerException)
+        : base(message, innerException)
+    {
+        Response = response;
+    }
+
+    public LmsSearchResponse Response { get; }
 }

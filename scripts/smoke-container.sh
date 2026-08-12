@@ -45,6 +45,8 @@ fi
 jq --exit-status '.status == "ok"' <<< "$health_json" >/dev/null
 curl --fail --silent "$base_url/api/version" | jq --exit-status '.version and .channel and .build and .commit' >/dev/null
 curl --fail --silent "$base_url/api/lms" | jq --exit-status '.status == "not_configured"' >/dev/null
+curl --fail --silent "$base_url/api/search-observations?limit=1" \
+  | jq --exit-status '.items == [] and .retentionDays == 90' >/dev/null
 curl --fail --silent "$base_url/" | grep --quiet 'Lyrion Voice MCP'
 
 mcp_status="$(curl --silent --output /tmp/lyrion-voice-mcp-smoke-mcp-$$.json --write-out '%{http_code}' \

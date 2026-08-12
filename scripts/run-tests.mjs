@@ -42,6 +42,10 @@ if (lanes.lms) {
   runTestAssembly('LMS tests', 'LyrionVoiceMcp.Lms.Tests');
 }
 
+if (lanes.persistence) {
+  runTestAssembly('Persistence tests', 'LyrionVoiceMcp.Persistence.Tests');
+}
+
 if (lanes.dev) {
   runTestAssembly('Dev tests', 'LyrionVoiceMcp.Dev.Tests');
 }
@@ -61,32 +65,35 @@ function resolveLanes(selectedMode, lane) {
       api: lane === '--api-only' || lane === '--backend-only',
       services: lane === '--services-only' || lane === '--backend-only',
       lms: lane === '--lms-only' || lane === '--backend-only',
+      persistence: lane === '--persistence-only' || lane === '--backend-only',
       dev: lane === '--dev-only' || lane === '--backend-only',
       web: lane === '--web-only'
     };
   }
 
   if (selectedMode === 'full') {
-    return { backend: true, api: true, services: true, lms: true, dev: true, web: true };
+    return { backend: true, api: true, services: true, lms: true, persistence: true, dev: true, web: true };
   }
 
   const changed = changedFiles();
   if (changed.length === 0) {
-    return { backend: true, api: true, services: true, lms: true, dev: true, web: true };
+    return { backend: true, api: true, services: true, lms: true, persistence: true, dev: true, web: true };
   }
 
   const web = changed.some(path => path.startsWith('LyrionVoiceMcp.Web/'));
   const api = changed.some(path => path.startsWith('LyrionVoiceMcp.Api') || path.startsWith('LyrionVoiceMcp.Contracts'));
   const services = changed.some(path => path.startsWith('LyrionVoiceMcp.Services') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const lms = changed.some(path => path.startsWith('LyrionVoiceMcp.Lms') || path.startsWith('LyrionVoiceMcp.Abstractions'));
+  const persistence = changed.some(path => path.startsWith('LyrionVoiceMcp.Persistence') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const dev = changed.some(path => path.startsWith('LyrionVoiceMcp.Dev'));
   const global = changed.some(path => !path.includes('/') || path.startsWith('scripts/') || path.startsWith('.github/'));
 
   return {
-    backend: api || services || lms || dev || global,
+    backend: api || services || lms || persistence || dev || global,
     api: api || global,
     services: services || global,
     lms: lms || global,
+    persistence: persistence || global,
     dev: dev || global,
     web: web || global
   };
