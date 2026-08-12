@@ -70,8 +70,11 @@ tools_response="$(curl --fail --silent \
   --header 'Mcp-Method: tools/list' \
   --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"container-smoke","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}' \
   "$base_url/mcp")"
-if ! grep --quiet '"tools":\[\]' <<< "$tools_response"; then
-  echo "MCP tools/list did not return an empty tool collection." >&2
+tools_json="$(sed -n 's/^data: //p' <<< "$tools_response")"
+if ! jq --exit-status \
+  '([.result.tools[].name] | sort) == ["get_player_status", "search"]' \
+  <<< "$tools_json" >/dev/null; then
+  echo "MCP tools/list did not return the expected implemented tool collection." >&2
   echo "$tools_response" >&2
   exit 1
 fi
