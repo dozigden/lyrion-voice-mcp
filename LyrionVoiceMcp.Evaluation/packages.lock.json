@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "lyrionvoicemcp.abstractions": {
+        "type": "Project"
+      },
+      "lyrionvoicemcp.lms": {
+        "type": "Project",
+        "dependencies": {
+          "LyrionVoiceMcp.Abstractions": "[0.1.0, )"
+        }
+      }
+    }
+  }
+}

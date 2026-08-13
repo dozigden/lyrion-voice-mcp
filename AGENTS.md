@@ -5,6 +5,7 @@ Read the relevant area guidance before changing that part of the system:
 - [AGENTS/Architecture.md](AGENTS/Architecture.md) - project boundaries and dependency direction
 - [AGENTS/CSharpCodingConventions.md](AGENTS/CSharpCodingConventions.md)
 - [AGENTS/Development.md](AGENTS/Development.md) - local orchestration, ports, Docker, and build metadata
+- [AGENTS/Evaluation.md](AGENTS/Evaluation.md) - private corpus boundary and benchmark rules
 - [AGENTS/Frontend.md](AGENTS/Frontend.md)
 - [AGENTS/Lyrion.md](AGENTS/Lyrion.md) - LMS transport and environment rules
 - [AGENTS/Mcp.md](AGENTS/Mcp.md) - public MCP transport and tool rules
@@ -26,4 +27,3 @@ README files are for human-facing usage. Agent execution guidance belongs here o
 - Keep shared/global frontend CSS in `LyrionVoiceMcp.Web/src/style.css` or `src/shared/styles`; keep page and component CSS scoped in its Vue component.
 - Do not create or switch branches, commit, push, or open a pull request unless the user asks for that source-control action.
 - Use the Lyrion MCP BoardOil board (`boardId: 12`). Move a story to In Progress before implementation and only to Done after the user confirms completion.
-

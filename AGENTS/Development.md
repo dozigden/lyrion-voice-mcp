@@ -10,6 +10,13 @@ Use `dev.sh` or `dev.ps1` for the interactive BoardOil-inspired supervisor. Use 
 
 The supervisor manages only this repository's API and Vite processes. It may stop a port listener only after recognising the expected command line. Logs belong under ignored `.data/dev/logs`.
 
+## Evaluation
+
+- `evaluate.sh` and `evaluate.ps1` run the current LMS pass-through against the private sibling corpus without requiring environment variables.
+- They use the same ignored `.data/dev/appsettings.local.json` LMS settings as local development.
+- The default corpus is `../lyrion-voice-evaluation/corpus.json`; generated reports go to ignored `.data/evaluation`.
+- Pass `--corpus`, `--settings`, or `--output` only when overriding those defaults.
+
 ## Containers
 
 - The Docker image is the production-shaped deployment unit and serves API, MCP, and Vue on port 5600.

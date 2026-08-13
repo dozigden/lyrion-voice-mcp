@@ -16,6 +16,7 @@ Read this before changing search contracts, ranking, observation capture, catalo
 - Do not manufacture a confidence rating for the first-pass LMS results. Reconsider confidence only when a later resolver has meaningful ranking evidence.
 - SQLite is the implemented operational observation store, not a decision about the future search index. Do not add FTS/search behaviour to it incidentally.
 - Evaluation exports contain only explicitly included cases and omit observation IDs, LMS media IDs, correlation references, timestamps, and private notes.
+- The observation export is review evidence, not the canonical corpus. Real curated cases live only in the permanently private `lyrion-voice-evaluation` repository; this repository contains fictional evaluation fixtures only.
 - A later catalogue is canonical application data; a search index is rebuildable derived data.
 - Spotify may be used only in a later offline experiment over recorded misses. It is not a runtime fallback or dependency.
 - Use `SEARCH_RESEARCH.md` for the existing research baseline and update it when new evidence changes the decision space.

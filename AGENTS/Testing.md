@@ -4,7 +4,7 @@
 
 - Use `scripts/test-fast.sh` or `scripts/test-fast.ps1` for normal changed-area validation.
 - Use `scripts/test-full.sh` or `scripts/test-full.ps1` for broad or release-shaped validation.
-- Use explicit lanes such as `--api-only`, `--services-only`, `--lms-only`, `--persistence-only`, `--dev-only`, `--web-only`, or `--backend-only` when appropriate.
+- Use explicit lanes such as `--api-only`, `--services-only`, `--lms-only`, `--persistence-only`, `--dev-only`, `--evaluation-only`, `--web-only`, or `--backend-only` when appropriate.
 - Bypass the scripts only when changing them, diagnosing a failure they conceal, or when the user requests a raw command.
 
 ## Ownership
@@ -15,6 +15,7 @@
 - LMS tests own configuration validation, JSON-RPC request/response plumbing, and upstream failure mapping.
 - Persistence tests own schema initialisation, retention, filtering, selection correlation, review round-trips, and export privacy.
 - Dev tests own command construction, process state, recognised listener detection, and bounded log handling.
+- Evaluation tests own corpus parsing and validation, descriptive matching, scoring, and report privacy. They use fictional cases and fake LMS responses.
 - Vitest owns frontend API/state/component behaviour.
 - Container smoke tests prove release assembly and runtime wiring, not business-rule matrices.
 

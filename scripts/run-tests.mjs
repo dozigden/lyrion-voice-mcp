@@ -50,6 +50,10 @@ if (lanes.dev) {
   runTestAssembly('Dev tests', 'LyrionVoiceMcp.Dev.Tests');
 }
 
+if (lanes.evaluation) {
+  runTestAssembly('Evaluation tests', 'LyrionVoiceMcp.Evaluation.Tests');
+}
+
 if (lanes.web) {
   run('Web checks', npmCommand(), ['run', 'check'], 'LyrionVoiceMcp.Web');
 }
@@ -67,17 +71,18 @@ function resolveLanes(selectedMode, lane) {
       lms: lane === '--lms-only' || lane === '--backend-only',
       persistence: lane === '--persistence-only' || lane === '--backend-only',
       dev: lane === '--dev-only' || lane === '--backend-only',
+      evaluation: lane === '--evaluation-only' || lane === '--backend-only',
       web: lane === '--web-only'
     };
   }
 
   if (selectedMode === 'full') {
-    return { backend: true, api: true, services: true, lms: true, persistence: true, dev: true, web: true };
+    return { backend: true, api: true, services: true, lms: true, persistence: true, dev: true, evaluation: true, web: true };
   }
 
   const changed = changedFiles();
   if (changed.length === 0) {
-    return { backend: true, api: true, services: true, lms: true, persistence: true, dev: true, web: true };
+    return { backend: true, api: true, services: true, lms: true, persistence: true, dev: true, evaluation: true, web: true };
   }
 
   const web = changed.some(path => path.startsWith('LyrionVoiceMcp.Web/'));
@@ -86,6 +91,7 @@ function resolveLanes(selectedMode, lane) {
   const lms = changed.some(path => path.startsWith('LyrionVoiceMcp.Lms') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const persistence = changed.some(path => path.startsWith('LyrionVoiceMcp.Persistence') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const dev = changed.some(path => path.startsWith('LyrionVoiceMcp.Dev'));
+  const evaluation = changed.some(path => path.startsWith('LyrionVoiceMcp.Evaluation') || path.startsWith('LyrionVoiceMcp.Lms') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const global = changed.some(path => !path.includes('/') || path.startsWith('scripts/') || path.startsWith('.github/'));
 
   return {
@@ -95,6 +101,7 @@ function resolveLanes(selectedMode, lane) {
     lms: lms || global,
     persistence: persistence || global,
     dev: dev || global,
+    evaluation: evaluation || global,
     web: web || global
   };
 }
