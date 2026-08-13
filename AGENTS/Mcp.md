@@ -9,15 +9,15 @@ Read this before changing MCP registration, tool schemas, results, or error hand
 - Do not enable legacy SSE, sessions, OAuth, or application authentication without a new architectural decision.
 - MCP transport registration belongs in Api; public input/output records belong in Contracts.
 
-## Public tool boundary
+## Current public tools
 
-The intended initial surface is exactly:
+The implemented surface currently contains:
 
 1. `search`
 2. `get_player_status`
 3. `play`
 
-The server exposes all three tools. Do not expose health, diagnostics, raw LMS commands, experimental search, or provider administration as MCP tools.
+These three tools were the initial delivery slice, not a permanent limit. Add cohesive user-facing tools when their contracts and application boundaries are understood. Do not expose health, diagnostics, raw LMS commands, experimental search, or provider administration as MCP tools.
 
 ## Tool behaviour
 

@@ -74,9 +74,9 @@ tools_response="$(curl --fail --silent \
   "$base_url/mcp")"
 tools_json="$(sed -n 's/^data: //p' <<< "$tools_response")"
 if ! jq --exit-status \
-  '([.result.tools[].name] | sort) == ["get_player_status", "play", "search"]' \
+  '(["get_player_status", "play", "search"] - [.result.tools[].name]) == []' \
   <<< "$tools_json" >/dev/null; then
-  echo "MCP tools/list did not return the expected implemented tool collection." >&2
+  echo "MCP tools/list did not return all required implemented tools." >&2
   echo "$tools_response" >&2
   exit 1
 fi

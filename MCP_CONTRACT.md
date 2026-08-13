@@ -1,6 +1,6 @@
-# Initial MCP Contract
+# Implemented MCP Contracts
 
-This is the implemented working boundary for the first three public tools.
+This documents the three currently implemented public tools. It does not limit the server to these tools as player, queue, browse, and library support expands.
 
 ## Tool flow
 
@@ -8,7 +8,7 @@ This is the implemented working boundary for the first three public tools.
 2. `get_player_status` discovers LMS players and their basic state.
 3. The caller passes one discovered LMS player ID and one or more selected search-result references to `play`.
 
-The public MCP surface contains exactly `search`, `get_player_status`, and `play`.
+The current public MCP surface contains `search`, `get_player_status`, and `play`.
 
 ## Search-result references
 
@@ -59,6 +59,6 @@ The result is the selected player's updated first-pass status.
 
 Invalid requests, missing players, and stale or unplayable references return MCP tool execution errors with `isError: true` and a concise corrective message. They are not reported as protocol errors and do not use validation exceptions as application control flow.
 
-## Deferred surface
+## Further surface
 
-Arbitrary queue editing, browse, grouping, mixes, ratings and likes, standalone power or player settings, subscriptions, ingestion, reindexing, and search diagnostics are not initial public tools.
+Queue editing, browse, grouping, mixes, ratings and likes, standalone power or player settings, and subscriptions are candidates for additional user-facing tools. Ingestion, reindexing, and search diagnostics remain operational concerns rather than public MCP tools.

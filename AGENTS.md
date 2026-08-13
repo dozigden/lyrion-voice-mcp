@@ -21,7 +21,7 @@ README files are for human-facing usage. Agent execution guidance belongs here o
 - When behaviour covered by agent guidance changes, update the relevant guidance in the same work.
 - Keep implemented behaviour clearly separated from future plans in documentation.
 - This is unauthenticated trusted-LAN software. Do not imply that the service is safe to expose publicly.
-- Preserve the three-tool public MCP surface: `search`, `get_player_status`, and `play`. Do not add diagnostic or experimental public tools.
+- Treat the public MCP surface as evolvable user-facing product functionality. Add well-scoped media and player tools when justified, but do not expose diagnostics, raw LMS commands, or experimental internals as public tools.
 - Use the repository validation scripts for normal checks. Avoid ad hoc test commands unless changing those scripts or diagnosing a script failure.
 - For direct `dotnet` commands, prefer `-maxcpucount:1 -nodeReuse:false`. In a sandbox, set `NUGET_HTTP_CACHE_PATH` to a writable temporary path.
 - Keep shared/global frontend CSS in `LyrionVoiceMcp.Web/src/style.css` or `src/shared/styles`; keep page and component CSS scoped in its Vue component.
