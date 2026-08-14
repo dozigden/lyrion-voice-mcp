@@ -138,6 +138,8 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
         Assert.Contains("opaque-reference", body, StringComparison.Ordinal);
         Assert.Contains("The Copper Lines", body, StringComparison.Ordinal);
+        Assert.Contains("\"artist\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
         Assert.DoesNotContain("confidence", body, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -204,6 +206,8 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("browse-album-artists", body, StringComparison.Ordinal);
         Assert.Contains("Album artists", body, StringComparison.Ordinal);
         Assert.Contains("album_artist", body, StringComparison.Ordinal);
+        Assert.Contains("\"artist\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
         Assert.Contains("\"browsable\":true", body, StringComparison.Ordinal);
         Assert.Contains("\"playable\":true", body, StringComparison.Ordinal);
         Assert.Contains("browse-next", body, StringComparison.Ordinal);
@@ -280,6 +284,13 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("The Paper Comets", body, StringComparison.Ordinal);
         Assert.Contains("\"durationSeconds\":244.25", body, StringComparison.Ordinal);
         Assert.Contains("\"elapsedSeconds\":12.5", body, StringComparison.Ordinal);
+        Assert.Contains("Quiet Room", body, StringComparison.Ordinal);
+        Assert.Contains("\"volume\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"muted\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"artist\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"durationSeconds\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"elapsedSeconds\":null", body, StringComparison.Ordinal);
         Assert.DoesNotContain("queue", body, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -318,6 +329,9 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("00:11:22:33:44:55", body, StringComparison.Ordinal);
         Assert.Contains("\"poweredOn\":true", body, StringComparison.Ordinal);
         Assert.Contains("\"mode\":\"Playing\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"volume\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"muted\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"nowPlaying\":null", body, StringComparison.Ordinal);
         Assert.DoesNotContain("queue", body, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -384,6 +398,8 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"currentIndex\":1", body, StringComparison.Ordinal);
         Assert.Contains("Lantern Signals", body, StringComparison.Ordinal);
         Assert.Contains("The midnight bulletin", body, StringComparison.Ordinal);
+        Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"durationSeconds\":null", body, StringComparison.Ordinal);
         Assert.DoesNotContain("reference", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("revision", body, StringComparison.OrdinalIgnoreCase);
     }
@@ -666,7 +682,20 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                         "The Paper Comets",
                         "Night Routes",
                         244.25,
-                        12.5))
+                        12.5)),
+                new(
+                    "66:77:88:99:aa:bb",
+                    "Quiet Room",
+                    true,
+                    PlayerPlaybackState.Stopped,
+                    null,
+                    null,
+                    new LmsNowPlaying(
+                        "Test Tone",
+                        null,
+                        null,
+                        null,
+                        null))
             ];
             return Task.FromResult(players);
         }

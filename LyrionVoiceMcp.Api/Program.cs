@@ -67,11 +67,11 @@ builder.Services
             """;
     })
     .WithHttpTransport()
-    .WithTools<SearchTools>()
-    .WithTools<BrowseTools>()
-    .WithTools<PlayerTools>()
-    .WithTools<QueueTools>()
-    .WithTools<PlaybackTools>()
+    .WithTools<SearchTools>(McpToolJson.Options)
+    .WithTools<BrowseTools>(McpToolJson.Options)
+    .WithTools<PlayerTools>(McpToolJson.Options)
+    .WithTools<QueueTools>(McpToolJson.Options)
+    .WithTools<PlaybackTools>(McpToolJson.Options)
     .WithTools([PlayerControlToolRegistration.Create()])
     .WithTools([QueueManagementToolRegistration.Create()]);
 

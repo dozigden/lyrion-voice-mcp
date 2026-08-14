@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Contracts;
 using ModelContextProtocol;
@@ -51,9 +50,7 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
 
     private static CallToolResult SuccessResult(PlayResponse response)
     {
-        var structuredContent = JsonSerializer.SerializeToElement(
-            response,
-            McpJsonUtilities.DefaultOptions);
+        var structuredContent = McpToolJson.Serialize(response);
         return new CallToolResult
         {
             Content = [new TextContentBlock { Text = structuredContent.GetRawText() }],

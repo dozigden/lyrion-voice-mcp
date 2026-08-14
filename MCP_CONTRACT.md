@@ -14,6 +14,8 @@ This documents the currently implemented public tools. It does not limit the ser
 
 The current public MCP surface contains `search`, `browse`, `get_player_status`, `control_player`, `get_queue`, `manage_queue`, and `play`.
 
+Structured results conform to their advertised output schemas. Properties that are required but nullable are emitted explicitly as JSON `null` when no value is available rather than being omitted.
+
 During MCP initialisation, the server supplies concise agent guidance connecting these tools: discover player IDs rather than inventing them, choose search for named media and browse for exploration, keep references opaque, route search and browse references according to their actual capabilities, distinguish replace-and-start playback from queue addition and clearing, and ask when player or media selection is genuinely ambiguous.
 
 ## Result references

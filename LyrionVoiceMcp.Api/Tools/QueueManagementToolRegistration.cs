@@ -12,8 +12,7 @@ public static class QueueManagementToolRegistration
 {
     public static McpServerTool Create()
     {
-        var serialiserOptions = new JsonSerializerOptions(
-            McpJsonUtilities.DefaultOptions);
+        var serialiserOptions = new JsonSerializerOptions(McpToolJson.Options);
         for (var index = serialiserOptions.Converters.Count - 1; index >= 0; index--)
         {
             if (serialiserOptions.Converters[index]

@@ -9,7 +9,7 @@
 
 ## Ownership
 
-- Api tests prove routes, serialisation, middleware, DI, MCP negotiation, and SPA hosting.
+- Api tests prove routes, serialisation, middleware, DI, MCP negotiation, and SPA hosting. MCP endpoint coverage must include required nullable output fields with null values so structured content remains valid against advertised schemas.
 - Api tests must override operational persistence with an isolated temporary database; they must never read or write the developer's `.data` database.
 - Services tests own application behaviour, validation matrices, and edge cases.
 - LMS tests own configuration validation, JSON-RPC request/response plumbing, and upstream failure mapping.
