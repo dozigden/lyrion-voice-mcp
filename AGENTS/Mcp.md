@@ -16,7 +16,8 @@ The implemented surface currently contains:
 1. `search`
 2. `get_player_status`
 3. `control_player`
-4. `play`
+4. `get_queue`
+5. `play`
 
 The first three-tool delivery slice was not a permanent limit. Add cohesive user-facing tools when their contracts and application boundaries are understood. Do not expose health, diagnostics, raw LMS commands, experimental search, or provider administration as MCP tools.
 
@@ -29,9 +30,10 @@ The first three-tool delivery slice was not a permanent limit. Add cohesive user
 - A result reference carries both the candidate correlation and underlying LMS playback identity. These remain separate internal concepts but require no separate public `searchId`.
 - Result references are short-lived hand-off values. Do not add a format version or LMS server identity.
 - `get_player_status` returns every discovered player with full voice-relevant power, mode, volume, optional mute, and now-playing state. It deliberately excludes queue, connectivity, and grouping information.
-- `get_player_status`, `control_player`, and `play` use the raw LMS player ID; do not wrap it in an application reference.
+- `get_player_status`, `control_player`, `get_queue`, and `play` use the raw LMS player ID; do not wrap it in an application reference.
 - `control_player` accepts exactly one lowercase action: `resume`, `pause`, `stop`, `next`, `previous`, `power_on`, or `power_off`. It excludes volume, mute, seek, grouping, and queue operations and returns the selected player's refreshed full status.
 - Register `PlayerControlTools` through `PlayerControlToolRegistration` so malformed enum values become corrective tool errors while the generated schema retains the agreed lowercase action enum.
+- `get_queue` takes one player and returns its complete queue up to the LMS 300-item limit. Return only the player ID, nullable current LMS index, and ordered items with LMS index plus title, optional artist, album, and duration. Do not expose pagination, queue revisions, search-result references, or LMS media IDs.
 - `play` accepts a non-empty ordered reference list and lowercase `replace` or `append`, defaulting to `replace`. Its result is the selected player's updated full status.
 - Register `PlaybackTools` through `PlaybackToolRegistration`. It ring-fences the SDK enum-binding workaround, preserves the generated schema's `replace`/`append` enum, and allows the tool to return a corrective `isError` result for malformed mode values.
 - Model expected search, player-control, and playback validation or business rejection as application outcomes, not exceptions. Tools map rejections to `CallToolResult` with `IsError = true`; keep `OutputSchemaType` set to their successful response contracts.

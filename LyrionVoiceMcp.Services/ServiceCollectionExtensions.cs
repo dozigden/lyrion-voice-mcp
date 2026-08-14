@@ -12,6 +12,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IPlaybackService, PlaybackService>();
         services.AddTransient<IPlayerControlService, PlayerControlService>();
         services.AddTransient<IPlayerStatusService, PlayerStatusService>();
+        services.AddTransient<IQueueService, QueueService>();
         services.AddTransient<ISearchService, SearchService>();
         services.AddTransient<ISearchObservationReviewService, SearchObservationReviewService>();
         services.AddSingleton<ISearchResultReferenceCodec, SearchResultReferenceCodec>();

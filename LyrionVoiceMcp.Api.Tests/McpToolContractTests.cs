@@ -87,6 +87,42 @@ public sealed class McpToolContractTests
     }
 
     [Fact]
+    public void GetQueueShouldContainOnlyPlayerCurrentIndexAndDisplayItems()
+    {
+        // Arrange
+        var expectedResponseProperties = new[]
+        {
+            "CurrentIndex",
+            "Items",
+            "Player"
+        };
+        var expectedItemProperties = new[]
+        {
+            "Album",
+            "Artist",
+            "DurationSeconds",
+            "Index",
+            "Title"
+        };
+
+        // Act
+        var responseProperties = typeof(GetQueueResponse)
+            .GetProperties()
+            .Select(property => property.Name)
+            .Order()
+            .ToArray();
+        var itemProperties = typeof(QueueItem)
+            .GetProperties()
+            .Select(property => property.Name)
+            .Order()
+            .ToArray();
+
+        // Assert
+        Assert.Equal(expectedResponseProperties, responseProperties);
+        Assert.Equal(expectedItemProperties, itemProperties);
+    }
+
+    [Fact]
     public void NowPlayingShouldExcludeQueueAndLmsIdentity()
     {
         // Arrange

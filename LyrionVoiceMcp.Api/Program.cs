@@ -50,6 +50,7 @@ builder.Services.AddTransient<ILmsConnectionProbe, LmsConnectionProbe>();
 builder.Services.AddTransient<ILmsPlaybackClient, LmsPlaybackClient>();
 builder.Services.AddTransient<ILmsPlayerControlClient, LmsPlayerControlClient>();
 builder.Services.AddTransient<ILmsPlayerClient, LmsPlayerClient>();
+builder.Services.AddTransient<ILmsQueueClient, LmsQueueClient>();
 builder.Services.AddTransient<ILmsSearchClient, LmsSearchClient>();
 builder.Services.AddLyrionVoiceMcpServices();
 builder.Services
@@ -64,6 +65,7 @@ builder.Services
     .WithHttpTransport()
     .WithTools<SearchTools>()
     .WithTools<PlayerTools>()
+    .WithTools<QueueTools>()
     .WithTools([PlayerControlToolRegistration.Create()])
     .WithTools([PlaybackToolRegistration.Create()]);
 

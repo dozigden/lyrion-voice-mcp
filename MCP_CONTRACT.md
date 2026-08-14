@@ -7,9 +7,10 @@ This documents the currently implemented public tools. It does not limit the ser
 1. `search` returns ranked media candidates.
 2. `get_player_status` discovers LMS players and their voice-relevant state.
 3. The caller can pass one discovered LMS player ID and an action to `control_player`.
-4. The caller passes one discovered LMS player ID and one or more selected search-result references to `play`.
+4. The caller can pass one discovered LMS player ID to `get_queue`.
+5. The caller passes one discovered LMS player ID and one or more selected search-result references to `play`.
 
-The current public MCP surface contains `search`, `get_player_status`, `control_player`, and `play`.
+The current public MCP surface contains `search`, `get_player_status`, `control_player`, `get_queue`, and `play`.
 
 ## Search-result references
 
@@ -46,7 +47,7 @@ The implemented `get_player_status` takes no input and returns all players disco
 
 Each player contains the raw LMS player ID, friendly name, power state, playback mode, nullable volume, nullable mute state, and nullable now-playing details. Now-playing details contain title plus optional artist, album, duration, and elapsed time. Queue, connectivity, and grouping information are excluded.
 
-The raw LMS player ID is passed directly to `control_player` or `play`; it is not wrapped in an application reference.
+The raw LMS player ID is passed directly to `control_player`, `get_queue`, or `play`; it is not wrapped in an application reference.
 
 ## `control_player`
 
@@ -55,6 +56,14 @@ The raw LMS player ID is passed directly to `control_player` or `play`; it is no
 The player is resolved before mutation. Playback actions map to LMS's explicit play, pause, stop, and adjacent queue-index commands. Power changes are confirmed before success is returned, and power-on does not automatically resume playback. The implementation refreshes the selected player's status after the command.
 
 The result is the selected player's refreshed full status. Volume, mute, seek, grouping, and queue management are not control actions. Invalid actions and missing players return MCP tool execution errors with `isError: true` rather than protocol errors or validation exceptions.
+
+## `get_queue`
+
+`get_queue` accepts one explicit raw LMS player ID and returns that player's complete current queue, up to LMS's 300-item queue limit.
+
+The response contains the player ID, nullable current LMS queue index, and ordered items. Each item contains its LMS queue index, title, and optional artist, album, and duration. Array order and explicit indices both reflect LMS's queue order; the index identifies the current item and remains useful when LMS omits no entries.
+
+The response does not contain pagination, a duplicated count, queue revisions, search-result references, or internal LMS media IDs. An empty queue has a null current index and an empty item list. A missing player, oversized queue, or incomplete upstream queue response returns a concise MCP tool error rather than partial data.
 
 ## `play`
 

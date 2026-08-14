@@ -23,6 +23,7 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - First-pass local search issues the LMS `search` command for artists, albums, and tracks plus a `playlists search:` query. It requests at most 20 results per category and preserves category and LMS result order.
 - Player discovery issues `players 0`, then parallel one-item `status - 1` and `mixer muting ?` queries for every player. This returns power, playback mode, volume, optional mute state, and current-media metadata/progress without materialising the queue. Mute is nullable because LMS/player combinations may not expose it.
 - Player control uses explicit `play`, `pause 1`, `stop`, `playlist index +1`, and `playlist index -1` commands. Power control sets the requested state and confirms it with `power ?`; power-on uses the `noplay` flag.
+- Queue reading uses one `status 0 300 tags:aAld` request after player validation. Preserve each LMS `playlist index`, use top-level `current_title` for the current remote item, and reject responses that exceed 300 items or omit queued entries rather than silently truncating them.
 - Playback preflight uses one-item filtered `titles` or `playlists tracks` queries to verify that each referenced LMS item remains playable without materialising collection contents.
 - Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. LMS owns collection expansion and internal ordering.
 - Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue.

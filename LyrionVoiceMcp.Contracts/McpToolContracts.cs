@@ -105,6 +105,20 @@ public sealed record ControlPlayerRequest(
 
 public sealed record ControlPlayerResponse(PlayerStatus Player);
 
+public sealed record GetQueueRequest(string Player);
+
+public sealed record GetQueueResponse(
+    string Player,
+    int? CurrentIndex,
+    IReadOnlyList<QueueItem> Items);
+
+public sealed record QueueItem(
+    int Index,
+    string Title,
+    string? Artist,
+    string? Album,
+    double? DurationSeconds);
+
 [JsonConverter(typeof(JsonStringEnumConverter<PlayerPlaybackMode>))]
 public enum PlayerPlaybackMode
 {

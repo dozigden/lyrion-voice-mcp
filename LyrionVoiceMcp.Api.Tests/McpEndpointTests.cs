@@ -68,6 +68,8 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "\"enum\":[\"resume\",\"pause\",\"stop\",\"next\",\"previous\",\"power_on\",\"power_off\"]",
             body,
             StringComparison.Ordinal);
+        Assert.Contains("\"name\":\"get_queue\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"required\":[\"player\"]", body, StringComparison.Ordinal);
         Assert.Contains("\"name\":\"play\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"player\",\"items\"]", body, StringComparison.Ordinal);
         Assert.Contains("\"enum\":[\"replace\",\"append\"]", body, StringComparison.Ordinal);
@@ -251,6 +253,74 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("00:11:22:33:44:55", body, StringComparison.Ordinal);
         Assert.Contains("\"mode\":\"Paused\"", body, StringComparison.Ordinal);
         Assert.DoesNotContain("queue", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetQueueShouldReturnTheOrderedQueueAndCurrentIndex()
+    {
+        // Arrange
+        await using var queueFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IQueueService>();
+                services.AddSingleton<IQueueService>(new StubQueueService());
+            }));
+        using var client = queueFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            11,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"get_queue","arguments":{"player":"00:11:22:33:44:55"}}
+            """,
+            "get_queue");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"player\":\"00:11:22:33:44:55\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"currentIndex\":1", body, StringComparison.Ordinal);
+        Assert.Contains("Lantern Signals", body, StringComparison.Ordinal);
+        Assert.Contains("The midnight bulletin", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("reference", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("revision", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetQueueShouldReturnAToolErrorForARejectedPlayer()
+    {
+        // Arrange
+        var rejection = new QueueRejected(
+            QueueRejectionReason.PlayerNotFound,
+            "LMS player 'missing-player' was not found.");
+        await using var queueFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IQueueService>();
+                services.AddSingleton<IQueueService>(new StubQueueService(rejection));
+            }));
+        using var client = queueFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            12,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"get_queue","arguments":{"player":"missing-player"}}
+            """,
+            "get_queue");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
+        Assert.Contains("missing-player", body, StringComparison.Ordinal);
+        Assert.Contains("was not found.", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("structuredContent", body, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -490,6 +560,40 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                         "Night Routes",
                         244.25,
                         12.5))));
+        }
+    }
+
+    private sealed class StubQueueService(QueueOutcome? outcome = null) : IQueueService
+    {
+        public Task<QueueOutcome> GetQueueAsync(
+            string playerId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (outcome is not null)
+            {
+                return Task.FromResult(outcome);
+            }
+
+            Assert.Equal("00:11:22:33:44:55", playerId);
+            return Task.FromResult<QueueOutcome>(new QueueSucceeded(
+                new LmsPlayerQueue(
+                    playerId,
+                    1,
+                    [
+                        new(
+                            0,
+                            "Lantern Signals",
+                            "The Paper Comets",
+                            "Night Routes",
+                            244.25),
+                        new(
+                            1,
+                            "The midnight bulletin",
+                            "North Coast Radio",
+                            null,
+                            null)
+                    ])));
         }
     }
 }
