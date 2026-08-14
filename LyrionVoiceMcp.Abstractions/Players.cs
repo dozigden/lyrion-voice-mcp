@@ -12,7 +12,17 @@ public sealed record LmsPlayerStatus(
     string Id,
     string Name,
     bool PoweredOn,
-    PlayerPlaybackState PlaybackState);
+    PlayerPlaybackState PlaybackState,
+    int? Volume = null,
+    bool? Muted = null,
+    LmsNowPlaying? NowPlaying = null);
+
+public sealed record LmsNowPlaying(
+    string Title,
+    string? Artist,
+    string? Album,
+    double? DurationSeconds,
+    double? ElapsedSeconds);
 
 public interface ILmsPlayerClient
 {

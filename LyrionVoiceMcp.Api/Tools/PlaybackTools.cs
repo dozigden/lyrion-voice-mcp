@@ -6,7 +6,6 @@ using LyrionVoiceMcp.Contracts;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ContractPlayerPlaybackMode = LyrionVoiceMcp.Contracts.PlayerPlaybackMode;
 
 namespace LyrionVoiceMcp.Api.Tools;
 
@@ -45,7 +44,8 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
             return outcome switch
             {
                 PlaybackSucceeded succeeded =>
-                    SuccessResult(new PlayResponse(MapPlayer(succeeded.Player))),
+                    SuccessResult(new PlayResponse(
+                        PlayerStatusMapper.Map(succeeded.Player))),
                 PlaybackRejected rejected => ErrorResult(rejected.Message),
                 _ => throw new UnreachableException(
                     $"Unsupported playback outcome {outcome.GetType().Name}.")
@@ -84,17 +84,4 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
             IsError = true
         };
 
-    private static PlayerStatus MapPlayer(LmsPlayerStatus player) =>
-        new(
-            player.Id,
-            player.Name,
-            player.PoweredOn,
-            player.PlaybackState switch
-            {
-                PlayerPlaybackState.Playing => ContractPlayerPlaybackMode.Playing,
-                PlayerPlaybackState.Paused => ContractPlayerPlaybackMode.Paused,
-                PlayerPlaybackState.Stopped => ContractPlayerPlaybackMode.Stopped,
-                PlayerPlaybackState.Unknown => ContractPlayerPlaybackMode.Unknown,
-                _ => ContractPlayerPlaybackMode.Unknown
-            });
 }

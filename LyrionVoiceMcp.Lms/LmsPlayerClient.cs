@@ -5,6 +5,9 @@ namespace LyrionVoiceMcp.Lms;
 
 public sealed class LmsPlayerClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlayerClient
 {
+    // Request display metadata for the current local track or plugin stream.
+    private const string StatusTags = "cgAABbehldiqtyrSuoKLNJ";
+
     public async Task<IReadOnlyList<LmsPlayerStatus>> GetPlayersAsync(
         CancellationToken cancellationToken)
     {
@@ -26,25 +29,124 @@ public sealed class LmsPlayerClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlayer
         DiscoveredPlayer player,
         CancellationToken cancellationToken)
     {
-        var result = await jsonRpcClient.SendAsync(
+        var statusRequest = jsonRpcClient.SendAsync(
             player.Id,
-            ["mode", "?"],
+            ["status", "-", 1, $"tags:{StatusTags}"],
             cancellationToken);
-        string mode;
+        var mutingRequest = jsonRpcClient.SendAsync(
+            player.Id,
+            ["mixer", "muting", "?"],
+            cancellationToken);
+        await Task.WhenAll(statusRequest, mutingRequest);
+
         try
         {
-            mode = LmsJson.ReadRequiredString(result, "_mode", "player mode");
+            var status = await statusRequest;
+            var muting = await mutingRequest;
+            var mode = LmsJson.ReadRequiredString(status, "mode", "player status");
+            return new LmsPlayerStatus(
+                player.Id,
+                player.Name,
+                LmsJson.ReadRequiredBoolean(status, "power", "player status"),
+                MapPlaybackState(mode),
+                LmsJson.ReadInt(status, "mixer volume"),
+                ReadNullableBoolean(muting, "_muting", "player mute"),
+                ReadNowPlaying(status));
         }
         catch (InvalidOperationException exception)
         {
             throw new LmsRequestException(exception.Message, exception);
         }
+    }
 
-        return new LmsPlayerStatus(
-            player.Id,
-            player.Name,
-            player.PoweredOn,
-            MapPlaybackState(mode));
+    private static LmsNowPlaying? ReadNowPlaying(JsonElement status)
+    {
+        var currentTitle = LmsJson.ReadString(status, "current_title");
+        if (string.IsNullOrWhiteSpace(currentTitle))
+        {
+            currentTitle = null;
+        }
+
+        if (!status.TryGetProperty("playlist_loop", out var loop))
+        {
+            return CreateRemoteNowPlaying(status, currentTitle);
+        }
+
+        if (loop.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException(
+                "LMS player status response did not include a valid playlist_loop array.");
+        }
+
+        var items = loop.EnumerateArray();
+        if (!items.MoveNext())
+        {
+            return CreateRemoteNowPlaying(status, currentTitle);
+        }
+
+        var item = items.Current;
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidOperationException(
+                "LMS player status response contained an invalid playlist_loop item.");
+        }
+
+        var title = currentTitle
+            ?? LmsJson.ReadRequiredString(item, "title", "player status");
+        var artist = LmsJson.ReadString(item, "trackartist")
+            ?? LmsJson.ReadString(item, "artist")
+            ?? LmsJson.ReadString(item, "albumartist");
+        var duration = LmsJson.ReadDouble(status, "duration")
+            ?? LmsJson.ReadDouble(item, "duration");
+        return new LmsNowPlaying(
+            title,
+            artist,
+            LmsJson.ReadString(item, "album"),
+            duration,
+            LmsJson.ReadDouble(status, "time"));
+    }
+
+    private static LmsNowPlaying? CreateRemoteNowPlaying(
+        JsonElement status,
+        string? currentTitle) =>
+        string.IsNullOrWhiteSpace(currentTitle)
+            ? null
+            : new LmsNowPlaying(
+                currentTitle,
+                null,
+                null,
+                LmsJson.ReadDouble(status, "duration"),
+                LmsJson.ReadDouble(status, "time"));
+
+    private static bool? ReadNullableBoolean(
+        JsonElement element,
+        string name,
+        string responseName)
+    {
+        if (!element.TryGetProperty(name, out var property)
+            || property.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (property.ValueKind == JsonValueKind.True)
+        {
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.False)
+        {
+            return false;
+        }
+
+        var value = LmsJson.ReadString(element, name);
+        return value switch
+        {
+            "1" => true,
+            "0" => false,
+            _ => throw new InvalidOperationException(
+                $"LMS {responseName} response contained an invalid {name} value.")
+        };
     }
 
     private static IReadOnlyList<DiscoveredPlayer> ReadPlayers(JsonElement result)
@@ -79,8 +181,7 @@ public sealed class LmsPlayerClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlayer
             {
                 return new DiscoveredPlayer(
                     LmsJson.ReadRequiredString(item, "playerid", "players"),
-                    LmsJson.ReadRequiredString(item, "name", "players"),
-                    LmsJson.ReadRequiredBoolean(item, "power", "players"));
+                    LmsJson.ReadRequiredString(item, "name", "players"));
             }
             catch (InvalidOperationException exception)
             {
@@ -100,6 +201,5 @@ public sealed class LmsPlayerClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlayer
 
     private sealed record DiscoveredPlayer(
         string Id,
-        string Name,
-        bool PoweredOn);
+        string Name);
 }

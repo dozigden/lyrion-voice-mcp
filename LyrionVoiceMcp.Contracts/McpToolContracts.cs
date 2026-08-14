@@ -38,7 +38,17 @@ public sealed record PlayerStatus(
     string Id,
     string Name,
     bool PoweredOn,
-    PlayerPlaybackMode Mode);
+    PlayerPlaybackMode Mode,
+    int? Volume,
+    bool? Muted,
+    NowPlaying? NowPlaying);
+
+public sealed record NowPlaying(
+    string Title,
+    string? Artist,
+    string? Album,
+    double? DurationSeconds,
+    double? ElapsedSeconds);
 
 [JsonConverter(typeof(PlayQueueModeJsonConverter))]
 public enum PlayQueueMode

@@ -43,7 +43,7 @@ Confidence may be reconsidered later alongside indexed search and ranking. An in
 
 The implemented `get_player_status` takes no input and returns all players discovered from the configured LMS.
 
-First-pass status contains only the raw LMS player ID, friendly name, power state, and playback state.
+Each player contains the raw LMS player ID, friendly name, power state, playback mode, nullable volume, nullable mute state, and nullable now-playing details. Now-playing details contain title plus optional artist, album, duration, and elapsed time. Queue, connectivity, and grouping information are excluded.
 
 The raw LMS player ID is passed directly to `play`; it is not wrapped in an application reference.
 
@@ -55,7 +55,7 @@ The player and every reference are resolved before mutation. Lightweight filtere
 
 Tracks, artists, albums, and playlists are passed directly to LMS `playlistcontrol` by ID. LMS owns collection expansion and its internal track order. `replace` loads the first reference and adds later references. `append` adds every reference without interrupting active playback, or starts at the first appended item when the player is off or idle. Multiple input references preserve caller order.
 
-The result is the selected player's updated first-pass status.
+The result is the selected player's updated status.
 
 Invalid requests, missing players, and stale or unplayable references return MCP tool execution errors with `isError: true` and a concise corrective message. They are not reported as protocol errors and do not use validation exceptions as application control flow.
 

@@ -135,7 +135,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
     }
 
     [Fact]
-    public async Task GetPlayerStatusShouldReturnStructuredMinimalPlayers()
+    public async Task GetPlayerStatusShouldReturnStructuredFullPlayers()
     {
         // Arrange
         await using var playerFactory = factory.WithWebHostBuilder(builder =>
@@ -166,7 +166,12 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("North Room", body, StringComparison.Ordinal);
         Assert.Contains("\"poweredOn\":true", body, StringComparison.Ordinal);
         Assert.Contains("\"mode\":\"Stopped\"", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("volume", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"volume\":42", body, StringComparison.Ordinal);
+        Assert.Contains("\"muted\":false", body, StringComparison.Ordinal);
+        Assert.Contains("Lantern Signals", body, StringComparison.Ordinal);
+        Assert.Contains("The Paper Comets", body, StringComparison.Ordinal);
+        Assert.Contains("\"durationSeconds\":244.25", body, StringComparison.Ordinal);
+        Assert.Contains("\"elapsedSeconds\":12.5", body, StringComparison.Ordinal);
         Assert.DoesNotContain("queue", body, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -342,7 +347,15 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     "00:11:22:33:44:55",
                     "North Room",
                     true,
-                    PlayerPlaybackState.Stopped)
+                    PlayerPlaybackState.Stopped,
+                    42,
+                    false,
+                    new LmsNowPlaying(
+                        "Lantern Signals",
+                        "The Paper Comets",
+                        "Night Routes",
+                        244.25,
+                        12.5))
             ];
             return Task.FromResult(players);
         }

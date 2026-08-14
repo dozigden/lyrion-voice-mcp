@@ -63,6 +63,32 @@ internal static class LmsJson
         return null;
     }
 
+    public static double? ReadDouble(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var property))
+        {
+            return null;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number
+            && property.TryGetDouble(out var numberValue))
+        {
+            return numberValue;
+        }
+
+        if (property.ValueKind == JsonValueKind.String
+            && double.TryParse(
+                property.GetString(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var stringValue))
+        {
+            return stringValue;
+        }
+
+        return null;
+    }
+
     public static bool ReadRequiredBoolean(
         JsonElement element,
         string name,

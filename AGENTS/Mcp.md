@@ -27,6 +27,7 @@ These three tools were the initial delivery slice, not a permanent limit. Add co
 - Propagate cancellation and map expected validation/upstream failures to useful tool errors without leaking stack traces.
 - A result reference carries both the candidate correlation and underlying LMS playback identity. These remain separate internal concepts but require no separate public `searchId`.
 - Result references are short-lived hand-off values. Do not add a format version or LMS server identity.
+- `get_player_status` returns every discovered player with full voice-relevant power, mode, volume, optional mute, and now-playing state. It deliberately excludes queue, connectivity, and grouping information.
 - `get_player_status` and `play` use the raw LMS player ID; do not wrap it in an application reference.
 - `play` accepts a non-empty ordered reference list and lowercase `replace` or `append`, defaulting to `replace`. Its result is only the selected player's updated minimal status.
 - Register `PlaybackTools` through `PlaybackToolRegistration`. It ring-fences the SDK enum-binding workaround, preserves the generated schema's `replace`/`append` enum, and allows the tool to return a corrective `isError` result for malformed mode values.

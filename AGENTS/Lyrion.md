@@ -21,7 +21,7 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - `ILmsConnectionProbe` sends `serverstatus 0 0`; `/api/lms` exposes its state for the operational UI. This is not an MCP tool.
 - `LmsJsonRpcClient` owns JSON-RPC request creation, transport failure mapping, and response-envelope validation for both the probe and search adapter.
 - First-pass local search issues the LMS `search` command for artists, albums, and tracks plus a `playlists search:` query. It requests at most 20 results per category and preserves category and LMS result order.
-- Player discovery issues `players 0`, then parallel read-only `mode ?` queries so paused and stopped players remain distinguishable. Public player state remains limited to raw LMS ID, name, power, and playback mode.
+- Player discovery issues `players 0`, then parallel one-item `status - 1` and `mixer muting ?` queries for every player. This returns power, playback mode, volume, optional mute state, and current-media metadata/progress without materialising the queue. Mute is nullable because LMS/player combinations may not expose it.
 - Playback preflight uses one-item filtered `titles` or `playlists tracks` queries to verify that each referenced LMS item remains playable without materialising collection contents.
 - Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. LMS owns collection expansion and internal ordering.
 - Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue.

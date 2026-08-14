@@ -40,13 +40,46 @@ public sealed class McpToolContractTests
     }
 
     [Fact]
-    public void PlayerStatusShouldContainOnlyFirstPassState()
+    public void PlayerStatusShouldContainFullVoiceRelevantState()
     {
         // Arrange
-        var expectedProperties = new[] { "Id", "Mode", "Name", "PoweredOn" };
+        var expectedProperties = new[]
+        {
+            "Id",
+            "Mode",
+            "Muted",
+            "Name",
+            "NowPlaying",
+            "PoweredOn",
+            "Volume"
+        };
 
         // Act
         var properties = typeof(PlayerStatus)
+            .GetProperties()
+            .Select(property => property.Name)
+            .Order()
+            .ToArray();
+
+        // Assert
+        Assert.Equal(expectedProperties, properties);
+    }
+
+    [Fact]
+    public void NowPlayingShouldExcludeQueueAndLmsIdentity()
+    {
+        // Arrange
+        var expectedProperties = new[]
+        {
+            "Album",
+            "Artist",
+            "DurationSeconds",
+            "ElapsedSeconds",
+            "Title"
+        };
+
+        // Act
+        var properties = typeof(NowPlaying)
             .GetProperties()
             .Select(property => property.Name)
             .Order()

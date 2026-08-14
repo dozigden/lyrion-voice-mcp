@@ -3,7 +3,6 @@ using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Contracts;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
-using ContractPlayerPlaybackMode = LyrionVoiceMcp.Contracts.PlayerPlaybackMode;
 
 namespace LyrionVoiceMcp.Api.Tools;
 
@@ -18,14 +17,15 @@ public sealed class PlayerTools(IPlayerStatusService playerStatusService)
         Idempotent = true,
         OpenWorld = false,
         UseStructuredContent = true)]
-    [Description("Discover every player known to the configured Lyrion Music Server and return its basic power and playback state.")]
+    [Description("Discover every player known to the configured Lyrion Music Server and return its full voice-relevant power, playback, volume, mute, and now-playing state.")]
     public async Task<GetPlayerStatusResponse> GetPlayerStatusAsync(
         CancellationToken cancellationToken)
     {
         try
         {
             var players = await playerStatusService.GetPlayersAsync(cancellationToken);
-            return new GetPlayerStatusResponse(players.Select(MapPlayer).ToArray());
+            return new GetPlayerStatusResponse(
+                players.Select(PlayerStatusMapper.Map).ToArray());
         }
         catch (LmsRequestException exception)
         {
@@ -33,17 +33,4 @@ public sealed class PlayerTools(IPlayerStatusService playerStatusService)
         }
     }
 
-    private static PlayerStatus MapPlayer(LmsPlayerStatus player) =>
-        new(
-            player.Id,
-            player.Name,
-            player.PoweredOn,
-            player.PlaybackState switch
-            {
-                PlayerPlaybackState.Playing => ContractPlayerPlaybackMode.Playing,
-                PlayerPlaybackState.Paused => ContractPlayerPlaybackMode.Paused,
-                PlayerPlaybackState.Stopped => ContractPlayerPlaybackMode.Stopped,
-                PlayerPlaybackState.Unknown => ContractPlayerPlaybackMode.Unknown,
-                _ => ContractPlayerPlaybackMode.Unknown
-            });
 }
