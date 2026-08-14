@@ -28,7 +28,7 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. LMS owns collection expansion and internal ordering.
 - Queue management uses `playlist clear`, `playlistcontrol cmd:add`, and `playlistcontrol cmd:insert`. Submit separate play-next references in reverse so LMS's repeated next-position inserts preserve caller order. Do not power on or start playback for queue management.
 - Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue.
-- Batched replace loads the first reference and adds later references. Append adds each reference and, for an off or stopped player, starts at the queue index recorded before the additions.
+- Batched playback loads the first reference, replacing the queue and starting playback, then adds later references in caller order. Append and play-next placement are queue-management operations.
 - Keep `/api/health` independent of LMS reachability.
 
 ## Environments

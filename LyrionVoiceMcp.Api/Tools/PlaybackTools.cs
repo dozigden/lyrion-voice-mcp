@@ -21,25 +21,17 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(PlayResponse))]
-    [Description("Play or queue one or more search results on an explicitly selected Lyrion player.")]
+    [Description("Replace a Lyrion player's queue with one or more search results and start playback.")]
     public async Task<CallToolResult> PlayAsync(
         [Description("The raw LMS player ID returned by get_player_status.")] string player,
         [Description("One or more opaque result references returned by search, in playback order.")] IReadOnlyList<string> items,
-        [Description("Replace the current queue or append to it.")] PlayQueueMode mode = PlayQueueMode.Replace,
         CancellationToken cancellationToken = default)
     {
-        var playbackMode = MapMode(mode);
-        if (playbackMode is null)
-        {
-            return ErrorResult("The playback queue mode is invalid.");
-        }
-
         try
         {
             var outcome = await playbackService.PlayAsync(
                 player,
                 items,
-                playbackMode.Value,
                 cancellationToken);
             return outcome switch
             {
@@ -56,14 +48,6 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
             return ErrorResult(exception.Message);
         }
     }
-
-    private static PlaybackQueueMode? MapMode(PlayQueueMode mode) =>
-        mode switch
-        {
-            PlayQueueMode.Replace => PlaybackQueueMode.Replace,
-            PlayQueueMode.Append => PlaybackQueueMode.Append,
-            _ => null
-        };
 
     private static CallToolResult SuccessResult(PlayResponse response)
     {
@@ -83,5 +67,4 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
             Content = [new TextContentBlock { Text = message }],
             IsError = true
         };
-
 }

@@ -77,7 +77,10 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             StringComparison.Ordinal);
         Assert.Contains("\"name\":\"play\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"player\",\"items\"]", body, StringComparison.Ordinal);
-        Assert.Contains("\"enum\":[\"replace\",\"append\"]", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "\"enum\":[\"replace\",\"append\"]",
+            body,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -204,7 +207,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             5,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"play","arguments":{"player":"00:11:22:33:44:55","items":["first-reference","second-reference"],"mode":"append"}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"play","arguments":{"player":"00:11:22:33:44:55","items":["first-reference","second-reference"]}}
             """,
             "play");
 
@@ -219,7 +222,6 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Equal(
             ["first-reference", "second-reference"],
             playbackService.References);
-        Assert.Equal(PlaybackQueueMode.Append, playbackService.Mode);
         Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
         Assert.Contains("00:11:22:33:44:55", body, StringComparison.Ordinal);
         Assert.Contains("\"poweredOn\":true", body, StringComparison.Ordinal);
@@ -474,44 +476,6 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.DoesNotContain("structuredContent", body, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("\"bogus\"")]
-    [InlineData("null")]
-    [InlineData("17")]
-    [InlineData("{}")]
-    public async Task PlayShouldReturnACorrectiveToolErrorForAnInvalidMode(
-        string modeJson)
-    {
-        // Arrange
-        var playbackService = new StubPlaybackService();
-        await using var playbackFactory = factory.WithWebHostBuilder(builder =>
-            builder.ConfigureTestServices(services =>
-            {
-                services.RemoveAll<IPlaybackService>();
-                services.AddSingleton<IPlaybackService>(playbackService);
-            }));
-        using var client = playbackFactory.CreateClient();
-        using var request = CreateRequest(
-            "tools/call",
-            8,
-            """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"play","arguments":{"player":"00:11:22:33:44:55","items":["first-reference"],"mode":MODE_JSON}}
-            """.Replace("MODE_JSON", modeJson, StringComparison.Ordinal),
-            "play");
-
-        // Act
-        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
-        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
-        Assert.Contains("The playback queue mode is invalid.", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("An error occurred invoking", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"error\":", body, StringComparison.Ordinal);
-        Assert.Null(playbackService.References);
-    }
-
     private static HttpRequestMessage CreateRequest(
         string method,
         int id,
@@ -592,18 +556,14 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
     {
         public IReadOnlyList<string>? References { get; private set; }
 
-        public PlaybackQueueMode? Mode { get; private set; }
-
         public Task<PlaybackOutcome> PlayAsync(
             string playerId,
             IReadOnlyList<string> references,
-            PlaybackQueueMode mode,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal("00:11:22:33:44:55", playerId);
             References = references;
-            Mode = mode;
             return Task.FromResult(outcome ?? new PlaybackSucceeded(
                 new LmsPlayerStatus(
                     playerId,

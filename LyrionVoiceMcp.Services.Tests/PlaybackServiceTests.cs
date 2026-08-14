@@ -29,7 +29,6 @@ public sealed class PlaybackServiceTests
         var outcome = await service.PlayAsync(
             PlayerId,
             identities.Select((identity, index) => Reference(codec, identity, index)).ToArray(),
-            PlaybackQueueMode.Replace,
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -48,7 +47,7 @@ public sealed class PlaybackServiceTests
     }
 
     [Fact]
-    public async Task AppendToOffPlayerShouldPreflightQueuePowerOnAddAndStartFirstNewItem()
+    public async Task OffPlayerShouldPowerOnBeforeReplacingTheQueue()
     {
         // Arrange
         var codec = new SearchResultReferenceCodec();
@@ -60,14 +59,13 @@ public sealed class PlaybackServiceTests
         var playerClient = new StubPlayerClient(
             Player(false, PlayerPlaybackState.Stopped),
             Player(true, PlayerPlaybackState.Playing));
-        var playbackClient = new StubPlaybackClient { QueueCount = 6 };
+        var playbackClient = new StubPlaybackClient();
         var service = new PlaybackService(playerClient, playbackClient, codec);
 
         // Act
         var outcome = await service.PlayAsync(
             PlayerId,
             identities.Select((identity, index) => Reference(codec, identity, index)).ToArray(),
-            PlaybackQueueMode.Append,
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -77,36 +75,11 @@ public sealed class PlaybackServiceTests
             [
                 "check:Artist:41",
                 "check:Album:42",
-                "queue-count",
                 "power-on",
-                "add:Artist:41",
-                "add:Album:42",
-                "start:6"
+                "load:Artist:41",
+                "add:Album:42"
             ],
             playbackClient.Operations);
-    }
-
-    [Fact]
-    public async Task AppendToPlayingPlayerShouldNotInterruptPlayback()
-    {
-        // Arrange
-        var codec = new SearchResultReferenceCodec();
-        var identity = new MediaIdentity(MediaEntityKind.Track, "51");
-        var playerClient = new StubPlayerClient(
-            Player(true, PlayerPlaybackState.Playing),
-            Player(true, PlayerPlaybackState.Playing));
-        var playbackClient = new StubPlaybackClient();
-        var service = new PlaybackService(playerClient, playbackClient, codec);
-
-        // Act
-        await service.PlayAsync(
-            PlayerId,
-            [Reference(codec, identity, 0)],
-            PlaybackQueueMode.Append,
-            TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.Equal(["check:Track:51", "add:Track:51"], playbackClient.Operations);
     }
 
     [Fact]
@@ -127,36 +100,10 @@ public sealed class PlaybackServiceTests
         await service.PlayAsync(
             PlayerId,
             [Reference(codec, new MediaIdentity(MediaEntityKind.Track, "51"), 0)],
-            PlaybackQueueMode.Replace,
             TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(["00000000000000000000000000000001"], store.SelectedCorrelationIds);
-    }
-
-    [Fact]
-    public async Task AppendToPoweredOnStoppedPlayerShouldStartAtFirstNewItemWithoutPowerCommand()
-    {
-        // Arrange
-        var codec = new SearchResultReferenceCodec();
-        var identity = new MediaIdentity(MediaEntityKind.Track, "52");
-        var playerClient = new StubPlayerClient(
-            Player(true, PlayerPlaybackState.Stopped),
-            Player(true, PlayerPlaybackState.Playing));
-        var playbackClient = new StubPlaybackClient { QueueCount = 3 };
-        var service = new PlaybackService(playerClient, playbackClient, codec);
-
-        // Act
-        await service.PlayAsync(
-            PlayerId,
-            [Reference(codec, identity, 0)],
-            PlaybackQueueMode.Append,
-            TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.Equal(
-            ["check:Track:52", "queue-count", "add:Track:52", "start:3"],
-            playbackClient.Operations);
     }
 
     [Fact]
@@ -174,7 +121,6 @@ public sealed class PlaybackServiceTests
         var outcome = await service.PlayAsync(
             PlayerId,
             ["not-a-result-reference"],
-            PlaybackQueueMode.Replace,
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -199,35 +145,11 @@ public sealed class PlaybackServiceTests
         var outcome = await service.PlayAsync(
             PlayerId,
             [],
-            PlaybackQueueMode.Replace,
             TestContext.Current.CancellationToken);
 
         // Assert
         var rejection = Assert.IsType<PlaybackRejected>(outcome);
         Assert.Equal(PlaybackRejectionReason.EmptyItems, rejection.Reason);
-        Assert.Equal(0, playerClient.CallCount);
-        Assert.Empty(playbackClient.Operations);
-    }
-
-    [Fact]
-    public async Task InvalidModeShouldReturnARejectionWithoutCallingLms()
-    {
-        // Arrange
-        var codec = new SearchResultReferenceCodec();
-        var playerClient = new StubPlayerClient(Player(true, PlayerPlaybackState.Playing));
-        var playbackClient = new StubPlaybackClient();
-        var service = new PlaybackService(playerClient, playbackClient, codec);
-
-        // Act
-        var outcome = await service.PlayAsync(
-            PlayerId,
-            [Reference(codec, new MediaIdentity(MediaEntityKind.Track, "59"), 0)],
-            (PlaybackQueueMode)99,
-            TestContext.Current.CancellationToken);
-
-        // Assert
-        var rejection = Assert.IsType<PlaybackRejected>(outcome);
-        Assert.Equal(PlaybackRejectionReason.InvalidMode, rejection.Reason);
         Assert.Equal(0, playerClient.CallCount);
         Assert.Empty(playbackClient.Operations);
     }
@@ -250,7 +172,6 @@ public sealed class PlaybackServiceTests
         var outcome = await service.PlayAsync(
             PlayerId,
             [Reference(codec, first, 0), Reference(codec, second, 1)],
-            PlaybackQueueMode.Replace,
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -278,7 +199,6 @@ public sealed class PlaybackServiceTests
         var outcome = await service.PlayAsync(
             PlayerId,
             [Reference(codec, identity, 0)],
-            PlaybackQueueMode.Replace,
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -296,7 +216,6 @@ public sealed class PlaybackServiceTests
         var playerClient = new StubPlayerClient(Player(false, PlayerPlaybackState.Stopped));
         var playbackClient = new StubPlaybackClient
         {
-            QueueCount = 2,
             PowerOnException = new LmsRequestException("Synthetic power failure.")
         };
         var service = new PlaybackService(playerClient, playbackClient, codec);
@@ -305,13 +224,12 @@ public sealed class PlaybackServiceTests
         var exception = await Assert.ThrowsAsync<LmsRequestException>(() => service.PlayAsync(
             PlayerId,
             [Reference(codec, identity, 0)],
-            PlaybackQueueMode.Append,
             TestContext.Current.CancellationToken));
 
         // Assert
         Assert.Equal("Synthetic power failure.", exception.Message);
         Assert.Equal(
-            ["check:Track:71", "queue-count", "power-on"],
+            ["check:Track:71", "power-on"],
             playbackClient.Operations);
     }
 
@@ -349,8 +267,6 @@ public sealed class PlaybackServiceTests
 
         public Dictionary<string, int> PlayableCountById { get; } = [];
 
-        public int QueueCount { get; init; }
-
         public Exception? PowerOnException { get; init; }
 
         public Task<int> GetPlayableItemCountAsync(
@@ -377,13 +293,8 @@ public sealed class PlaybackServiceTests
 
         public Task<int> GetQueueCountAsync(
             string playerId,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Assert.Equal(PlayerId, playerId);
-            Operations.Add("queue-count");
-            return Task.FromResult(QueueCount);
-        }
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Playback must not inspect the existing queue.");
 
         public Task LoadAsync(
             string playerId,
@@ -428,15 +339,5 @@ public sealed class PlaybackServiceTests
             return Task.CompletedTask;
         }
 
-        public Task StartAtAsync(
-            string playerId,
-            int queueIndex,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Assert.Equal(PlayerId, playerId);
-            Operations.Add($"start:{queueIndex}");
-            return Task.CompletedTask;
-        }
     }
 }

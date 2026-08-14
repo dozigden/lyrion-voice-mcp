@@ -36,7 +36,13 @@ public sealed class McpToolContractTests
         // Assert
         Assert.Equal("00:11:22:33:44:55", request.Player);
         Assert.Equal(references, request.Items);
-        Assert.Equal(PlayQueueMode.Replace, request.Mode);
+        Assert.Equal(
+            ["Items", "Player"],
+            typeof(PlayRequest)
+                .GetProperties()
+                .Select(property => property.Name)
+                .Order()
+                .ToArray());
     }
 
     [Fact]

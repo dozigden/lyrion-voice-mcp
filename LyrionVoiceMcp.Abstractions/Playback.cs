@@ -1,19 +1,12 @@
 namespace LyrionVoiceMcp.Abstractions;
 
-public enum PlaybackQueueMode
-{
-    Replace,
-    Append
-}
-
 public enum PlaybackRejectionReason
 {
     InvalidPlayer,
     EmptyItems,
     InvalidReference,
     PlayerNotFound,
-    MediaNotFound,
-    InvalidMode
+    MediaNotFound
 }
 
 public abstract record PlaybackOutcome;
@@ -56,11 +49,6 @@ public interface ILmsPlaybackClient
     Task ClearAsync(
         string playerId,
         CancellationToken cancellationToken);
-
-    Task StartAtAsync(
-        string playerId,
-        int queueIndex,
-        CancellationToken cancellationToken);
 }
 
 public interface IPlaybackService
@@ -68,6 +56,5 @@ public interface IPlaybackService
     Task<PlaybackOutcome> PlayAsync(
         string playerId,
         IReadOnlyList<string> references,
-        PlaybackQueueMode mode,
         CancellationToken cancellationToken);
 }

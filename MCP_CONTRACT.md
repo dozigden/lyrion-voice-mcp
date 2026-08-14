@@ -68,11 +68,11 @@ The response does not contain pagination, a duplicated count, queue revisions, s
 
 ## `play`
 
-`play` accepts an explicit raw LMS player ID, a non-empty ordered list of opaque search-result references, and either `replace` or `append` placement. `replace` is the default.
+`play` accepts an explicit raw LMS player ID and a non-empty ordered list of opaque search-result references. It always replaces the current queue and starts playback.
 
 The player and every reference are resolved before mutation. Lightweight filtered LMS queries verify that each referenced item still resolves to playable media without materialising whole collections in this server. After successful preflight, the server powers on the target when necessary. A power-on failure must not mutate the queue.
 
-Tracks, artists, albums, and playlists are passed directly to LMS `playlistcontrol` by ID. LMS owns collection expansion and its internal track order. `replace` loads the first reference and adds later references. `append` adds every reference without interrupting active playback, or starts at the first appended item when the player is off or idle. Multiple input references preserve caller order.
+Tracks, artists, albums, and playlists are passed directly to LMS `playlistcontrol` by ID. LMS owns collection expansion and its internal track order. The first reference replaces the queue and starts playback; later references are added in caller order. Appending and play-next placement belong to `manage_queue` rather than `play`.
 
 The result is the selected player's updated status.
 

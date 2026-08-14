@@ -167,10 +167,6 @@ public sealed class LmsPlaybackClientTests
         await client.PowerOnAsync(
             "00:11:22:33:44:55",
             TestContext.Current.CancellationToken);
-        await client.StartAtAsync(
-            "00:11:22:33:44:55",
-            queueCount,
-            TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(7, queueCount);
@@ -178,8 +174,7 @@ public sealed class LmsPlaybackClientTests
             [
                 "[\"playlist\",\"tracks\",\"?\"]",
                 "[\"power\",1,1]",
-                "[\"power\",\"?\"]",
-                "[\"playlist\",\"index\",7]"
+                "[\"power\",\"?\"]"
             ],
             handler.Requests.Select(request => request.CommandJson));
     }

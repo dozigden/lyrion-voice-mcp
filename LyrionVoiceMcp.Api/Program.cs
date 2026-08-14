@@ -66,9 +66,9 @@ builder.Services
     .WithTools<SearchTools>()
     .WithTools<PlayerTools>()
     .WithTools<QueueTools>()
+    .WithTools<PlaybackTools>()
     .WithTools([PlayerControlToolRegistration.Create()])
-    .WithTools([QueueManagementToolRegistration.Create()])
-    .WithTools([PlaybackToolRegistration.Create()]);
+    .WithTools([QueueManagementToolRegistration.Create()]);
 
 var app = builder.Build();
 

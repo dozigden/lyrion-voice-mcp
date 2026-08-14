@@ -391,10 +391,5 @@ public sealed class QueueManagementServiceTests
             return Task.CompletedTask;
         }
 
-        public Task StartAtAsync(
-            string playerId,
-            int queueIndex,
-            CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("Queue management must not start playback.");
     }
 }

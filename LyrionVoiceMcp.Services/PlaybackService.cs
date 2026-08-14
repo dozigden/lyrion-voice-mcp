@@ -29,7 +29,6 @@ public sealed class PlaybackService(
     public async Task<PlaybackOutcome> PlayAsync(
         string playerId,
         IReadOnlyList<string> references,
-        PlaybackQueueMode mode,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(playerId))
@@ -44,13 +43,6 @@ public sealed class PlaybackService(
             return new PlaybackRejected(
                 PlaybackRejectionReason.EmptyItems,
                 "At least one search-result reference is required.");
-        }
-
-        if (!Enum.IsDefined(mode))
-        {
-            return new PlaybackRejected(
-                PlaybackRejectionReason.InvalidMode,
-                "The playback queue mode is invalid.");
         }
 
         var decodedReferences = new SearchResultReferenceValue[references.Count];
@@ -91,48 +83,21 @@ public sealed class PlaybackService(
                 $"Search-result item {missingItemIndex + 1} no longer resolves to playable media.");
         }
 
-        var shouldStartAppendedItems = mode == PlaybackQueueMode.Append
-            && (!player.PoweredOn || player.PlaybackState == PlayerPlaybackState.Stopped);
-        var firstAppendedQueueIndex = shouldStartAppendedItems
-            ? await lmsPlaybackClient.GetQueueCountAsync(player.Id, cancellationToken)
-            : 0;
-
         if (!player.PoweredOn)
         {
             await lmsPlaybackClient.PowerOnAsync(player.Id, cancellationToken);
         }
 
-        if (mode == PlaybackQueueMode.Replace)
+        await lmsPlaybackClient.LoadAsync(
+            player.Id,
+            identities[0],
+            cancellationToken);
+        foreach (var identity in identities.Skip(1))
         {
-            await lmsPlaybackClient.LoadAsync(
+            await lmsPlaybackClient.AddAsync(
                 player.Id,
-                identities[0],
+                identity,
                 cancellationToken);
-            foreach (var identity in identities.Skip(1))
-            {
-                await lmsPlaybackClient.AddAsync(
-                    player.Id,
-                    identity,
-                    cancellationToken);
-            }
-        }
-        else
-        {
-            foreach (var identity in identities)
-            {
-                await lmsPlaybackClient.AddAsync(
-                    player.Id,
-                    identity,
-                    cancellationToken);
-            }
-
-            if (shouldStartAppendedItems)
-            {
-                await lmsPlaybackClient.StartAtAsync(
-                    player.Id,
-                    firstAppendedQueueIndex,
-                    cancellationToken);
-            }
         }
 
         var updatedPlayers = await lmsPlayerClient.GetPlayersAsync(cancellationToken);

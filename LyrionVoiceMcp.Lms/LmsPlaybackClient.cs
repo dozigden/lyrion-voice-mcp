@@ -100,24 +100,6 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
             cancellationToken);
     }
 
-    public async Task StartAtAsync(
-        string playerId,
-        int queueIndex,
-        CancellationToken cancellationToken)
-    {
-        if (queueIndex < 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(queueIndex),
-                "The queue index must not be negative.");
-        }
-
-        await jsonRpcClient.SendAsync(
-            playerId,
-            ["playlist", "index", queueIndex],
-            cancellationToken);
-    }
-
     private async Task SubmitAsync(
         string playerId,
         MediaIdentity identity,
