@@ -119,6 +119,69 @@ public sealed record QueueItem(
     string? Album,
     double? DurationSeconds);
 
+[JsonConverter(typeof(ManageQueueActionJsonConverter))]
+public enum ManageQueueAction
+{
+    [JsonStringEnumMemberName("clear")]
+    Clear,
+
+    [JsonStringEnumMemberName("append")]
+    Append,
+
+    [JsonStringEnumMemberName("insert_next")]
+    InsertNext
+}
+
+public sealed class ManageQueueActionJsonConverter
+    : JsonConverter<ManageQueueAction>
+{
+    private const ManageQueueAction InvalidAction = (ManageQueueAction)(-1);
+
+    public override bool HandleNull => true;
+
+    public override ManageQueueAction Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return reader.GetString() switch
+            {
+                "clear" => ManageQueueAction.Clear,
+                "append" => ManageQueueAction.Append,
+                "insert_next" => ManageQueueAction.InsertNext,
+                _ => InvalidAction
+            };
+        }
+
+        reader.Skip();
+        return InvalidAction;
+    }
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        ManageQueueAction value,
+        JsonSerializerOptions options) =>
+        writer.WriteStringValue(value switch
+        {
+            ManageQueueAction.Clear => "clear",
+            ManageQueueAction.Append => "append",
+            ManageQueueAction.InsertNext => "insert_next",
+            _ => throw new JsonException(
+                $"Unsupported queue management action {value}.")
+        });
+}
+
+public sealed record ManageQueueRequest(
+    string Player,
+    ManageQueueAction Action,
+    IReadOnlyList<string>? Items = null);
+
+public sealed record ManageQueueResponse(
+    string Player,
+    int QueueLength);
+
 [JsonConverter(typeof(JsonStringEnumConverter<PlayerPlaybackMode>))]
 public enum PlayerPlaybackMode
 {

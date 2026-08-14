@@ -13,27 +13,27 @@ public sealed class LmsPlaybackClientTests
     {
         // Arrange
         var handler = new StubHttpMessageHandler(_ =>
-            JsonResponse("""{"id":1,"result":{"count":1}}"""));
+            JsonResponse("""{"id":1,"result":{"count":3}}"""));
         using var httpClient = new HttpClient(handler);
         var client = CreateClient(httpClient);
 
         // Act
         var results = await Task.WhenAll(
-            client.HasPlayableItemAsync(
+            client.GetPlayableItemCountAsync(
                 new MediaIdentity(MediaEntityKind.Artist, "11"),
                 TestContext.Current.CancellationToken),
-            client.HasPlayableItemAsync(
+            client.GetPlayableItemCountAsync(
                 new MediaIdentity(MediaEntityKind.Album, "22"),
                 TestContext.Current.CancellationToken),
-            client.HasPlayableItemAsync(
+            client.GetPlayableItemCountAsync(
                 new MediaIdentity(MediaEntityKind.Track, "33"),
                 TestContext.Current.CancellationToken),
-            client.HasPlayableItemAsync(
+            client.GetPlayableItemCountAsync(
                 new MediaIdentity(MediaEntityKind.Playlist, "44"),
                 TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.All(results, Assert.True);
+        Assert.All(results, count => Assert.Equal(3, count));
         Assert.Contains(handler.Requests, request =>
             request.CommandJson == "[\"titles\",0,1,\"artist_id:11\",\"tags:i\"]");
         Assert.Contains(handler.Requests, request =>
@@ -54,12 +54,12 @@ public sealed class LmsPlaybackClientTests
         var client = CreateClient(httpClient);
 
         // Act
-        var result = await client.HasPlayableItemAsync(
+        var result = await client.GetPlayableItemCountAsync(
             new MediaIdentity(MediaEntityKind.Album, "22"),
             TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.False(result);
+        Assert.Equal(0, result);
     }
 
     [Fact]
@@ -108,6 +108,39 @@ public sealed class LmsPlaybackClientTests
                 request,
                 "00:11:22:33:44:55",
                 "[\"playlistcontrol\",\"cmd:add\",\"track_id:33\"]"));
+    }
+
+    [Fact]
+    public async Task InsertAndClearShouldUseNativeQueueCommands()
+    {
+        // Arrange
+        var handler = new StubHttpMessageHandler(request =>
+            request.CommandName == "playlistcontrol"
+                ? JsonResponse("""{"id":1,"result":{"count":2}}""")
+                : JsonResponse("""{"id":1,"result":{}}"""));
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient);
+
+        // Act
+        await client.InsertAsync(
+            "00:11:22:33:44:55",
+            new MediaIdentity(MediaEntityKind.Album, "22"),
+            TestContext.Current.CancellationToken);
+        await client.ClearAsync(
+            "00:11:22:33:44:55",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Collection(
+            handler.Requests,
+            request => AssertRequest(
+                request,
+                "00:11:22:33:44:55",
+                "[\"playlistcontrol\",\"cmd:insert\",\"album_id:22\"]"),
+            request => AssertRequest(
+                request,
+                "00:11:22:33:44:55",
+                "[\"playlist\",\"clear\"]"));
     }
 
     [Fact]

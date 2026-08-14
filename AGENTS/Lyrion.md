@@ -24,8 +24,9 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Player discovery issues `players 0`, then parallel one-item `status - 1` and `mixer muting ?` queries for every player. This returns power, playback mode, volume, optional mute state, and current-media metadata/progress without materialising the queue. Mute is nullable because LMS/player combinations may not expose it.
 - Player control uses explicit `play`, `pause 1`, `stop`, `playlist index +1`, and `playlist index -1` commands. Power control sets the requested state and confirms it with `power ?`; power-on uses the `noplay` flag.
 - Queue reading uses one `status 0 300 tags:aAld` request after player validation. Preserve each LMS `playlist index`, use top-level `current_title` for the current remote item, and reject responses that exceed 300 items or omit queued entries rather than silently truncating them.
-- Playback preflight uses one-item filtered `titles` or `playlists tracks` queries to verify that each referenced LMS item remains playable without materialising collection contents.
+- Playback and queue-management preflight use one-item filtered `titles` or `playlists tracks` queries. Their result counts verify that each referenced LMS item remains playable and let queue additions enforce the application-level 300-item limit without materialising collection contents.
 - Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. LMS owns collection expansion and internal ordering.
+- Queue management uses `playlist clear`, `playlistcontrol cmd:add`, and `playlistcontrol cmd:insert`. Submit separate play-next references in reverse so LMS's repeated next-position inserts preserve caller order. Do not power on or start playback for queue management.
 - Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue.
 - Batched replace loads the first reference and adds later references. Append adds each reference and, for an off or stopped player, starts at the queue index recorded before the additions.
 - Keep `/api/health` independent of LMS reachability.

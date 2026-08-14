@@ -8,9 +8,10 @@ This documents the currently implemented public tools. It does not limit the ser
 2. `get_player_status` discovers LMS players and their voice-relevant state.
 3. The caller can pass one discovered LMS player ID and an action to `control_player`.
 4. The caller can pass one discovered LMS player ID to `get_queue`.
-5. The caller passes one discovered LMS player ID and one or more selected search-result references to `play`.
+5. The caller can clear that player's queue or pass selected search-result references to `manage_queue` for append or play-next placement.
+6. The caller passes one discovered LMS player ID and one or more selected search-result references to `play`.
 
-The current public MCP surface contains `search`, `get_player_status`, `control_player`, `get_queue`, and `play`.
+The current public MCP surface contains `search`, `get_player_status`, `control_player`, `get_queue`, `manage_queue`, and `play`.
 
 ## Search-result references
 
@@ -47,7 +48,7 @@ The implemented `get_player_status` takes no input and returns all players disco
 
 Each player contains the raw LMS player ID, friendly name, power state, playback mode, nullable volume, nullable mute state, and nullable now-playing details. Now-playing details contain title plus optional artist, album, duration, and elapsed time. Queue, connectivity, and grouping information are excluded.
 
-The raw LMS player ID is passed directly to `control_player`, `get_queue`, or `play`; it is not wrapped in an application reference.
+The raw LMS player ID is passed directly to `control_player`, `get_queue`, `manage_queue`, or `play`; it is not wrapped in an application reference.
 
 ## `control_player`
 
@@ -77,6 +78,18 @@ The result is the selected player's updated status.
 
 Invalid requests, missing players, and stale or unplayable references return MCP tool execution errors with `isError: true` and a concise corrective message. They are not reported as protocol errors and do not use validation exceptions as application control flow.
 
+## `manage_queue`
+
+`manage_queue` accepts an explicit raw LMS player ID, one action, and optional opaque search-result references. Its actions are `clear`, `append`, and `insert_next`.
+
+`clear` accepts no items and empties the selected player's queue. `append` and `insert_next` require a non-empty ordered item list. They accept the same track, artist, album, and playlist references as `play`; LMS expands collections and preserves their internal ordering. Multiple references preserve caller order, including when they are inserted together as the next media to play.
+
+The player and every supplied reference are resolved before mutation. Addition requests also resolve collection sizes and the current queue length before mutation, and reject the whole request if it would exceed the supported 300-item queue limit. Successful additions mark their search-result correlations as selected.
+
+Queue management does not power on a player, start or pause playback, or otherwise change playback state. It returns only the selected player ID and resulting queue length; callers can use `get_queue` when they need the updated contents. Remove, move, and arbitrary positions are not part of this contract.
+
+Invalid actions or item combinations, missing players, stale references, and requests over the queue limit return concise MCP tool errors with `isError: true`.
+
 ## Further surface
 
-Queue editing, browse, grouping, mixes, ratings and likes, volume or other player settings, and subscriptions are candidates for additional user-facing tools. Ingestion, reindexing, and search diagnostics remain operational concerns rather than public MCP tools.
+Further queue editing, browse, grouping, mixes, ratings and likes, volume or other player settings, and subscriptions are candidates for additional user-facing tools. Ingestion, reindexing, and search diagnostics remain operational concerns rather than public MCP tools.

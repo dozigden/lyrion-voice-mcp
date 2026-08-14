@@ -5,7 +5,6 @@ namespace LyrionVoiceMcp.Lms;
 
 public sealed class LmsQueueClient(LmsJsonRpcClient jsonRpcClient) : ILmsQueueClient
 {
-    private const int MaximumQueueItems = 300;
     private const string QueueTags = "aAld";
 
     public async Task<LmsPlayerQueue> GetQueueAsync(
@@ -14,7 +13,7 @@ public sealed class LmsQueueClient(LmsJsonRpcClient jsonRpcClient) : ILmsQueueCl
     {
         var result = await jsonRpcClient.SendAsync(
             playerId,
-            ["status", 0, MaximumQueueItems, $"tags:{QueueTags}"],
+            ["status", 0, QueueLimits.MaximumItems, $"tags:{QueueTags}"],
             cancellationToken);
 
         try
@@ -36,10 +35,10 @@ public sealed class LmsQueueClient(LmsJsonRpcClient jsonRpcClient) : ILmsQueueCl
                 "LMS queue response did not include a valid playlist_tracks value.");
         }
 
-        if (trackCount > MaximumQueueItems)
+        if (trackCount > QueueLimits.MaximumItems)
         {
             throw new InvalidOperationException(
-                $"LMS queue contains more than the supported {MaximumQueueItems} items.");
+                $"LMS queue contains more than the supported {QueueLimits.MaximumItems} items.");
         }
 
         if (trackCount == 0)

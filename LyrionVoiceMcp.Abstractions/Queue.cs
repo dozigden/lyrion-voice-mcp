@@ -1,5 +1,10 @@
 namespace LyrionVoiceMcp.Abstractions;
 
+public static class QueueLimits
+{
+    public const int MaximumItems = 300;
+}
+
 public sealed record LmsPlayerQueue(
     string PlayerId,
     int? CurrentIndex,

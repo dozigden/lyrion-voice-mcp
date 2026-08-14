@@ -242,7 +242,7 @@ public sealed class PlaybackServiceTests
         var playerClient = new StubPlayerClient(Player(false, PlayerPlaybackState.Stopped));
         var playbackClient = new StubPlaybackClient
         {
-            PlayableById = { ["62"] = false }
+            PlayableCountById = { ["62"] = 0 }
         };
         var service = new PlaybackService(playerClient, playbackClient, codec);
 
@@ -347,20 +347,20 @@ public sealed class PlaybackServiceTests
     {
         public List<string> Operations { get; } = [];
 
-        public Dictionary<string, bool> PlayableById { get; } = [];
+        public Dictionary<string, int> PlayableCountById { get; } = [];
 
         public int QueueCount { get; init; }
 
         public Exception? PowerOnException { get; init; }
 
-        public Task<bool> HasPlayableItemAsync(
+        public Task<int> GetPlayableItemCountAsync(
             MediaIdentity identity,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Operations.Add($"check:{identity.Kind}:{identity.Id}");
             return Task.FromResult(
-                !PlayableById.TryGetValue(identity.Id, out var playable) || playable);
+                PlayableCountById.TryGetValue(identity.Id, out var count) ? count : 1);
         }
 
         public Task PowerOnAsync(
@@ -404,6 +404,27 @@ public sealed class PlaybackServiceTests
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
             Operations.Add($"add:{identity.Kind}:{identity.Id}");
+            return Task.CompletedTask;
+        }
+
+        public Task InsertAsync(
+            string playerId,
+            MediaIdentity identity,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(PlayerId, playerId);
+            Operations.Add($"insert:{identity.Kind}:{identity.Id}");
+            return Task.CompletedTask;
+        }
+
+        public Task ClearAsync(
+            string playerId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(PlayerId, playerId);
+            Operations.Add("clear");
             return Task.CompletedTask;
         }
 

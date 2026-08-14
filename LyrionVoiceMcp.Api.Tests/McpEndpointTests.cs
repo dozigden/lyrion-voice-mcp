@@ -70,6 +70,11 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             StringComparison.Ordinal);
         Assert.Contains("\"name\":\"get_queue\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"player\"]", body, StringComparison.Ordinal);
+        Assert.Contains("\"name\":\"manage_queue\"", body, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"enum\":[\"clear\",\"append\",\"insert_next\"]",
+            body,
+            StringComparison.Ordinal);
         Assert.Contains("\"name\":\"play\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"player\",\"items\"]", body, StringComparison.Ordinal);
         Assert.Contains("\"enum\":[\"replace\",\"append\"]", body, StringComparison.Ordinal);
@@ -321,6 +326,80 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("missing-player", body, StringComparison.Ordinal);
         Assert.Contains("was not found.", body, StringComparison.Ordinal);
         Assert.DoesNotContain("structuredContent", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ManageQueueShouldAcceptItemsAndReturnTheUpdatedLength()
+    {
+        // Arrange
+        var queueManagementService = new StubQueueManagementService();
+        await using var queueFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IQueueManagementService>();
+                services.AddSingleton<IQueueManagementService>(queueManagementService);
+            }));
+        using var client = queueFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            13,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"manage_queue","arguments":{"player":"00:11:22:33:44:55","action":"insert_next","items":["first-reference","second-reference"]}}
+            """,
+            "manage_queue");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(QueueManagementCommand.InsertNext, queueManagementService.Command);
+        Assert.Equal(
+            ["first-reference", "second-reference"],
+            queueManagementService.References);
+        Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"player\":\"00:11:22:33:44:55\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"queueLength\":9", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("items", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("\"bogus\"")]
+    [InlineData("null")]
+    [InlineData("17")]
+    [InlineData("{}")]
+    public async Task ManageQueueShouldReturnACorrectiveToolErrorForAnInvalidAction(
+        string actionJson)
+    {
+        // Arrange
+        var queueManagementService = new StubQueueManagementService();
+        await using var queueFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IQueueManagementService>();
+                services.AddSingleton<IQueueManagementService>(queueManagementService);
+            }));
+        using var client = queueFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            14,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"manage_queue","arguments":{"player":"00:11:22:33:44:55","action":ACTION_JSON}}
+            """.Replace("ACTION_JSON", actionJson, StringComparison.Ordinal),
+            "manage_queue");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
+        Assert.Contains("The queue management action is invalid.", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("An error occurred invoking", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"error\":", body, StringComparison.Ordinal);
+        Assert.Null(queueManagementService.Command);
     }
 
     [Theory]
@@ -594,6 +673,27 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                             null,
                             null)
                     ])));
+        }
+    }
+
+    private sealed class StubQueueManagementService : IQueueManagementService
+    {
+        public QueueManagementCommand? Command { get; private set; }
+
+        public IReadOnlyList<string>? References { get; private set; }
+
+        public Task<QueueManagementOutcome> ManageAsync(
+            string playerId,
+            QueueManagementCommand command,
+            IReadOnlyList<string>? references,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal("00:11:22:33:44:55", playerId);
+            Command = command;
+            References = references;
+            return Task.FromResult<QueueManagementOutcome>(
+                new QueueManagementSucceeded(playerId, 9));
         }
     }
 }

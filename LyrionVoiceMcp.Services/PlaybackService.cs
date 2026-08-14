@@ -71,7 +71,7 @@ public sealed class PlaybackService(
 
         var playersTask = lmsPlayerClient.GetPlayersAsync(cancellationToken);
         var playableItemsTask = Task.WhenAll(identities.Select(identity =>
-            lmsPlaybackClient.HasPlayableItemAsync(identity, cancellationToken)));
+            lmsPlaybackClient.GetPlayableItemCountAsync(identity, cancellationToken)));
         await Task.WhenAll(playersTask, playableItemsTask);
 
         var player = FindPlayer(await playersTask, playerId);
@@ -83,7 +83,7 @@ public sealed class PlaybackService(
         }
 
         var playableItems = await playableItemsTask;
-        var missingItemIndex = Array.FindIndex(playableItems, playable => !playable);
+        var missingItemIndex = Array.FindIndex(playableItems, count => count == 0);
         if (missingItemIndex >= 0)
         {
             return new PlaybackRejected(

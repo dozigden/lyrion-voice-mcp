@@ -4,7 +4,7 @@ namespace LyrionVoiceMcp.Lms;
 
 public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlaybackClient
 {
-    public async Task<bool> HasPlayableItemAsync(
+    public async Task<int> GetPlayableItemCountAsync(
         MediaIdentity identity,
         CancellationToken cancellationToken)
     {
@@ -20,7 +20,13 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
                 "LMS playable-item response did not include a valid count.");
         }
 
-        return count > 0;
+        if (count < 0)
+        {
+            throw new LmsRequestException(
+                "LMS playable-item response included an invalid count.");
+        }
+
+        return count.Value;
     }
 
     public async Task PowerOnAsync(
@@ -77,6 +83,22 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
         MediaIdentity identity,
         CancellationToken cancellationToken) =>
         SubmitAsync(playerId, identity, "add", cancellationToken);
+
+    public Task InsertAsync(
+        string playerId,
+        MediaIdentity identity,
+        CancellationToken cancellationToken) =>
+        SubmitAsync(playerId, identity, "insert", cancellationToken);
+
+    public async Task ClearAsync(
+        string playerId,
+        CancellationToken cancellationToken)
+    {
+        await jsonRpcClient.SendAsync(
+            playerId,
+            ["playlist", "clear"],
+            cancellationToken);
+    }
 
     public async Task StartAtAsync(
         string playerId,

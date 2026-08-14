@@ -26,7 +26,7 @@ public sealed record PlaybackRejected(
 
 public interface ILmsPlaybackClient
 {
-    Task<bool> HasPlayableItemAsync(
+    Task<int> GetPlayableItemCountAsync(
         MediaIdentity identity,
         CancellationToken cancellationToken);
 
@@ -46,6 +46,15 @@ public interface ILmsPlaybackClient
     Task AddAsync(
         string playerId,
         MediaIdentity identity,
+        CancellationToken cancellationToken);
+
+    Task InsertAsync(
+        string playerId,
+        MediaIdentity identity,
+        CancellationToken cancellationToken);
+
+    Task ClearAsync(
+        string playerId,
         CancellationToken cancellationToken);
 
     Task StartAtAsync(
