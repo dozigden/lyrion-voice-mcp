@@ -61,6 +61,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"name\":\"search\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"query\"]", body, StringComparison.Ordinal);
+        Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         Assert.Contains("\"name\":\"get_player_status\"", body, StringComparison.Ordinal);
         Assert.Contains("\"name\":\"control_player\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"player\",\"action\"]", body, StringComparison.Ordinal);
@@ -147,6 +148,73 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
         Assert.Contains(rejection.Message, body, StringComparison.Ordinal);
         Assert.DoesNotContain("\"error\":", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("structuredContent", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BrowseToolShouldReturnStructuredMinimalItems()
+    {
+        // Arrange
+        await using var browseFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IBrowseService>();
+                services.AddSingleton<IBrowseService>(new StubBrowseService());
+            }));
+        using var client = browseFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            8,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"browse","arguments":{}}
+            """,
+            "browse");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
+        Assert.Contains("browse-album-artists", body, StringComparison.Ordinal);
+        Assert.Contains("Album artists", body, StringComparison.Ordinal);
+        Assert.Contains("album_artist", body, StringComparison.Ordinal);
+        Assert.Contains("\"browsable\":true", body, StringComparison.Ordinal);
+        Assert.Contains("\"playable\":true", body, StringComparison.Ordinal);
+        Assert.Contains("browse-next", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BrowseShouldReturnAnSdkToolErrorForAnInvalidReference()
+    {
+        // Arrange
+        var rejection = new BrowseRejected(
+            BrowseRejectionReason.InvalidReference,
+            "The browse reference is invalid.");
+        await using var browseFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IBrowseService>();
+                services.AddSingleton<IBrowseService>(new StubBrowseService(rejection));
+            }));
+        using var client = browseFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            9,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"browse","arguments":{"reference":"invalid"}}
+            """,
+            "browse");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
+        Assert.Contains(rejection.Message, body, StringComparison.Ordinal);
         Assert.DoesNotContain("structuredContent", body, StringComparison.Ordinal);
     }
 
@@ -522,6 +590,35 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     null,
                     null)
             ]));
+        }
+    }
+
+    private sealed class StubBrowseService(BrowseOutcome? outcome = null) : IBrowseService
+    {
+        public Task<BrowseOutcome> BrowseAsync(
+            string? reference,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (outcome is not null)
+            {
+                Assert.Equal("invalid", reference);
+                return Task.FromResult(outcome);
+            }
+
+            Assert.Null(reference);
+            return Task.FromResult<BrowseOutcome>(new BrowseSucceeded(
+            [
+                new BrowseItemResult(
+                    "browse-album-artists",
+                    BrowseItemKind.AlbumArtist,
+                    "Album artists",
+                    null,
+                    null,
+                    true,
+                    true)
+            ],
+            "browse-next"));
         }
     }
 

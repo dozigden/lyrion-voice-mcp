@@ -8,6 +8,7 @@ Read this before changing search contracts, ranking, observation capture, catalo
 - Search returns one opaque result reference per candidate; it does not return a separate public search identifier.
 - Each result reference combines candidate correlation with the underlying LMS playback identity so a later `play` can record which returned candidate was selected.
 - Returning the same LMS item from two searches must produce distinct result references for the two candidate occurrences.
+- Artist, album, and playlist search references can seed `browse`. Preserve that candidate's correlation through derived browse descendants and continuations so eventual playback or queue addition marks the originating search result selected. Browsing alone is not a selection, and pure browse flows have no search correlation.
 - The operational observation store records the original and trimmed query, resolver/version, direct LMS commands, timings, ordered candidates, zero-result searches, failures, later successful `play` selections, and human reviews.
 - Record the outcome of each concurrent LMS request independently. If one request fails, retain its failure and the successful sibling request's candidates as diagnostic evidence while failing the public search call.
 - Treat failed searches separately from completed searches with no results. Failed searches must not default to `no_match` or be eligible for evaluation export.

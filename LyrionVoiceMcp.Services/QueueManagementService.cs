@@ -7,19 +7,19 @@ namespace LyrionVoiceMcp.Services;
 public sealed class QueueManagementService(
     ILmsPlayerClient lmsPlayerClient,
     ILmsPlaybackClient lmsPlaybackClient,
-    ISearchResultReferenceCodec referenceCodec,
+    IPlayableReferenceResolver referenceResolver,
     ISearchObservationStore observationStore,
     TimeProvider timeProvider,
     ILogger<QueueManagementService> logger) : IQueueManagementService
 {
-    public QueueManagementService(
+    internal QueueManagementService(
         ILmsPlayerClient lmsPlayerClient,
         ILmsPlaybackClient lmsPlaybackClient,
         ISearchResultReferenceCodec referenceCodec)
         : this(
             lmsPlayerClient,
             lmsPlaybackClient,
-            referenceCodec,
+            new PlayableReferenceResolver(referenceCodec, new BrowseReferenceCodec()),
             NullSearchObservationStore.Instance,
             TimeProvider.System,
             NullLogger<QueueManagementService>.Instance)
@@ -72,7 +72,7 @@ public sealed class QueueManagementService(
         var values = decodedReferences.Values;
         var itemCountsTask = Task.WhenAll(values.Select(value =>
             lmsPlaybackClient.GetPlayableItemCountAsync(
-                value.Identity,
+                value.Media,
                 cancellationToken)));
         await Task.WhenAll(playersTask, itemCountsTask);
 
@@ -88,7 +88,7 @@ public sealed class QueueManagementService(
         {
             return new QueueManagementRejected(
                 QueueManagementRejectionReason.MediaNotFound,
-                $"Search-result item {missingItemIndex + 1} no longer resolves to playable media.");
+                $"Media item {missingItemIndex + 1} no longer resolves to playable media.");
         }
 
         var queueCount = await lmsPlaybackClient.GetQueueCountAsync(
@@ -109,7 +109,7 @@ public sealed class QueueManagementService(
             {
                 await lmsPlaybackClient.AddAsync(
                     resolvedPlayer.Id,
-                    value.Identity,
+                    value.Media,
                     cancellationToken);
             }
         }
@@ -119,7 +119,7 @@ public sealed class QueueManagementService(
             {
                 await lmsPlaybackClient.InsertAsync(
                     resolvedPlayer.Id,
-                    value.Identity,
+                    value.Media,
                     cancellationToken);
             }
         }
@@ -134,7 +134,10 @@ public sealed class QueueManagementService(
         }
 
         await TryMarkSelectedAsync(
-            values.Select(value => value.CorrelationId).ToArray(),
+            values
+                .Select(value => value.SearchCorrelationId)
+                .OfType<string>()
+                .ToArray(),
             cancellationToken);
         return new QueueManagementSucceeded(
             resolvedPlayer.Id,
@@ -172,23 +175,23 @@ public sealed class QueueManagementService(
         return references is null or { Count: 0 }
             ? new QueueManagementRejected(
                 QueueManagementRejectionReason.EmptyItems,
-                "At least one search-result reference is required.")
+                "At least one media reference is required.")
             : null;
     }
 
     private DecodedReferences DecodeReferences(IReadOnlyList<string> references)
     {
-        var values = new SearchResultReferenceValue[references.Count];
+        var values = new PlayableReferenceValue[references.Count];
         for (var index = 0; index < references.Count; index++)
         {
-            var value = referenceCodec.TryDecode(references[index]);
+            var value = referenceResolver.Resolve(references[index]);
             if (value is null)
             {
                 return new DecodedReferences(
                     [],
                     new QueueManagementRejected(
                         QueueManagementRejectionReason.InvalidReference,
-                        $"Search-result item {index + 1} has an invalid reference."));
+                        $"Media item {index + 1} has an invalid reference."));
             }
 
             values[index] = value;
@@ -201,6 +204,11 @@ public sealed class QueueManagementService(
         IReadOnlyCollection<string> correlationIds,
         CancellationToken cancellationToken)
     {
+        if (correlationIds.Count == 0)
+        {
+            return;
+        }
+
         try
         {
             await observationStore.MarkSelectedAsync(
@@ -228,6 +236,6 @@ public sealed class QueueManagementService(
             $"LMS player '{playerId}' was not found.");
 
     private sealed record DecodedReferences(
-        IReadOnlyList<SearchResultReferenceValue> Values,
+        IReadOnlyList<PlayableReferenceValue> Values,
         QueueManagementRejected? Rejection);
 }

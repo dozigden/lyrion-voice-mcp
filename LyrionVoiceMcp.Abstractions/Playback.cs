@@ -17,10 +17,19 @@ public sealed record PlaybackRejected(
     PlaybackRejectionReason Reason,
     string Message) : PlaybackOutcome;
 
+public enum MediaContributorRole
+{
+    AlbumArtist
+}
+
+public sealed record PlayableMedia(
+    MediaIdentity Identity,
+    MediaContributorRole? ContributorRole = null);
+
 public interface ILmsPlaybackClient
 {
     Task<int> GetPlayableItemCountAsync(
-        MediaIdentity identity,
+        PlayableMedia media,
         CancellationToken cancellationToken);
 
     Task PowerOnAsync(
@@ -33,17 +42,17 @@ public interface ILmsPlaybackClient
 
     Task LoadAsync(
         string playerId,
-        MediaIdentity identity,
+        PlayableMedia media,
         CancellationToken cancellationToken);
 
     Task AddAsync(
         string playerId,
-        MediaIdentity identity,
+        PlayableMedia media,
         CancellationToken cancellationToken);
 
     Task InsertAsync(
         string playerId,
-        MediaIdentity identity,
+        PlayableMedia media,
         CancellationToken cancellationToken);
 
     Task ClearAsync(

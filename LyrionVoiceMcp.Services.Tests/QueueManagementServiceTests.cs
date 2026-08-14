@@ -47,7 +47,7 @@ public sealed class QueueManagementServiceTests
         var service = new QueueManagementService(
             new StubPlayerClient(Player()),
             playbackClient,
-            codec,
+            new PlayableReferenceResolver(codec, new BrowseReferenceCodec()),
             store,
             TimeProvider.System,
             NullLogger<QueueManagementService>.Instance);
@@ -329,13 +329,13 @@ public sealed class QueueManagementServiceTests
         public List<string> Mutations { get; } = [];
 
         public Task<int> GetPlayableItemCountAsync(
-            MediaIdentity identity,
+            PlayableMedia media,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            CheckedItems.Add($"{identity.Kind}:{identity.Id}");
+            CheckedItems.Add($"{media.Identity.Kind}:{media.Identity.Id}");
             return Task.FromResult(
-                PlayableCountById.TryGetValue(identity.Id, out var count) ? count : 1);
+                PlayableCountById.TryGetValue(media.Identity.Id, out var count) ? count : 1);
         }
 
         public Task PowerOnAsync(
@@ -355,29 +355,29 @@ public sealed class QueueManagementServiceTests
 
         public Task LoadAsync(
             string playerId,
-            MediaIdentity identity,
+            PlayableMedia media,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Queue management must not load media.");
 
         public Task AddAsync(
             string playerId,
-            MediaIdentity identity,
+            PlayableMedia media,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
-            Mutations.Add($"add:{identity.Kind}:{identity.Id}");
+            Mutations.Add($"add:{media.Identity.Kind}:{media.Identity.Id}");
             return Task.CompletedTask;
         }
 
         public Task InsertAsync(
             string playerId,
-            MediaIdentity identity,
+            PlayableMedia media,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
-            Mutations.Add($"insert:{identity.Kind}:{identity.Id}");
+            Mutations.Add($"insert:{media.Identity.Kind}:{media.Identity.Id}");
             return Task.CompletedTask;
         }
 

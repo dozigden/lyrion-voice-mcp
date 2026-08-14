@@ -23,6 +23,35 @@ public sealed record SearchCandidate(
 
 public sealed record SearchResponse(IReadOnlyList<SearchCandidate> Results);
 
+[JsonConverter(typeof(JsonStringEnumConverter<BrowseEntityKind>))]
+public enum BrowseEntityKind
+{
+    Category,
+
+    [JsonStringEnumMemberName("album_artist")]
+    AlbumArtist,
+
+    Artist,
+    Album,
+    Genre,
+    Playlist,
+    Track,
+    Year
+}
+
+public sealed record BrowseResponse(
+    IReadOnlyList<BrowseItem> Items,
+    string? Continuation);
+
+public sealed record BrowseItem(
+    string Reference,
+    BrowseEntityKind Kind,
+    string Title,
+    string? Artist,
+    string? Album,
+    bool Browsable,
+    bool Playable);
+
 public sealed record GetPlayerStatusResponse(IReadOnlyList<PlayerStatus> Players);
 
 [JsonConverter(typeof(PlayerControlActionJsonConverter))]

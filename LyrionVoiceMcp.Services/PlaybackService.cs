@@ -7,19 +7,19 @@ namespace LyrionVoiceMcp.Services;
 public sealed class PlaybackService(
     ILmsPlayerClient lmsPlayerClient,
     ILmsPlaybackClient lmsPlaybackClient,
-    ISearchResultReferenceCodec referenceCodec,
+    IPlayableReferenceResolver referenceResolver,
     ISearchObservationStore observationStore,
     TimeProvider timeProvider,
     ILogger<PlaybackService> logger) : IPlaybackService
 {
-    public PlaybackService(
+    internal PlaybackService(
         ILmsPlayerClient lmsPlayerClient,
         ILmsPlaybackClient lmsPlaybackClient,
         ISearchResultReferenceCodec referenceCodec)
         : this(
             lmsPlayerClient,
             lmsPlaybackClient,
-            referenceCodec,
+            new PlayableReferenceResolver(referenceCodec, new BrowseReferenceCodec()),
             NullSearchObservationStore.Instance,
             TimeProvider.System,
             NullLogger<PlaybackService>.Instance)
@@ -42,28 +42,28 @@ public sealed class PlaybackService(
         {
             return new PlaybackRejected(
                 PlaybackRejectionReason.EmptyItems,
-                "At least one search-result reference is required.");
+                "At least one media reference is required.");
         }
 
-        var decodedReferences = new SearchResultReferenceValue[references.Count];
+        var decodedReferences = new PlayableReferenceValue[references.Count];
         for (var index = 0; index < references.Count; index++)
         {
-            var value = referenceCodec.TryDecode(references[index]);
+            var value = referenceResolver.Resolve(references[index]);
             if (value is null)
             {
                 return new PlaybackRejected(
                     PlaybackRejectionReason.InvalidReference,
-                    $"Search-result item {index + 1} has an invalid reference.");
+                    $"Media item {index + 1} has an invalid reference.");
             }
 
             decodedReferences[index] = value;
         }
 
-        var identities = decodedReferences.Select(value => value.Identity).ToArray();
+        var media = decodedReferences.Select(value => value.Media).ToArray();
 
         var playersTask = lmsPlayerClient.GetPlayersAsync(cancellationToken);
-        var playableItemsTask = Task.WhenAll(identities.Select(identity =>
-            lmsPlaybackClient.GetPlayableItemCountAsync(identity, cancellationToken)));
+        var playableItemsTask = Task.WhenAll(media.Select(item =>
+            lmsPlaybackClient.GetPlayableItemCountAsync(item, cancellationToken)));
         await Task.WhenAll(playersTask, playableItemsTask);
 
         var player = FindPlayer(await playersTask, playerId);
@@ -80,7 +80,7 @@ public sealed class PlaybackService(
         {
             return new PlaybackRejected(
                 PlaybackRejectionReason.MediaNotFound,
-                $"Search-result item {missingItemIndex + 1} no longer resolves to playable media.");
+                $"Media item {missingItemIndex + 1} no longer resolves to playable media.");
         }
 
         if (!player.PoweredOn)
@@ -90,19 +90,22 @@ public sealed class PlaybackService(
 
         await lmsPlaybackClient.LoadAsync(
             player.Id,
-            identities[0],
+            media[0],
             cancellationToken);
-        foreach (var identity in identities.Skip(1))
+        foreach (var item in media.Skip(1))
         {
             await lmsPlaybackClient.AddAsync(
                 player.Id,
-                identity,
+                item,
                 cancellationToken);
         }
 
         var updatedPlayers = await lmsPlayerClient.GetPlayersAsync(cancellationToken);
         await TryMarkSelectedAsync(
-            decodedReferences.Select(value => value.CorrelationId).ToArray(),
+            decodedReferences
+                .Select(value => value.SearchCorrelationId)
+                .OfType<string>()
+                .ToArray(),
             cancellationToken);
         return new PlaybackSucceeded(FindUpdatedPlayer(updatedPlayers, player.Id));
     }
@@ -111,6 +114,11 @@ public sealed class PlaybackService(
         IReadOnlyCollection<string> correlationIds,
         CancellationToken cancellationToken)
     {
+        if (correlationIds.Count == 0)
+        {
+            return;
+        }
+
         try
         {
             await observationStore.MarkSelectedAsync(

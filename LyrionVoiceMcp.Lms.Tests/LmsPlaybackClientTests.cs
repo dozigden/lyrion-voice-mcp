@@ -20,16 +20,16 @@ public sealed class LmsPlaybackClientTests
         // Act
         var results = await Task.WhenAll(
             client.GetPlayableItemCountAsync(
-                new MediaIdentity(MediaEntityKind.Artist, "11"),
+                new PlayableMedia(new MediaIdentity(MediaEntityKind.Artist, "11")),
                 TestContext.Current.CancellationToken),
             client.GetPlayableItemCountAsync(
-                new MediaIdentity(MediaEntityKind.Album, "22"),
+                new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "22")),
                 TestContext.Current.CancellationToken),
             client.GetPlayableItemCountAsync(
-                new MediaIdentity(MediaEntityKind.Track, "33"),
+                new PlayableMedia(new MediaIdentity(MediaEntityKind.Track, "33")),
                 TestContext.Current.CancellationToken),
             client.GetPlayableItemCountAsync(
-                new MediaIdentity(MediaEntityKind.Playlist, "44"),
+                new PlayableMedia(new MediaIdentity(MediaEntityKind.Playlist, "44")),
                 TestContext.Current.CancellationToken));
 
         // Assert
@@ -45,6 +45,40 @@ public sealed class LmsPlaybackClientTests
     }
 
     [Fact]
+    public async Task AlbumArtistSelectionShouldConstrainBothPreflightAndPlayback()
+    {
+        // Arrange
+        var handler = new StubHttpMessageHandler(_ =>
+            JsonResponse("""{"id":1,"result":{"count":3}}"""));
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient);
+        var media = new PlayableMedia(
+            new MediaIdentity(MediaEntityKind.Artist, "11"),
+            MediaContributorRole.AlbumArtist);
+
+        // Act
+        var count = await client.GetPlayableItemCountAsync(
+            media,
+            TestContext.Current.CancellationToken);
+        await client.LoadAsync(
+            "00:11:22:33:44:55",
+            media,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(3, count);
+        Assert.Collection(
+            handler.Requests,
+            request => Assert.Equal(
+                "[\"titles\",0,1,\"artist_id:11\",\"role_id:ALBUMARTIST\",\"tags:i\"]",
+                request.CommandJson),
+            request => AssertRequest(
+                request,
+                "00:11:22:33:44:55",
+                "[\"playlistcontrol\",\"cmd:load\",\"artist_id:11\",\"role_id:ALBUMARTIST\"]"));
+    }
+
+    [Fact]
     public async Task PlayableItemCheckShouldReturnFalseForAnEmptyFilteredResult()
     {
         // Arrange
@@ -55,7 +89,7 @@ public sealed class LmsPlaybackClientTests
 
         // Act
         var result = await client.GetPlayableItemCountAsync(
-            new MediaIdentity(MediaEntityKind.Album, "22"),
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "22")),
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -74,19 +108,19 @@ public sealed class LmsPlaybackClientTests
         // Act
         await client.LoadAsync(
             "00:11:22:33:44:55",
-            new MediaIdentity(MediaEntityKind.Album, "22"),
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "22")),
             TestContext.Current.CancellationToken);
         await client.AddAsync(
             "00:11:22:33:44:55",
-            new MediaIdentity(MediaEntityKind.Playlist, "44"),
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Playlist, "44")),
             TestContext.Current.CancellationToken);
         await client.AddAsync(
             "00:11:22:33:44:55",
-            new MediaIdentity(MediaEntityKind.Artist, "11"),
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Artist, "11")),
             TestContext.Current.CancellationToken);
         await client.AddAsync(
             "00:11:22:33:44:55",
-            new MediaIdentity(MediaEntityKind.Track, "33"),
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Track, "33")),
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -124,7 +158,7 @@ public sealed class LmsPlaybackClientTests
         // Act
         await client.InsertAsync(
             "00:11:22:33:44:55",
-            new MediaIdentity(MediaEntityKind.Album, "22"),
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "22")),
             TestContext.Current.CancellationToken);
         await client.ClearAsync(
             "00:11:22:33:44:55",

@@ -11,7 +11,7 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Do not bake lab hostnames, addresses, player identifiers, or library paths into product code.
 - KST's LMS client is useful reference code, not a runtime or project dependency.
 
-## Implemented configuration, probe, search, player discovery, and playback
+## Implemented configuration, probe, search, browse, player discovery, and playback
 
 - Runtime configuration keys are `LyrionVoiceMcpLms:ServerId`, `LyrionVoiceMcpLms:BaseUrl`, and optional `LyrionVoiceMcpLms:RequestTimeoutSeconds` (default 5, range 1–30).
 - Environment variables use .NET's double-underscore form, for example `LyrionVoiceMcpLms__BaseUrl`.
@@ -19,13 +19,14 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - `ServerId` currently labels the configured environment in operational diagnostics. It is not part of public media references.
 - Both identity and base URL may be absent for an unconfigured development runtime. If either is supplied, both are required and invalid configuration must fail at startup.
 - `ILmsConnectionProbe` sends `serverstatus 0 0`; `/api/lms` exposes its state for the operational UI. This is not an MCP tool.
-- `LmsJsonRpcClient` owns JSON-RPC request creation, transport failure mapping, and response-envelope validation for both the probe and search adapter.
+- `LmsJsonRpcClient` owns JSON-RPC request creation, transport failure mapping, and response-envelope validation for LMS adapters.
 - First-pass local search issues the LMS `search` command for artists, albums, and tracks plus a `playlists search:` query. It requests at most 20 results per category and preserves category and LMS result order.
+- Local-library browse uses paged `artists`, `albums`, `genres`, `playlists`, `years`, `titles`, and `playlists tracks` queries. Album artists use `role_id:ALBUMARTIST`; recently added uses `albums sort:new`; album tracks use `sort:tracknum`. Keep the fixed public hierarchy and opaque paging policy in Services rather than leaking LMS commands into MCP tools.
 - Player discovery issues `players 0`, then parallel one-item `status - 1` and `mixer muting ?` queries for every player. This returns power, playback mode, volume, optional mute state, and current-media metadata/progress without materialising the queue. Mute is nullable because LMS/player combinations may not expose it.
 - Player control uses explicit `play`, `pause 1`, `stop`, `playlist index +1`, and `playlist index -1` commands. Power control sets the requested state and confirms it with `power ?`; power-on uses the `noplay` flag.
 - Queue reading uses one `status 0 300 tags:aAld` request after player validation. Preserve each LMS `playlist index`, use top-level `current_title` for the current remote item, and reject responses that exceed 300 items or omit queued entries rather than silently truncating them.
 - Playback and queue-management preflight use one-item filtered `titles` or `playlists tracks` queries. Their result counts verify that each referenced LMS item remains playable and let queue additions enforce the application-level 300-item limit without materialising collection contents.
-- Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. LMS owns collection expansion and internal ordering.
+- Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. Album-artist selections also pass `role_id:ALBUMARTIST` during preflight and submission so playback matches the browsed role. LMS owns collection expansion and internal ordering.
 - Queue management uses `playlist clear`, `playlistcontrol cmd:add`, and `playlistcontrol cmd:insert`. Submit separate play-next references in reverse so LMS's repeated next-position inserts preserve caller order. Do not power on or start playback for queue management.
 - Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue.
 - Batched playback loads the first reference, replacing the queue and starting playback, then adds later references in caller order. Append and play-next placement are queue-management operations.

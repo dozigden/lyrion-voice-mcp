@@ -21,10 +21,10 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(PlayResponse))]
-    [Description("Replace a Lyrion player's queue with one or more search results and start playback.")]
+    [Description("Replace a Lyrion player's queue with one or more search or browse results and start playback.")]
     public async Task<CallToolResult> PlayAsync(
         [Description("The raw LMS player ID returned by get_player_status.")] string player,
-        [Description("One or more opaque result references returned by search, in playback order.")] IReadOnlyList<string> items,
+        [Description("One or more opaque playable references returned by search or browse, in playback order.")] IReadOnlyList<string> items,
         CancellationToken cancellationToken = default)
     {
         try

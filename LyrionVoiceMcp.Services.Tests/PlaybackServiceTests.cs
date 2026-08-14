@@ -91,7 +91,7 @@ public sealed class PlaybackServiceTests
         var service = new PlaybackService(
             new StubPlayerClient(Player(true, PlayerPlaybackState.Playing), Player(true, PlayerPlaybackState.Playing)),
             new StubPlaybackClient(),
-            codec,
+            new PlayableReferenceResolver(codec, new BrowseReferenceCodec()),
             store,
             TimeProvider.System,
             NullLogger<PlaybackService>.Instance);
@@ -104,6 +104,72 @@ public sealed class PlaybackServiceTests
 
         // Assert
         Assert.Equal(["00000000000000000000000000000001"], store.SelectedCorrelationIds);
+    }
+
+    [Fact]
+    public async Task BrowseReferenceShouldPlayWithoutInventingASearchSelection()
+    {
+        // Arrange
+        var searchCodec = new SearchResultReferenceCodec();
+        var browseCodec = new BrowseReferenceCodec();
+        var store = new RecordingSearchObservationStore();
+        var playbackClient = new StubPlaybackClient();
+        var service = new PlaybackService(
+            new StubPlayerClient(
+                Player(true, PlayerPlaybackState.Stopped),
+                Player(true, PlayerPlaybackState.Playing)),
+            playbackClient,
+            new PlayableReferenceResolver(searchCodec, browseCodec),
+            store,
+            TimeProvider.System,
+            NullLogger<PlaybackService>.Instance);
+        var reference = browseCodec.Encode(new BrowseReferenceValue(
+            new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "52", 0),
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "52"))));
+
+        // Act
+        var outcome = await service.PlayAsync(
+            PlayerId,
+            [reference],
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.IsType<PlaybackSucceeded>(outcome);
+        Assert.Equal(["check:Album:52", "load:Album:52"], playbackClient.Operations);
+        Assert.Null(store.SelectedCorrelationIds);
+    }
+
+    [Fact]
+    public async Task SearchDerivedBrowseReferenceShouldMarkTheOriginalSearchSelection()
+    {
+        // Arrange
+        var searchCodec = new SearchResultReferenceCodec();
+        var browseCodec = new BrowseReferenceCodec();
+        var store = new RecordingSearchObservationStore();
+        var service = new PlaybackService(
+            new StubPlayerClient(
+                Player(true, PlayerPlaybackState.Stopped),
+                Player(true, PlayerPlaybackState.Playing)),
+            new StubPlaybackClient(),
+            new PlayableReferenceResolver(searchCodec, browseCodec),
+            store,
+            TimeProvider.System,
+            NullLogger<PlaybackService>.Instance);
+        var correlationId = "123456781234123412341234567890ab";
+        var reference = browseCodec.Encode(new BrowseReferenceValue(
+            new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "52", 0),
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "52")),
+            correlationId));
+
+        // Act
+        var outcome = await service.PlayAsync(
+            PlayerId,
+            [reference],
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.IsType<PlaybackSucceeded>(outcome);
+        Assert.Equal([correlationId], store.SelectedCorrelationIds);
     }
 
     [Fact]
@@ -270,13 +336,13 @@ public sealed class PlaybackServiceTests
         public Exception? PowerOnException { get; init; }
 
         public Task<int> GetPlayableItemCountAsync(
-            MediaIdentity identity,
+            PlayableMedia media,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Operations.Add($"check:{identity.Kind}:{identity.Id}");
+            Operations.Add($"check:{Describe(media)}");
             return Task.FromResult(
-                PlayableCountById.TryGetValue(identity.Id, out var count) ? count : 1);
+                PlayableCountById.TryGetValue(media.Identity.Id, out var count) ? count : 1);
         }
 
         public Task PowerOnAsync(
@@ -298,34 +364,34 @@ public sealed class PlaybackServiceTests
 
         public Task LoadAsync(
             string playerId,
-            MediaIdentity identity,
+            PlayableMedia media,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
-            Operations.Add($"load:{identity.Kind}:{identity.Id}");
+            Operations.Add($"load:{Describe(media)}");
             return Task.CompletedTask;
         }
 
         public Task AddAsync(
             string playerId,
-            MediaIdentity identity,
+            PlayableMedia media,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
-            Operations.Add($"add:{identity.Kind}:{identity.Id}");
+            Operations.Add($"add:{Describe(media)}");
             return Task.CompletedTask;
         }
 
         public Task InsertAsync(
             string playerId,
-            MediaIdentity identity,
+            PlayableMedia media,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
-            Operations.Add($"insert:{identity.Kind}:{identity.Id}");
+            Operations.Add($"insert:{Describe(media)}");
             return Task.CompletedTask;
         }
 
@@ -338,6 +404,11 @@ public sealed class PlaybackServiceTests
             Operations.Add("clear");
             return Task.CompletedTask;
         }
+
+        private static string Describe(PlayableMedia media) =>
+            media.ContributorRole is { } role
+                ? $"{media.Identity.Kind}:{media.Identity.Id}:{role}"
+                : $"{media.Identity.Kind}:{media.Identity.Id}";
 
     }
 }

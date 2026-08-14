@@ -5,13 +5,13 @@ namespace LyrionVoiceMcp.Lms;
 public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlaybackClient
 {
     public async Task<int> GetPlayableItemCountAsync(
-        MediaIdentity identity,
+        PlayableMedia media,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(media);
 
         var result = await jsonRpcClient.SendAsync(
-            BuildPlayableItemQuery(identity),
+            BuildPlayableItemQuery(media),
             cancellationToken);
         var count = LmsJson.ReadInt(result, "count");
         if (count is null)
@@ -74,21 +74,21 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
 
     public Task LoadAsync(
         string playerId,
-        MediaIdentity identity,
+        PlayableMedia media,
         CancellationToken cancellationToken) =>
-        SubmitAsync(playerId, identity, "load", cancellationToken);
+        SubmitAsync(playerId, media, "load", cancellationToken);
 
     public Task AddAsync(
         string playerId,
-        MediaIdentity identity,
+        PlayableMedia media,
         CancellationToken cancellationToken) =>
-        SubmitAsync(playerId, identity, "add", cancellationToken);
+        SubmitAsync(playerId, media, "add", cancellationToken);
 
     public Task InsertAsync(
         string playerId,
-        MediaIdentity identity,
+        PlayableMedia media,
         CancellationToken cancellationToken) =>
-        SubmitAsync(playerId, identity, "insert", cancellationToken);
+        SubmitAsync(playerId, media, "insert", cancellationToken);
 
     public async Task ClearAsync(
         string playerId,
@@ -102,15 +102,15 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
 
     private async Task SubmitAsync(
         string playerId,
-        MediaIdentity identity,
+        PlayableMedia media,
         string command,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(media);
 
         var result = await jsonRpcClient.SendAsync(
             playerId,
-            ["playlistcontrol", $"cmd:{command}", BuildIdentityParameter(identity)],
+            ["playlistcontrol", $"cmd:{command}", .. BuildSelectionParameters(media)],
             cancellationToken);
         var count = LmsJson.ReadInt(result, "count");
         if (count is null or < 1)
@@ -120,23 +120,36 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
         }
     }
 
-    private static object[] BuildPlayableItemQuery(MediaIdentity identity)
+    private static object[] BuildPlayableItemQuery(PlayableMedia media)
     {
-        var identityParameter = BuildIdentityParameter(identity);
-        return identity.Kind == MediaEntityKind.Playlist
-            ? ["playlists", "tracks", 0, 1, identityParameter, "tags:i"]
-            : ["titles", 0, 1, identityParameter, "tags:i"];
+        var selectionParameters = BuildSelectionParameters(media);
+        return media.Identity.Kind == MediaEntityKind.Playlist
+            ? ["playlists", "tracks", 0, 1, .. selectionParameters, "tags:i"]
+            : ["titles", 0, 1, .. selectionParameters, "tags:i"];
     }
 
-    private static string BuildIdentityParameter(MediaIdentity identity) =>
-        identity.Kind switch
+    private static IReadOnlyList<string> BuildSelectionParameters(PlayableMedia media)
+    {
+        var identityParameter = media.Identity.Kind switch
         {
-            MediaEntityKind.Artist => $"artist_id:{identity.Id}",
-            MediaEntityKind.Album => $"album_id:{identity.Id}",
-            MediaEntityKind.Track => $"track_id:{identity.Id}",
-            MediaEntityKind.Playlist => $"playlist_id:{identity.Id}",
+            MediaEntityKind.Artist => $"artist_id:{media.Identity.Id}",
+            MediaEntityKind.Album => $"album_id:{media.Identity.Id}",
+            MediaEntityKind.Track => $"track_id:{media.Identity.Id}",
+            MediaEntityKind.Playlist => $"playlist_id:{media.Identity.Id}",
             _ => throw new ArgumentOutOfRangeException(
-                nameof(identity),
-                $"Unsupported media entity kind {identity.Kind}.")
+                nameof(media),
+                $"Unsupported media entity kind {media.Identity.Kind}.")
         };
+
+        return media.ContributorRole switch
+        {
+            null => [identityParameter],
+            MediaContributorRole.AlbumArtist
+                when media.Identity.Kind == MediaEntityKind.Artist =>
+                [identityParameter, "role_id:ALBUMARTIST"],
+            _ => throw new ArgumentException(
+                "The media contributor role is not valid for this media identity.",
+                nameof(media))
+        };
+    }
 }
