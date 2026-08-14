@@ -48,6 +48,7 @@ builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
 });
 builder.Services.AddTransient<ILmsConnectionProbe, LmsConnectionProbe>();
 builder.Services.AddTransient<ILmsPlaybackClient, LmsPlaybackClient>();
+builder.Services.AddTransient<ILmsPlayerControlClient, LmsPlayerControlClient>();
 builder.Services.AddTransient<ILmsPlayerClient, LmsPlayerClient>();
 builder.Services.AddTransient<ILmsSearchClient, LmsSearchClient>();
 builder.Services.AddLyrionVoiceMcpServices();
@@ -63,6 +64,7 @@ builder.Services
     .WithHttpTransport()
     .WithTools<SearchTools>()
     .WithTools<PlayerTools>()
+    .WithTools([PlayerControlToolRegistration.Create()])
     .WithTools([PlaybackToolRegistration.Create()]);
 
 var app = builder.Build();

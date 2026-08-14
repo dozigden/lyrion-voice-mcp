@@ -25,6 +25,86 @@ public sealed record SearchResponse(IReadOnlyList<SearchCandidate> Results);
 
 public sealed record GetPlayerStatusResponse(IReadOnlyList<PlayerStatus> Players);
 
+[JsonConverter(typeof(PlayerControlActionJsonConverter))]
+public enum PlayerControlAction
+{
+    [JsonStringEnumMemberName("resume")]
+    Resume,
+
+    [JsonStringEnumMemberName("pause")]
+    Pause,
+
+    [JsonStringEnumMemberName("stop")]
+    Stop,
+
+    [JsonStringEnumMemberName("next")]
+    Next,
+
+    [JsonStringEnumMemberName("previous")]
+    Previous,
+
+    [JsonStringEnumMemberName("power_on")]
+    PowerOn,
+
+    [JsonStringEnumMemberName("power_off")]
+    PowerOff
+}
+
+public sealed class PlayerControlActionJsonConverter
+    : JsonConverter<PlayerControlAction>
+{
+    private const PlayerControlAction InvalidAction = (PlayerControlAction)(-1);
+
+    public override bool HandleNull => true;
+
+    public override PlayerControlAction Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return reader.GetString() switch
+            {
+                "resume" => PlayerControlAction.Resume,
+                "pause" => PlayerControlAction.Pause,
+                "stop" => PlayerControlAction.Stop,
+                "next" => PlayerControlAction.Next,
+                "previous" => PlayerControlAction.Previous,
+                "power_on" => PlayerControlAction.PowerOn,
+                "power_off" => PlayerControlAction.PowerOff,
+                _ => InvalidAction
+            };
+        }
+
+        reader.Skip();
+        return InvalidAction;
+    }
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        PlayerControlAction value,
+        JsonSerializerOptions options) =>
+        writer.WriteStringValue(value switch
+        {
+            PlayerControlAction.Resume => "resume",
+            PlayerControlAction.Pause => "pause",
+            PlayerControlAction.Stop => "stop",
+            PlayerControlAction.Next => "next",
+            PlayerControlAction.Previous => "previous",
+            PlayerControlAction.PowerOn => "power_on",
+            PlayerControlAction.PowerOff => "power_off",
+            _ => throw new JsonException(
+                $"Unsupported player control action {value}.")
+        });
+}
+
+public sealed record ControlPlayerRequest(
+    string Player,
+    PlayerControlAction Action);
+
+public sealed record ControlPlayerResponse(PlayerStatus Player);
+
 [JsonConverter(typeof(JsonStringEnumConverter<PlayerPlaybackMode>))]
 public enum PlayerPlaybackMode
 {

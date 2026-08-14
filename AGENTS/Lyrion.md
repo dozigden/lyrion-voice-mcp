@@ -22,6 +22,7 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - `LmsJsonRpcClient` owns JSON-RPC request creation, transport failure mapping, and response-envelope validation for both the probe and search adapter.
 - First-pass local search issues the LMS `search` command for artists, albums, and tracks plus a `playlists search:` query. It requests at most 20 results per category and preserves category and LMS result order.
 - Player discovery issues `players 0`, then parallel one-item `status - 1` and `mixer muting ?` queries for every player. This returns power, playback mode, volume, optional mute state, and current-media metadata/progress without materialising the queue. Mute is nullable because LMS/player combinations may not expose it.
+- Player control uses explicit `play`, `pause 1`, `stop`, `playlist index +1`, and `playlist index -1` commands. Power control sets the requested state and confirms it with `power ?`; power-on uses the `noplay` flag.
 - Playback preflight uses one-item filtered `titles` or `playlists tracks` queries to verify that each referenced LMS item remains playable without materialising collection contents.
 - Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. LMS owns collection expansion and internal ordering.
 - Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue.
@@ -30,9 +31,10 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 
 ## Environments
 
-- Development LMS contains artificial media and is suitable for deterministic protocol and mutation tests.
+- Development LMS contains artificial media and is suitable for deterministic protocol and mutation tests. Any discovered development player may be mutated during integration work, but leave it stopped afterwards.
 - Live LMS contains the representative library and may be queried for read-only evaluation.
-- Playback against discovered live players is allowed only in explicit integration work; never invent a player identifier.
+- Playback against a live player requires explicit approval for the resolved player in the current work; never invent a player identifier.
+- The development lab may expose a software player. Treat it as a protocol smoke test; verify surprising state or transport behaviour on an explicitly approved hardware player before generalising it.
 - Each MCP deployment targets one LMS server. Result references contain no server identity and are not supported across deployments.
 
 ## Parsing and tests

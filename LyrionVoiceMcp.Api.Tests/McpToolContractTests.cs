@@ -66,6 +66,27 @@ public sealed class McpToolContractTests
     }
 
     [Fact]
+    public void ControlPlayerShouldAcceptOnePlayerAndOneAction()
+    {
+        // Arrange
+        var request = new ControlPlayerRequest(
+            "00:11:22:33:44:55",
+            PlayerControlAction.Previous);
+
+        // Act
+        var properties = typeof(ControlPlayerRequest)
+            .GetProperties()
+            .Select(property => property.Name)
+            .Order()
+            .ToArray();
+
+        // Assert
+        Assert.Equal(["Action", "Player"], properties);
+        Assert.Equal("00:11:22:33:44:55", request.Player);
+        Assert.Equal(PlayerControlAction.Previous, request.Action);
+    }
+
+    [Fact]
     public void NowPlayingShouldExcludeQueueAndLmsIdentity()
     {
         // Arrange

@@ -42,7 +42,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
     }
 
     [Fact]
-    public async Task ListToolsShouldAdvertiseTheExactThreeToolSurface()
+    public async Task ListToolsShouldAdvertiseTheImplementedToolSurface()
     {
         // Arrange
         using var client = factory.CreateClient();
@@ -62,6 +62,12 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"name\":\"search\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"query\"]", body, StringComparison.Ordinal);
         Assert.Contains("\"name\":\"get_player_status\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"name\":\"control_player\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"required\":[\"player\",\"action\"]", body, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"enum\":[\"resume\",\"pause\",\"stop\",\"next\",\"previous\",\"power_on\",\"power_off\"]",
+            body,
+            StringComparison.Ordinal);
         Assert.Contains("\"name\":\"play\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"player\",\"items\"]", body, StringComparison.Ordinal);
         Assert.Contains("\"enum\":[\"replace\",\"append\"]", body, StringComparison.Ordinal);
@@ -176,7 +182,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
     }
 
     [Fact]
-    public async Task PlayShouldAcceptAnOrderedBatchAndReturnStructuredMinimalPlayerStatus()
+    public async Task PlayShouldAcceptAnOrderedBatchAndReturnStructuredFullPlayerStatus()
     {
         // Arrange
         var playbackService = new StubPlaybackService();
@@ -212,6 +218,77 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"poweredOn\":true", body, StringComparison.Ordinal);
         Assert.Contains("\"mode\":\"Playing\"", body, StringComparison.Ordinal);
         Assert.DoesNotContain("queue", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ControlPlayerShouldApplyActionAndReturnUpdatedStatus()
+    {
+        // Arrange
+        var controlService = new StubPlayerControlService();
+        await using var controlFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IPlayerControlService>();
+                services.AddSingleton<IPlayerControlService>(controlService);
+            }));
+        using var client = controlFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            9,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"control_player","arguments":{"player":"00:11:22:33:44:55","action":"pause"}}
+            """,
+            "control_player");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(PlayerControlCommand.Pause, controlService.Command);
+        Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
+        Assert.Contains("00:11:22:33:44:55", body, StringComparison.Ordinal);
+        Assert.Contains("\"mode\":\"Paused\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("queue", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("\"bogus\"")]
+    [InlineData("null")]
+    [InlineData("17")]
+    [InlineData("{}")]
+    public async Task ControlPlayerShouldReturnACorrectiveToolErrorForAnInvalidAction(
+        string actionJson)
+    {
+        // Arrange
+        var controlService = new StubPlayerControlService();
+        await using var controlFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IPlayerControlService>();
+                services.AddSingleton<IPlayerControlService>(controlService);
+            }));
+        using var client = controlFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            10,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"control_player","arguments":{"player":"00:11:22:33:44:55","action":ACTION_JSON}}
+            """.Replace("ACTION_JSON", actionJson, StringComparison.Ordinal),
+            "control_player");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
+        Assert.Contains("The player control action is invalid.", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("An error occurred invoking", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"error\":", body, StringComparison.Ordinal);
+        Assert.Null(controlService.Command);
     }
 
     [Fact]
@@ -384,6 +461,35 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     "North Room",
                     true,
                     PlayerPlaybackState.Playing)));
+        }
+    }
+
+    private sealed class StubPlayerControlService : IPlayerControlService
+    {
+        public PlayerControlCommand? Command { get; private set; }
+
+        public Task<PlayerControlOutcome> ControlAsync(
+            string playerId,
+            PlayerControlCommand command,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal("00:11:22:33:44:55", playerId);
+            Command = command;
+            return Task.FromResult<PlayerControlOutcome>(new PlayerControlSucceeded(
+                new LmsPlayerStatus(
+                    playerId,
+                    "North Room",
+                    true,
+                    PlayerPlaybackState.Paused,
+                    42,
+                    false,
+                    new LmsNowPlaying(
+                        "Lantern Signals",
+                        "The Paper Comets",
+                        "Night Routes",
+                        244.25,
+                        12.5))));
         }
     }
 }
