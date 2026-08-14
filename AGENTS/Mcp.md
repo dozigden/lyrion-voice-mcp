@@ -26,6 +26,7 @@ The first three-tool delivery slice was not a permanent limit. Add cohesive user
 ## Tool behaviour
 
 - Keep tool handlers thin and use application services.
+- Advertise concise server instructions during MCP initialisation for relationships that span tools: player discovery, search versus browse, opaque-reference routing, play versus queue-management semantics, and genuine ambiguity. Do not duplicate complete tool descriptions there.
 - Treat [MCP_CONTRACT.md](../MCP_CONTRACT.md) as the working public contract until implemented schemas replace it.
 - Return structured, agent-friendly results and opaque result references.
 - Propagate cancellation and map expected validation/upstream failures to useful tool errors without leaking stack traces.
@@ -42,7 +43,7 @@ The first three-tool delivery slice was not a permanent limit. Add cohesive user
 - `control_player` accepts exactly one lowercase action: `resume`, `pause`, `stop`, `next`, `previous`, `power_on`, or `power_off`. It excludes volume, mute, seek, grouping, and queue operations and returns the selected player's refreshed full status.
 - Register `PlayerControlTools` through `PlayerControlToolRegistration` so malformed enum values become corrective tool errors while the generated schema retains the agreed lowercase action enum.
 - `get_queue` takes one player and returns its complete queue up to the LMS 300-item limit. Return only the player ID, nullable current LMS index, and ordered items with LMS index plus title, optional artist, album, and duration. Do not expose pagination, queue revisions, search-result references, or LMS media IDs.
-- `manage_queue` takes one player, `clear`, `append`, or `insert_next`, and optional playable references from search or browse. `clear` accepts no items; additions require at least one item, preserve caller order, and must preflight every reference and the 300-item application limit before mutation. It returns only the player ID and resulting queue length and must not change power or playback state.
+- `manage_queue` takes one player, `clear`, `append`, or `insert_next`, and optional playable references from search or browse. `clear` accepts no items; additions require at least one item, preserve caller order, and must preflight every reference and the 300-item application limit before mutation. It returns only the player ID and resulting queue length. Append and insert-next must not change power or playback state; clear empties the queue and stops playback through LMS's native clear behaviour.
 - Register `QueueManagementTools` through `QueueManagementToolRegistration` so malformed enum values become corrective tool errors while the generated schema retains the agreed lowercase action enum.
 - `play` accepts a non-empty ordered reference list, replaces the queue, powers on when required, starts playback, and returns the selected player's updated full status. Append and play-next behaviour belong to `manage_queue`; do not add a placement mode to `play`.
 - Register `PlaybackTools` normally through the SDK; it no longer requires an enum-binding workaround.

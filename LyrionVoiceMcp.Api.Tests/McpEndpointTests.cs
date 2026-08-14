@@ -39,6 +39,30 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             $"Expected an OK MCP response but received {(int)response.StatusCode}: {body}");
         Assert.Contains("Lyrion Voice MCP", body, StringComparison.Ordinal);
         Assert.Contains("\"tools\"", body, StringComparison.Ordinal);
+        Assert.Contains(
+            "Resolve player names with get_player_status",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Treat search and browse references as opaque",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "All search result references are playable",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "track search result references cannot",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "For browse results, use the browsable and playable flags",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "clear action empties the queue and stops playback",
+            body,
+            StringComparison.Ordinal);
     }
 
     [Fact]

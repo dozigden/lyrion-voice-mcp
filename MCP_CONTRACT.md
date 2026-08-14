@@ -14,6 +14,8 @@ This documents the currently implemented public tools. It does not limit the ser
 
 The current public MCP surface contains `search`, `browse`, `get_player_status`, `control_player`, `get_queue`, `manage_queue`, and `play`.
 
+During MCP initialisation, the server supplies concise agent guidance connecting these tools: discover player IDs rather than inventing them, choose search for named media and browse for exploration, keep references opaque, route search and browse references according to their actual capabilities, distinguish replace-and-start playback from queue addition and clearing, and ask when player or media selection is genuinely ambiguous.
+
 ## Result references
 
 Every candidate returned by `search` has one opaque result reference which the caller passes back unchanged.
@@ -111,7 +113,7 @@ Invalid requests, missing players, and stale or unplayable references return MCP
 
 The player and every supplied reference are resolved before mutation. Addition requests also resolve collection sizes and the current queue length before mutation, and reject the whole request if it would exceed the supported 300-item queue limit. Successful additions mark search-result correlations as selected when the references originated from search; browse references do not create search correlations.
 
-Queue management does not power on a player, start or pause playback, or otherwise change playback state. It returns only the selected player ID and resulting queue length; callers can use `get_queue` when they need the updated contents. Remove, move, and arbitrary positions are not part of this contract.
+Queue append and insert-next do not power on a player or change its playback state. Clear uses LMS's native queue clear behaviour, which empties the queue and stops playback. Queue management returns only the selected player ID and resulting queue length; callers can use `get_queue` when they need the updated contents. Remove, move, and arbitrary positions are not part of this contract.
 
 Invalid actions or item combinations, missing players, stale references, and requests over the queue limit return concise MCP tool errors with `isError: true`.
 

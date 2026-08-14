@@ -62,6 +62,9 @@ builder.Services
             Name = "Lyrion Voice MCP",
             Version = buildInfo.Version
         };
+        options.ServerInstructions = """
+            Resolve player names with get_player_status and use only the returned player IDs; never invent an ID. Use search for named media and browse for library exploration. Treat search and browse references as opaque. All search result references are playable; artist, album, and playlist search result references can also be passed to browse, but track search result references cannot. For browse results, use the browsable and playable flags; pass continuation references back to browse. The play tool replaces the queue, powers the player on when required, and starts playback. The manage_queue append and insert_next actions change the queue without changing power or playback state; its clear action empties the queue and stops playback. Ask the user when multiple players or media candidates are genuinely ambiguous.
+            """;
     })
     .WithHttpTransport()
     .WithTools<SearchTools>()
