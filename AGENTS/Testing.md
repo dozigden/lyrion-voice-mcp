@@ -13,7 +13,7 @@
 - Api tests must override catalogue and operational persistence with isolated temporary databases; they must never read or write the developer's `.data` databases.
 - Services tests own application behaviour, validation matrices, and edge cases.
 - LMS tests own configuration validation, JSON-RPC request/response plumbing, and upstream failure mapping.
-- Persistence tests own schema initialisation, atomic catalogue publication and rollback, refresh-run recovery, retention, filtering, selection correlation, review round-trips, and export privacy.
+- Persistence tests own schema initialisation/rebuild, bounded catalogue batch durability, source-identity count validation, convergence, refresh-run recovery/logs, retention, filtering, selection correlation, review round-trips, and export privacy.
 - Dev tests own command construction, process state, recognised listener detection, and bounded log handling.
 - Evaluation tests own corpus parsing and validation, descriptive matching, scoring, and report privacy. They use fictional cases and fake LMS responses.
 - Vitest owns frontend API/state/component behaviour.

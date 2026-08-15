@@ -64,38 +64,81 @@ public sealed record CatalogueImportTrack(
 
 public sealed record CatalogueImportVirtualLibrary(
     string SourceId,
-    string Name,
-    IReadOnlyList<string> TrackSourceIds);
+    string Name);
 
-public sealed record CatalogueImportWarning(
-    string Code,
-    string Message,
-    int Occurrences);
+public sealed record CatalogueImportVirtualLibraryMembership(
+    string LibrarySourceId,
+    int TrackCount);
 
-public sealed record CatalogueImportSnapshot(
+public sealed record CatalogueSourceReadResult(
     CatalogueImportSource Source,
     DateTimeOffset CapturedAt,
     DateTimeOffset? SourceLastScanAt,
-    IReadOnlyList<CatalogueImportArtist> Artists,
-    IReadOnlyList<CatalogueImportAlbum> Albums,
-    IReadOnlyList<CatalogueImportGenre> Genres,
-    IReadOnlyList<CatalogueImportTrack> Tracks,
-    IReadOnlyList<CatalogueImportVirtualLibrary> VirtualLibraries,
-    IReadOnlyList<CatalogueImportWarning> Warnings);
+    int ArtistLookupCount,
+    int AlbumCount,
+    int GenreCount,
+    int TrackCount,
+    int VirtualLibraryCount,
+    IReadOnlyList<CatalogueImportVirtualLibraryMembership> VirtualLibraryMemberships);
+
+public interface ICatalogueImportWriter
+{
+    Task WriteAlbumsAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportAlbum> albums,
+        CancellationToken cancellationToken);
+
+    Task WriteGenresAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportGenre> genres,
+        CancellationToken cancellationToken);
+
+    Task WriteTracksAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportTrack> tracks,
+        CancellationToken cancellationToken);
+
+    Task WriteArtistsAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportArtist> artists,
+        CancellationToken cancellationToken);
+
+    Task WriteVirtualLibrariesAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportVirtualLibrary> libraries,
+        CancellationToken cancellationToken);
+
+    Task WriteVirtualLibraryTracksAsync(
+        string refreshId,
+        string librarySourceId,
+        IReadOnlyList<string> trackSourceIds,
+        CancellationToken cancellationToken);
+
+    Task AppendRefreshLogAsync(
+        string refreshId,
+        CatalogueRefreshLogLevel level,
+        string message,
+        int? processedCount,
+        int? totalCount,
+        CancellationToken cancellationToken);
+}
 
 public interface ICatalogueSourceReader
 {
-    Task<CatalogueImportSnapshot> ReadAsync(CancellationToken cancellationToken);
+    Task<CatalogueSourceReadResult> ReadAsync(
+        string refreshId,
+        ICatalogueImportWriter writer,
+        CancellationToken cancellationToken);
 }
 
-public sealed record PublishedCatalogueGeneration(
-    string Id,
+public sealed record CatalogueSummary(
     string SourceId,
+    string Provider,
     string? SourceRevision,
     string? SourceVersion,
     DateTimeOffset CapturedAt,
     DateTimeOffset? SourceLastScanAt,
-    DateTimeOffset PublishedAt,
+    DateTimeOffset RefreshedAt,
     int ArtistCount,
     int AlbumCount,
     int GenreCount,
@@ -112,21 +155,35 @@ public enum CatalogueRefreshRunStatus
     Interrupted
 }
 
+public enum CatalogueRefreshLogLevel
+{
+    Information,
+    Warning,
+    Error
+}
+
+public sealed record CatalogueRefreshLog(
+    long Id,
+    DateTimeOffset OccurredAt,
+    CatalogueRefreshLogLevel Level,
+    string Message,
+    int? ProcessedCount,
+    int? TotalCount);
+
 public sealed record CatalogueRefreshRun(
     string Id,
     CatalogueRefreshRunStatus Status,
     DateTimeOffset StartedAt,
     DateTimeOffset? CompletedAt,
     long? DurationMilliseconds,
-    string? PublishedGenerationId,
-    string? FailureMessage);
+    string? FailureMessage,
+    IReadOnlyList<CatalogueRefreshLog> Logs);
 
-public interface IMediaCatalogueStore
+public interface IMediaCatalogueStore : ICatalogueImportWriter
 {
     Task InitialiseAsync(CancellationToken cancellationToken);
 
-    Task<PublishedCatalogueGeneration?> GetPublishedGenerationAsync(
-        CancellationToken cancellationToken);
+    Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken);
 
     Task<CatalogueRefreshRun?> GetLatestRefreshRunAsync(
         CancellationToken cancellationToken);
@@ -136,9 +193,9 @@ public interface IMediaCatalogueStore
         DateTimeOffset startedAt,
         CancellationToken cancellationToken);
 
-    Task<PublishedCatalogueGeneration> PublishAsync(
-        CatalogueImportSnapshot snapshot,
+    Task<CatalogueSummary> CompleteRefreshAsync(
         string refreshId,
+        CatalogueSourceReadResult source,
         DateTimeOffset completedAt,
         long durationMilliseconds,
         CancellationToken cancellationToken);

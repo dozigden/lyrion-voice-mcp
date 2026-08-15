@@ -113,7 +113,7 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
     }
 
     [Fact]
-    public async Task CatalogueShouldExposePublishedGenerationAndLatestRefresh()
+    public async Task CatalogueShouldExposeSummaryAndLatestRefreshLogs()
     {
         // Arrange
         var status = CreateCatalogueStatus(CatalogueRefreshRunStatus.Succeeded);
@@ -131,11 +131,11 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
             TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal("generation-1", response?.PublishedGeneration?.Id);
-        Assert.Equal(6_530, response?.PublishedGeneration?.ArtistCount);
-        Assert.Equal(33_687, response?.PublishedGeneration?.TrackCount);
+        Assert.Equal("development", response?.Summary?.SourceId);
+        Assert.Equal(6_530, response?.Summary?.ArtistCount);
+        Assert.Equal(33_687, response?.Summary?.TrackCount);
         Assert.Equal("succeeded", response?.LatestRefresh?.Status);
-        Assert.Equal("generation-1", response?.LatestRefresh?.PublishedGenerationId);
+        Assert.Equal("information", Assert.Single(response!.LatestRefresh!.Logs).Level);
     }
 
     [Fact]
@@ -196,9 +196,9 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
 
     private static CatalogueStatus CreateCatalogueStatus(CatalogueRefreshRunStatus status)
     {
-        var published = new PublishedCatalogueGeneration(
-            "generation-1",
+        var summary = new CatalogueSummary(
             "development",
+            "lms",
             "revision-1",
             "9.1.2",
             DateTimeOffset.Parse("2026-08-15T09:59:58Z"),
@@ -211,7 +211,7 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
             6,
             0);
         return new CatalogueStatus(
-            published,
+            summary,
             new CatalogueRefreshRun(
                 "refresh-1",
                 status,
@@ -220,8 +220,16 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
                     ? null
                     : DateTimeOffset.Parse("2026-08-15T10:00:12Z"),
                 status == CatalogueRefreshRunStatus.Running ? null : 12_000,
-                status == CatalogueRefreshRunStatus.Succeeded ? published.Id : null,
-                null));
+                null,
+                [
+                    new CatalogueRefreshLog(
+                        1,
+                        DateTimeOffset.Parse("2026-08-15T10:00:12Z"),
+                        CatalogueRefreshLogLevel.Information,
+                        "Completed catalogue refresh.",
+                        33_687,
+                        33_687)
+                ]));
     }
 
     private sealed class StubCatalogueRefreshService(

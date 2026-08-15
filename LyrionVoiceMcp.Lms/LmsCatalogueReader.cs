@@ -12,56 +12,96 @@ public sealed class LmsCatalogueReader(
     private const int PageSize = 500;
     private const string TrackTags = "uxoeyiqtdfTnDUESPROWCb1hzJ";
 
-    public async Task<CatalogueImportSnapshot> ReadAsync(
+    public async Task<CatalogueSourceReadResult> ReadAsync(
+        string refreshId,
+        ICatalogueImportWriter writer,
         CancellationToken cancellationToken)
     {
         var initialStatus = await ReadStatusAsync(cancellationToken);
         EnsureReady(initialStatus);
 
-        var artistLookup = await ReadCountedPagesAsync(
-            "artist lookup",
-            "artists_loop",
-            (offset, limit) => ["artists", offset, limit, "tags:E"],
-            MapArtist,
-            artist => artist.SourceId,
+        await writer.AppendRefreshLogAsync(
+            refreshId,
+            CatalogueRefreshLogLevel.Information,
+            "Started reading the LMS catalogue.",
+            null,
+            null,
             cancellationToken);
-        var albums = await ReadCountedPagesAsync(
+
+        var albumCount = await ReadCountedPagesAsync(
             "albums",
             "albums_loop",
             (offset, limit) => ["albums", offset, limit, "tags:lytjqwWES"],
             MapAlbum,
-            album => album.SourceId,
+            page => writer.WriteAlbumsAsync(refreshId, page, cancellationToken),
             cancellationToken);
-        var genres = await ReadCountedPagesAsync(
+        await LogCompletedPhaseAsync(writer, refreshId, "albums", albumCount, cancellationToken);
+
+        var genreCount = await ReadCountedPagesAsync(
             "genres",
             "genres_loop",
             (offset, limit) => ["genres", offset, limit],
             MapGenre,
-            genre => genre.SourceId,
+            page => writer.WriteGenresAsync(refreshId, page, cancellationToken),
             cancellationToken);
-        var tracks = await ReadCountedPagesAsync(
+        await LogCompletedPhaseAsync(writer, refreshId, "genres", genreCount, cancellationToken);
+
+        var trackCount = await ReadCountedPagesAsync(
             "tracks",
             "titles_loop",
             (offset, limit) => ["titles", offset, limit, $"tags:{TrackTags}"],
             MapTrack,
-            track => track.SourceId,
+            page => writer.WriteTracksAsync(refreshId, page, cancellationToken),
             cancellationToken);
-        var artists = SelectReferencedArtists(artistLookup, albums, tracks);
-        var virtualLibraries = await ReadVirtualLibrariesAsync(cancellationToken);
+        await LogCompletedPhaseAsync(writer, refreshId, "tracks", trackCount, cancellationToken);
+
+        var artistLookupCount = await ReadCountedPagesAsync(
+            "artist lookup",
+            "artists_loop",
+            (offset, limit) => ["artists", offset, limit, "tags:E"],
+            MapArtist,
+            page => writer.WriteArtistsAsync(refreshId, page, cancellationToken),
+            cancellationToken);
+        await LogCompletedPhaseAsync(
+            writer,
+            refreshId,
+            "artist lookup rows",
+            artistLookupCount,
+            cancellationToken);
+
+        var virtualLibraryMemberships = await ReadVirtualLibrariesAsync(
+            refreshId,
+            writer,
+            cancellationToken);
+        await LogCompletedPhaseAsync(
+            writer,
+            refreshId,
+            "virtual libraries",
+            virtualLibraryMemberships.Count,
+            cancellationToken);
 
         var finalStatus = await ReadStatusAsync(cancellationToken);
         EnsureStable(initialStatus, finalStatus);
 
         var sourceId = settings.ServerId
             ?? throw new LmsRequestException("LMS is not configured.");
-        var warnings = BuildWarnings(
+        var serverTotalMismatches = CountServerTotalMismatches(
             initialStatus,
-            artists,
-            albums,
-            genres,
-            tracks,
-            virtualLibraries);
-        return new CatalogueImportSnapshot(
+            albumCount,
+            genreCount,
+            trackCount);
+        if (serverTotalMismatches > 0)
+        {
+            await writer.AppendRefreshLogAsync(
+                refreshId,
+                CatalogueRefreshLogLevel.Warning,
+                "Server-status totals differed from the corresponding catalogue query totals.",
+                serverTotalMismatches,
+                null,
+                cancellationToken);
+        }
+
+        return new CatalogueSourceReadResult(
             new CatalogueImportSource(
                 sourceId,
                 "lms",
@@ -69,13 +109,27 @@ public sealed class LmsCatalogueReader(
                 initialStatus.LastScan),
             timeProvider.GetUtcNow(),
             ReadUnixTime(initialStatus.LastScan, "server status", "lastscan"),
-            artists,
-            albums,
-            genres,
-            tracks,
-            virtualLibraries,
-            warnings);
+            artistLookupCount,
+            albumCount,
+            genreCount,
+            trackCount,
+            virtualLibraryMemberships.Count,
+            virtualLibraryMemberships);
     }
+
+    private static Task LogCompletedPhaseAsync(
+        ICatalogueImportWriter writer,
+        string refreshId,
+        string phase,
+        int count,
+        CancellationToken cancellationToken) =>
+        writer.AppendRefreshLogAsync(
+            refreshId,
+            CatalogueRefreshLogLevel.Information,
+            $"Completed reading {phase}.",
+            count,
+            count,
+            cancellationToken);
 
     private async Task<LmsCatalogueStatus> ReadStatusAsync(
         CancellationToken cancellationToken)
@@ -93,21 +147,21 @@ public sealed class LmsCatalogueReader(
             ReadOptionalNonNegativeInt(result, "info total songs", "server status"));
     }
 
-    private async Task<IReadOnlyList<T>> ReadCountedPagesAsync<T>(
+    private async Task<int> ReadCountedPagesAsync<T>(
         string responseName,
         string loopName,
         Func<int, int, object[]> command,
         Func<JsonElement, T> map,
-        Func<T, string> sourceId,
+        Func<IReadOnlyList<T>, Task> writePage,
         CancellationToken cancellationToken)
     {
-        var items = new List<T>();
+        var processedCount = 0;
         int? expectedTotal = null;
 
-        while (expectedTotal is null || items.Count < expectedTotal)
+        while (expectedTotal is null || processedCount < expectedTotal)
         {
             var result = await jsonRpcClient.SendAsync(
-                command(items.Count, PageSize),
+                command(processedCount, PageSize),
                 cancellationToken);
             var total = ReadRequiredNonNegativeInt(result, "count", responseName);
             if (expectedTotal is not null && expectedTotal != total)
@@ -119,7 +173,7 @@ public sealed class LmsCatalogueReader(
             expectedTotal = total;
             if (!result.TryGetProperty(loopName, out var loop))
             {
-                if (total == items.Count)
+                if (total == processedCount)
                 {
                     break;
                 }
@@ -135,29 +189,30 @@ public sealed class LmsCatalogueReader(
             }
 
             var page = loop.EnumerateArray().Select(map).ToArray();
-            if (page.Length == 0 && items.Count < total)
+            if (page.Length == 0 && processedCount < total)
             {
                 throw new LmsRequestException(
                     $"LMS {responseName} response ended before its reported count was reached.");
             }
 
-            if (items.Count + page.Length > total)
+            if (processedCount + page.Length > total)
             {
                 throw new LmsRequestException(
                     $"LMS {responseName} response exceeded its reported count.");
             }
 
-            items.AddRange(page);
+            await writePage(page);
+            processedCount += page.Length;
         }
 
-        EnsureUnique(items, responseName, sourceId);
-        return items;
+        return processedCount;
     }
 
-    private async Task<IReadOnlyList<CatalogueImportVirtualLibrary>> ReadVirtualLibrariesAsync(
+    private async Task<IReadOnlyList<CatalogueImportVirtualLibraryMembership>> ReadVirtualLibrariesAsync(
+        string refreshId,
+        ICatalogueImportWriter writer,
         CancellationToken cancellationToken)
     {
-        var libraries = new List<CatalogueImportVirtualLibrary>();
         var result = await jsonRpcClient.SendAsync(
             ["libraries"],
             cancellationToken);
@@ -170,9 +225,11 @@ public sealed class LmsCatalogueReader(
 
         var identities = loop.EnumerateArray().Select(MapVirtualLibraryIdentity).ToArray();
         EnsureUnique(identities, "virtual libraries", library => library.SourceId);
+        await writer.WriteVirtualLibrariesAsync(refreshId, identities, cancellationToken);
+        var memberships = new List<CatalogueImportVirtualLibraryMembership>(identities.Length);
         foreach (var library in identities)
         {
-            var trackIds = await ReadCountedPagesAsync(
+            var memberCount = await ReadCountedPagesAsync(
                 "virtual library members",
                 "titles_loop",
                 (offset, limit) =>
@@ -184,15 +241,25 @@ public sealed class LmsCatalogueReader(
                     "tags:II"
                 ],
                 item => ReadRequiredString(item, "id", "virtual library members"),
-                trackId => trackId,
+                page => writer.WriteVirtualLibraryTracksAsync(
+                    refreshId,
+                    library.SourceId,
+                    page,
+                    cancellationToken),
                 cancellationToken);
-            libraries.Add(new CatalogueImportVirtualLibrary(
+            memberships.Add(new CatalogueImportVirtualLibraryMembership(
                 library.SourceId,
-                library.Name,
-                trackIds));
+                memberCount));
+            await writer.AppendRefreshLogAsync(
+                refreshId,
+                CatalogueRefreshLogLevel.Information,
+                "Completed reading a virtual-library membership.",
+                memberCount,
+                memberCount,
+                cancellationToken);
         }
 
-        return libraries;
+        return memberships;
     }
 
     private static CatalogueImportArtist MapArtist(JsonElement item) =>
@@ -267,24 +334,7 @@ public sealed class LmsCatalogueReader(
     private static CatalogueImportVirtualLibrary MapVirtualLibraryIdentity(JsonElement item) =>
         new(
             ReadRequiredString(item, "id", "virtual libraries"),
-            ReadRequiredString(item, "name", "virtual libraries"),
-            []);
-
-    private static IReadOnlyList<CatalogueImportArtist> SelectReferencedArtists(
-        IReadOnlyList<CatalogueImportArtist> artistLookup,
-        IReadOnlyList<CatalogueImportAlbum> albums,
-        IReadOnlyList<CatalogueImportTrack> tracks)
-    {
-        var referencedIds = tracks
-            .SelectMany(track => track.ArtistSourceIds)
-            .Concat(albums
-                .Select(album => album.AlbumArtistSourceId)
-                .OfType<string>())
-            .ToHashSet(StringComparer.Ordinal);
-        return artistLookup
-            .Where(artist => referencedIds.Contains(artist.SourceId))
-            .ToArray();
-    }
+            ReadRequiredString(item, "name", "virtual libraries"));
 
     private static IReadOnlyList<string> ReadDelimitedIds(JsonElement item, string name)
     {
@@ -314,67 +364,6 @@ public sealed class LmsCatalogueReader(
         return value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-    }
-
-    private static IReadOnlyList<CatalogueImportWarning> BuildWarnings(
-        LmsCatalogueStatus status,
-        IReadOnlyList<CatalogueImportArtist> artists,
-        IReadOnlyList<CatalogueImportAlbum> albums,
-        IReadOnlyList<CatalogueImportGenre> genres,
-        IReadOnlyList<CatalogueImportTrack> tracks,
-        IReadOnlyList<CatalogueImportVirtualLibrary> virtualLibraries)
-    {
-        var artistIds = artists.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
-        var albumIds = albums.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
-        var genreIds = genres.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
-        var trackIds = tracks.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
-        var warnings = new List<CatalogueImportWarning>();
-
-        AddWarning(
-            warnings,
-            "missing-album",
-            "Track album references were not present in the imported album set.",
-            tracks.Count(track => track.AlbumSourceId is not null && !albumIds.Contains(track.AlbumSourceId)));
-        AddWarning(
-            warnings,
-            "missing-artist",
-            "Track or album artist references were not present in the imported artist set.",
-            albums.Count(album => album.AlbumArtistSourceId is not null
-                                  && !artistIds.Contains(album.AlbumArtistSourceId))
-            + tracks.Sum(track => track.ArtistSourceIds.Count(
-                artistId => !artistIds.Contains(artistId))));
-        AddWarning(
-            warnings,
-            "missing-genre",
-            "Track genre references were not present in the imported genre set.",
-            tracks.Sum(track => track.GenreSourceIds.Count(genreId => !genreIds.Contains(genreId))));
-        AddWarning(
-            warnings,
-            "missing-library-track",
-            "Virtual-library memberships referenced tracks outside the imported track set.",
-            virtualLibraries.Sum(library => library.TrackSourceIds.Count(trackId => !trackIds.Contains(trackId))));
-        AddWarning(
-            warnings,
-            "server-total-mismatch",
-            "Server-status totals differed from the corresponding catalogue query totals.",
-            CountServerTotalMismatches(
-                status,
-                albums.Count,
-                genres.Count,
-                tracks.Count));
-        return warnings;
-    }
-
-    private static void AddWarning(
-        ICollection<CatalogueImportWarning> warnings,
-        string code,
-        string message,
-        int occurrences)
-    {
-        if (occurrences > 0)
-        {
-            warnings.Add(new CatalogueImportWarning(code, message, occurrences));
-        }
     }
 
     private static void EnsureReady(LmsCatalogueStatus status)

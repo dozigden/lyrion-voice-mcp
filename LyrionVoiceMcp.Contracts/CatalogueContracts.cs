@@ -1,17 +1,17 @@
 namespace LyrionVoiceMcp.Contracts;
 
 public sealed record CatalogueStatusResponse(
-    PublishedCatalogueGenerationResponse? PublishedGeneration,
+    CatalogueSummaryResponse? Summary,
     CatalogueRefreshRunResponse? LatestRefresh);
 
-public sealed record PublishedCatalogueGenerationResponse(
-    string Id,
+public sealed record CatalogueSummaryResponse(
     string SourceId,
+    string Provider,
     string? SourceRevision,
     string? SourceVersion,
     DateTimeOffset CapturedAt,
     DateTimeOffset? SourceLastScanAt,
-    DateTimeOffset PublishedAt,
+    DateTimeOffset RefreshedAt,
     int ArtistCount,
     int AlbumCount,
     int GenreCount,
@@ -19,11 +19,19 @@ public sealed record PublishedCatalogueGenerationResponse(
     int VirtualLibraryCount,
     int WarningCount);
 
+public sealed record CatalogueRefreshLogResponse(
+    long Id,
+    DateTimeOffset OccurredAt,
+    string Level,
+    string Message,
+    int? ProcessedCount,
+    int? TotalCount);
+
 public sealed record CatalogueRefreshRunResponse(
     string Id,
     string Status,
     DateTimeOffset StartedAt,
     DateTimeOffset? CompletedAt,
     long? DurationMilliseconds,
-    string? PublishedGenerationId,
-    string? FailureMessage);
+    string? FailureMessage,
+    IReadOnlyList<CatalogueRefreshLogResponse> Logs);

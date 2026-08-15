@@ -8,7 +8,7 @@ public sealed class SqliteMediaCatalogueStore(
     CatalogueSettings settings,
     TimeProvider timeProvider) : IMediaCatalogueStore
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 4;
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
         DataSource = settings.DatabasePath,
@@ -26,26 +26,21 @@ public sealed class SqliteMediaCatalogueStore(
             connection,
             "CREATE TABLE IF NOT EXISTS catalogue_schema (version INTEGER NOT NULL);",
             cancellationToken);
+
         var storedVersion = await ReadSchemaVersionAsync(connection, cancellationToken);
-        if (storedVersion == 0)
+        if (storedVersion != 0 && storedVersion != SchemaVersion)
         {
-            await ExecuteAsync(connection, SchemaSql, cancellationToken);
-        }
-        else if (storedVersion == 1)
-        {
-            await ExecuteAsync(connection, Migration1To2Sql, cancellationToken);
-        }
-        else if (storedVersion == SchemaVersion)
-        {
-            await ExecuteAsync(connection, SchemaSql, cancellationToken);
+            await ExecuteAsync(connection, ResetSchemaSql, cancellationToken);
         }
 
+        await ExecuteAsync(connection, SchemaSql, cancellationToken);
         storedVersion = await ReadSchemaVersionAsync(connection, cancellationToken);
         if (storedVersion != SchemaVersion)
         {
-            throw new InvalidOperationException("The catalogue database schema is not supported.");
+            throw new InvalidOperationException("The catalogue database schema could not be initialised.");
         }
 
+        var completedAt = timeProvider.GetUtcNow();
         await using var interrupted = connection.CreateCommand();
         interrupted.CommandText = """
             UPDATE catalogue_refresh_runs
@@ -55,27 +50,25 @@ public sealed class SqliteMediaCatalogueStore(
                 failure_message = 'Catalogue refresh was interrupted before completion.'
             WHERE status = 'running';
             """;
-        Add(interrupted, "$completedAt", FormatDate(timeProvider.GetUtcNow()));
+        Add(interrupted, "$completedAt", FormatDate(completedAt));
         await interrupted.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<PublishedCatalogueGeneration?> GetPublishedGenerationAsync(
-        CancellationToken cancellationToken)
+    public async Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT g.id, g.source_id, g.source_revision, g.source_version,
-                   g.captured_at, g.source_last_scan_at, g.published_at,
-                   g.artist_count, g.album_count, g.genre_count, g.track_count,
-                   g.virtual_library_count, g.warning_count
-            FROM catalogue_state s
-            JOIN catalogue_generations g ON g.id = s.published_generation_id
-            WHERE s.id = 1;
+            SELECT source_id, source_provider, source_revision, source_version,
+                   captured_at, source_last_scan_at, refreshed_at,
+                   artist_count, album_count, genre_count, track_count,
+                   virtual_library_count, warning_count
+            FROM catalogue_state
+            WHERE id = 1;
             """;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? ReadGeneration(reader)
+            ? ReadSummary(reader)
             : null;
     }
 
@@ -85,16 +78,21 @@ public sealed class SqliteMediaCatalogueStore(
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, status, started_at, completed_at, duration_ms,
-                   published_generation_id, failure_message
+            SELECT id, status, started_at, completed_at, duration_ms, failure_message
             FROM catalogue_refresh_runs
             ORDER BY started_at DESC, id DESC
             LIMIT 1;
             """;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? ReadRefreshRun(reader)
-            : null;
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var refresh = ReadRefreshRun(reader, []);
+        await reader.DisposeAsync();
+        var logs = await ListRefreshLogsAsync(connection, refresh.Id, cancellationToken);
+        return refresh with { Logs = logs };
     }
 
     public async Task BeginRefreshAsync(
@@ -103,62 +101,393 @@ public sealed class SqliteMediaCatalogueStore(
         CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
             INSERT INTO catalogue_refresh_runs (id, status, started_at)
             VALUES ($id, 'running', $startedAt);
             """;
-        Add(command, "$id", refreshId);
-        Add(command, "$startedAt", FormatDate(startedAt));
+            Add(command, "$id", refreshId);
+            Add(command, "$startedAt", FormatDate(startedAt));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var log = connection.CreateCommand())
+        {
+            log.Transaction = transaction;
+            log.CommandText = """
+                INSERT INTO catalogue_refresh_logs (
+                    refresh_id, occurred_at, level, message)
+                VALUES ($refreshId, $occurredAt, 'information', 'Catalogue refresh queued.');
+                """;
+            Add(log, "$refreshId", refreshId);
+            Add(log, "$occurredAt", FormatDate(startedAt));
+            await log.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public Task WriteAlbumsAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportAlbum> albums,
+        CancellationToken cancellationToken) =>
+        WriteBatchAsync(
+            albums,
+            """
+            INSERT INTO catalogue_albums (
+                source_id, title, album_artist_source_id, year, disc_count,
+                is_compilation, release_type, artwork_track_source_id, external_id, seen_refresh_id)
+            VALUES (
+                $sourceId, $title, $artistId, $year, $discCount,
+                $compilation, $releaseType, $artworkTrackId, $externalId, $refreshId)
+            ON CONFLICT(source_id) DO UPDATE SET
+                title = excluded.title,
+                album_artist_source_id = excluded.album_artist_source_id,
+                year = excluded.year,
+                disc_count = excluded.disc_count,
+                is_compilation = excluded.is_compilation,
+                release_type = excluded.release_type,
+                artwork_track_source_id = excluded.artwork_track_source_id,
+                external_id = excluded.external_id,
+                seen_refresh_id = excluded.seen_refresh_id;
+            """,
+            command =>
+            {
+                Add(command, "$sourceId", null);
+                Add(command, "$title", null);
+                Add(command, "$artistId", null);
+                Add(command, "$year", null);
+                Add(command, "$discCount", null);
+                Add(command, "$compilation", null);
+                Add(command, "$releaseType", null);
+                Add(command, "$artworkTrackId", null);
+                Add(command, "$externalId", null);
+                Add(command, "$refreshId", refreshId);
+            },
+            (command, album) =>
+            {
+                Set(command, "$sourceId", album.SourceId);
+                Set(command, "$title", album.Title);
+                Set(command, "$artistId", album.AlbumArtistSourceId);
+                Set(command, "$year", album.Year);
+                Set(command, "$discCount", album.DiscCount);
+                Set(command, "$compilation", ToDatabaseBoolean(album.IsCompilation));
+                Set(command, "$releaseType", album.ReleaseType);
+                Set(command, "$artworkTrackId", album.ArtworkTrackSourceId);
+                Set(command, "$externalId", album.ExternalId);
+            },
+            cancellationToken);
+
+    public Task WriteGenresAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportGenre> genres,
+        CancellationToken cancellationToken) =>
+        WriteBatchAsync(
+            genres,
+            """
+            INSERT INTO catalogue_genres (source_id, name, seen_refresh_id)
+            VALUES ($sourceId, $name, $refreshId)
+            ON CONFLICT(source_id) DO UPDATE SET
+                name = excluded.name,
+                seen_refresh_id = excluded.seen_refresh_id;
+            """,
+            command =>
+            {
+                Add(command, "$sourceId", null);
+                Add(command, "$name", null);
+                Add(command, "$refreshId", refreshId);
+            },
+            (command, genre) =>
+            {
+                Set(command, "$sourceId", genre.SourceId);
+                Set(command, "$name", genre.Name);
+            },
+            cancellationToken);
+
+    public async Task WriteTracksAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportTrack> tracks,
+        CancellationToken cancellationToken)
+    {
+        if (tracks.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        await using var trackCommand = CreateTrackCommand(connection, transaction, refreshId);
+        await using var deleteArtists = CreateDeleteCommand(
+            connection,
+            transaction,
+            "DELETE FROM catalogue_track_artists WHERE track_source_id = $trackId;");
+        await using var deleteGenres = CreateDeleteCommand(
+            connection,
+            transaction,
+            "DELETE FROM catalogue_track_genres WHERE track_source_id = $trackId;");
+        await using var deleteStatistics = CreateDeleteCommand(
+            connection,
+            transaction,
+            "DELETE FROM catalogue_track_statistics WHERE track_source_id = $trackId;");
+        await using var artistCommand = CreateTrackArtistCommand(connection, transaction);
+        await using var genreCommand = CreateTrackGenreCommand(connection, transaction);
+        await using var statisticsCommand = CreateTrackStatisticsCommand(connection, transaction);
+
+        foreach (var track in tracks)
+        {
+            SetTrackParameters(trackCommand, track);
+            await trackCommand.ExecuteNonQueryAsync(cancellationToken);
+            await DeleteTrackChildrenAsync(deleteArtists, track.SourceId, cancellationToken);
+            await DeleteTrackChildrenAsync(deleteGenres, track.SourceId, cancellationToken);
+            await DeleteTrackChildrenAsync(deleteStatistics, track.SourceId, cancellationToken);
+
+            foreach (var artistId in track.ArtistSourceIds)
+            {
+                Set(artistCommand, "$trackId", track.SourceId);
+                Set(artistCommand, "$artistId", artistId);
+                await artistCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            foreach (var genreId in track.GenreSourceIds)
+            {
+                Set(genreCommand, "$trackId", track.SourceId);
+                Set(genreCommand, "$genreId", genreId);
+                await genreCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            foreach (var statistics in track.Statistics)
+            {
+                Set(statisticsCommand, "$trackId", track.SourceId);
+                Set(statisticsCommand, "$source", statistics.Source);
+                Set(statisticsCommand, "$rating", statistics.Rating);
+                Set(statisticsCommand, "$playCount", statistics.PlayCount);
+                Set(statisticsCommand, "$lastPlayedAt", DbDate(statistics.LastPlayedAt));
+                await statisticsCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task WriteArtistsAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportArtist> artists,
+        CancellationToken cancellationToken)
+    {
+        if (artists.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        await using var lookup = connection.CreateCommand();
+        lookup.Transaction = transaction;
+        lookup.CommandText = """
+            INSERT INTO catalogue_artist_lookup (source_id, seen_refresh_id)
+            VALUES ($sourceId, $refreshId)
+            ON CONFLICT(source_id) DO UPDATE SET
+                seen_refresh_id = excluded.seen_refresh_id;
+            """;
+        Add(lookup, "$sourceId", null);
+        Add(lookup, "$refreshId", refreshId);
+
+        await using var artist = connection.CreateCommand();
+        artist.Transaction = transaction;
+        artist.CommandText = """
+            INSERT INTO catalogue_artists (source_id, name, external_id, seen_refresh_id)
+            SELECT $sourceId, $name, $externalId, $refreshId
+            WHERE EXISTS (
+                SELECT 1
+                FROM catalogue_albums
+                WHERE seen_refresh_id = $refreshId
+                  AND album_artist_source_id = $sourceId
+            ) OR EXISTS (
+                SELECT 1
+                FROM catalogue_track_artists artist
+                JOIN catalogue_tracks track ON track.source_id = artist.track_source_id
+                WHERE track.seen_refresh_id = $refreshId
+                  AND artist.artist_source_id = $sourceId
+            )
+            ON CONFLICT(source_id) DO UPDATE SET
+                name = excluded.name,
+                external_id = excluded.external_id,
+                seen_refresh_id = excluded.seen_refresh_id;
+            """;
+        Add(artist, "$sourceId", null);
+        Add(artist, "$name", null);
+        Add(artist, "$externalId", null);
+        Add(artist, "$refreshId", refreshId);
+
+        foreach (var item in artists)
+        {
+            Set(lookup, "$sourceId", item.SourceId);
+            await lookup.ExecuteNonQueryAsync(cancellationToken);
+
+            Set(artist, "$sourceId", item.SourceId);
+            Set(artist, "$name", item.Name);
+            Set(artist, "$externalId", item.ExternalId);
+            await artist.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public Task WriteVirtualLibrariesAsync(
+        string refreshId,
+        IReadOnlyList<CatalogueImportVirtualLibrary> libraries,
+        CancellationToken cancellationToken) =>
+        WriteBatchAsync(
+            libraries,
+            """
+            INSERT INTO catalogue_virtual_libraries (source_id, name, seen_refresh_id)
+            VALUES ($sourceId, $name, $refreshId)
+            ON CONFLICT(source_id) DO UPDATE SET
+                name = excluded.name,
+                seen_refresh_id = excluded.seen_refresh_id;
+            """,
+            command =>
+            {
+                Add(command, "$sourceId", null);
+                Add(command, "$name", null);
+                Add(command, "$refreshId", refreshId);
+            },
+            (command, library) =>
+            {
+                Set(command, "$sourceId", library.SourceId);
+                Set(command, "$name", library.Name);
+            },
+            cancellationToken);
+
+    public Task WriteVirtualLibraryTracksAsync(
+        string refreshId,
+        string librarySourceId,
+        IReadOnlyList<string> trackSourceIds,
+        CancellationToken cancellationToken) =>
+        WriteBatchAsync(
+            trackSourceIds,
+            """
+            INSERT INTO catalogue_virtual_library_tracks (
+                library_source_id, track_source_id, seen_refresh_id)
+            VALUES ($libraryId, $trackId, $refreshId)
+            ON CONFLICT(library_source_id, track_source_id) DO UPDATE SET
+                seen_refresh_id = excluded.seen_refresh_id;
+            """,
+            command =>
+            {
+                Add(command, "$libraryId", librarySourceId);
+                Add(command, "$trackId", null);
+                Add(command, "$refreshId", refreshId);
+            },
+            (command, trackId) => Set(command, "$trackId", trackId),
+            cancellationToken);
+
+    public async Task AppendRefreshLogAsync(
+        string refreshId,
+        CatalogueRefreshLogLevel level,
+        string message,
+        int? processedCount,
+        int? totalCount,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO catalogue_refresh_logs (
+                refresh_id, occurred_at, level, message, processed_count, total_count)
+            VALUES ($refreshId, $occurredAt, $level, $message, $processedCount, $totalCount);
+            """;
+        Add(command, "$refreshId", refreshId);
+        Add(command, "$occurredAt", FormatDate(timeProvider.GetUtcNow()));
+        Add(command, "$level", ToText(level));
+        Add(command, "$message", message);
+        Add(command, "$processedCount", processedCount);
+        Add(command, "$totalCount", totalCount);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<PublishedCatalogueGeneration> PublishAsync(
-        CatalogueImportSnapshot snapshot,
+    public async Task<CatalogueSummary> CompleteRefreshAsync(
         string refreshId,
+        CatalogueSourceReadResult source,
         DateTimeOffset completedAt,
         long durationMilliseconds,
         CancellationToken cancellationToken)
     {
-        var generation = new PublishedCatalogueGeneration(
-            Guid.NewGuid().ToString("N"),
-            snapshot.Source.Id,
-            snapshot.Source.Revision,
-            snapshot.Source.Version,
-            snapshot.CapturedAt,
-            snapshot.SourceLastScanAt,
-            completedAt,
-            snapshot.Artists.Count,
-            snapshot.Albums.Count,
-            snapshot.Genres.Count,
-            snapshot.Tracks.Count,
-            snapshot.VirtualLibraries.Count,
-            snapshot.Warnings.Count);
-
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-        await InsertGenerationAsync(connection, transaction, generation, snapshot, cancellationToken);
-        await InsertArtistsAsync(connection, transaction, generation.Id, snapshot.Artists, cancellationToken);
-        await InsertAlbumsAsync(connection, transaction, generation.Id, snapshot.Albums, cancellationToken);
-        await InsertGenresAsync(connection, transaction, generation.Id, snapshot.Genres, cancellationToken);
-        await InsertTracksAsync(connection, transaction, generation.Id, snapshot.Tracks, cancellationToken);
-        await InsertVirtualLibrariesAsync(
-            connection,
-            transaction,
-            generation.Id,
-            snapshot.VirtualLibraries,
-            cancellationToken);
-        await InsertWarningsAsync(connection, transaction, generation.Id, snapshot.Warnings, cancellationToken);
-        await PublishGenerationAsync(
-            connection,
-            transaction,
-            generation,
+        await ValidateSeenCountAsync(
+            "catalogue_artist_lookup",
             refreshId,
+            source.ArtistLookupCount,
+            cancellationToken);
+        await ValidateSeenCountAsync(
+            "catalogue_albums",
+            refreshId,
+            source.AlbumCount,
+            cancellationToken);
+        await ValidateSeenCountAsync(
+            "catalogue_genres",
+            refreshId,
+            source.GenreCount,
+            cancellationToken);
+        await ValidateSeenCountAsync(
+            "catalogue_tracks",
+            refreshId,
+            source.TrackCount,
+            cancellationToken);
+        await ValidateSeenCountAsync(
+            "catalogue_virtual_libraries",
+            refreshId,
+            source.VirtualLibraryCount,
+            cancellationToken);
+        if (source.VirtualLibraryMemberships.Count != source.VirtualLibraryCount)
+        {
+            throw new InvalidOperationException(
+                "The catalogue refresh did not report membership counts for every virtual library.");
+        }
+
+        foreach (var membership in source.VirtualLibraryMemberships)
+        {
+            await ValidateVirtualLibraryMembershipCountAsync(
+                refreshId,
+                membership,
+                cancellationToken);
+        }
+
+        await DeleteNotSeenAsync("catalogue_virtual_library_tracks", refreshId, cancellationToken);
+        await DeleteNotSeenAsync("catalogue_virtual_libraries", refreshId, cancellationToken);
+        await DeleteNotSeenAsync("catalogue_tracks", refreshId, cancellationToken);
+        await DeleteNotSeenAsync("catalogue_albums", refreshId, cancellationToken);
+        await DeleteNotSeenAsync("catalogue_genres", refreshId, cancellationToken);
+        await DeleteNotSeenAsync("catalogue_artists", refreshId, cancellationToken);
+        await DeleteNotSeenAsync("catalogue_artist_lookup", refreshId, cancellationToken);
+
+        await RecordReferentialWarningsAsync(refreshId, cancellationToken);
+        var warningCount = await CountRefreshWarningsAsync(refreshId, cancellationToken);
+        var summary = new CatalogueSummary(
+            source.Source.Id,
+            source.Source.Provider,
+            source.Source.Revision,
+            source.Source.Version,
+            source.CapturedAt,
+            source.SourceLastScanAt,
+            completedAt,
+            await CountAsync("catalogue_artists", cancellationToken),
+            await CountAsync("catalogue_albums", cancellationToken),
+            await CountAsync("catalogue_genres", cancellationToken),
+            await CountAsync("catalogue_tracks", cancellationToken),
+            await CountAsync("catalogue_virtual_libraries", cancellationToken),
+            warningCount);
+
+        await StoreCompletedRefreshAsync(
+            refreshId,
+            source,
+            summary,
             completedAt,
             durationMilliseconds,
             cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return generation;
+        return summary;
     }
 
     public async Task CompleteFailedRefreshAsync(
@@ -171,230 +500,393 @@ public sealed class SqliteMediaCatalogueStore(
     {
         if (status is not (CatalogueRefreshRunStatus.Failed or CatalogueRefreshRunStatus.Cancelled))
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(status),
-                status,
-                "A failed refresh can only be recorded as failed or cancelled.");
+            throw new InvalidOperationException("A refresh failure has an invalid terminal status.");
         }
 
         await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE catalogue_refresh_runs
+                SET status = $status,
+                    completed_at = $completedAt,
+                    duration_ms = $duration,
+                    failure_message = $failureMessage
+                WHERE id = $id AND status = 'running';
+                """;
+            Add(command, "$status", ToText(status));
+            Add(command, "$completedAt", FormatDate(completedAt));
+            Add(command, "$duration", durationMilliseconds);
+            Add(command, "$failureMessage", failureMessage);
+            Add(command, "$id", refreshId);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                throw new InvalidOperationException("The catalogue refresh run was not active.");
+            }
+        }
+
+        await using (var log = connection.CreateCommand())
+        {
+            log.Transaction = transaction;
+            log.CommandText = """
+                INSERT INTO catalogue_refresh_logs (
+                    refresh_id, occurred_at, level, message)
+                VALUES ($refreshId, $occurredAt, $level, $message);
+                """;
+            Add(log, "$refreshId", refreshId);
+            Add(log, "$occurredAt", FormatDate(completedAt));
+            Add(log, "$level", status == CatalogueRefreshRunStatus.Cancelled ? "warning" : "error");
+            Add(log, "$message", failureMessage);
+            await log.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task StoreCompletedRefreshAsync(
+        string refreshId,
+        CatalogueSourceReadResult source,
+        CatalogueSummary summary,
+        DateTimeOffset completedAt,
+        long durationMilliseconds,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        await using (var state = connection.CreateCommand())
+        {
+            state.Transaction = transaction;
+            state.CommandText = """
+                INSERT INTO catalogue_state (
+                    id, source_id, source_provider, source_version, source_revision,
+                    captured_at, source_last_scan_at, refreshed_at,
+                    artist_count, album_count, genre_count, track_count,
+                    virtual_library_count, warning_count)
+                VALUES (
+                    1, $sourceId, $provider, $version, $revision,
+                    $capturedAt, $lastScanAt, $refreshedAt,
+                    $artists, $albums, $genres, $tracks, $libraries, $warnings)
+                ON CONFLICT(id) DO UPDATE SET
+                    source_id = excluded.source_id,
+                    source_provider = excluded.source_provider,
+                    source_version = excluded.source_version,
+                    source_revision = excluded.source_revision,
+                    captured_at = excluded.captured_at,
+                    source_last_scan_at = excluded.source_last_scan_at,
+                    refreshed_at = excluded.refreshed_at,
+                    artist_count = excluded.artist_count,
+                    album_count = excluded.album_count,
+                    genre_count = excluded.genre_count,
+                    track_count = excluded.track_count,
+                    virtual_library_count = excluded.virtual_library_count,
+                    warning_count = excluded.warning_count;
+                """;
+            Add(state, "$sourceId", source.Source.Id);
+            Add(state, "$provider", source.Source.Provider);
+            Add(state, "$version", source.Source.Version);
+            Add(state, "$revision", source.Source.Revision);
+            Add(state, "$capturedAt", FormatDate(source.CapturedAt));
+            Add(state, "$lastScanAt", DbDate(source.SourceLastScanAt));
+            Add(state, "$refreshedAt", FormatDate(completedAt));
+            Add(state, "$artists", summary.ArtistCount);
+            Add(state, "$albums", summary.AlbumCount);
+            Add(state, "$genres", summary.GenreCount);
+            Add(state, "$tracks", summary.TrackCount);
+            Add(state, "$libraries", summary.VirtualLibraryCount);
+            Add(state, "$warnings", summary.WarningCount);
+            await state.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var refresh = connection.CreateCommand())
+        {
+            refresh.Transaction = transaction;
+            refresh.CommandText = """
+                UPDATE catalogue_refresh_runs
+                SET status = 'succeeded',
+                    completed_at = $completedAt,
+                    duration_ms = $duration,
+                    failure_message = NULL
+                WHERE id = $refreshId AND status = 'running';
+                """;
+            Add(refresh, "$completedAt", FormatDate(completedAt));
+            Add(refresh, "$duration", durationMilliseconds);
+            Add(refresh, "$refreshId", refreshId);
+            if (await refresh.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                throw new InvalidOperationException("The catalogue refresh run was not active.");
+            }
+        }
+
+        await using (var log = connection.CreateCommand())
+        {
+            log.Transaction = transaction;
+            log.CommandText = """
+                INSERT INTO catalogue_refresh_logs (
+                    refresh_id, occurred_at, level, message, processed_count, total_count)
+                VALUES ($refreshId, $occurredAt, 'information',
+                        'Completed catalogue refresh.', $trackCount, $trackCount);
+                """;
+            Add(log, "$refreshId", refreshId);
+            Add(log, "$occurredAt", FormatDate(completedAt));
+            Add(log, "$trackCount", summary.TrackCount);
+            await log.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task RecordReferentialWarningsAsync(
+        string refreshId,
+        CancellationToken cancellationToken)
+    {
+        var warnings = new[]
+        {
+            new ReferentialWarning(
+                "Track album references were not present in the imported album set.",
+                """
+                SELECT COUNT(*)
+                FROM catalogue_tracks track
+                LEFT JOIN catalogue_albums album ON album.source_id = track.album_source_id
+                WHERE track.album_source_id IS NOT NULL AND album.source_id IS NULL;
+                """),
+            new ReferentialWarning(
+                "Track or album artist references were not present in the imported artist set.",
+                """
+                SELECT
+                    (SELECT COUNT(*)
+                     FROM catalogue_albums album
+                     LEFT JOIN catalogue_artists artist ON artist.source_id = album.album_artist_source_id
+                     WHERE album.album_artist_source_id IS NOT NULL AND artist.source_id IS NULL)
+                  + (SELECT COUNT(*)
+                     FROM catalogue_track_artists track_artist
+                     LEFT JOIN catalogue_artists artist ON artist.source_id = track_artist.artist_source_id
+                     WHERE artist.source_id IS NULL);
+                """),
+            new ReferentialWarning(
+                "Track genre references were not present in the imported genre set.",
+                """
+                SELECT COUNT(*)
+                FROM catalogue_track_genres track_genre
+                LEFT JOIN catalogue_genres genre ON genre.source_id = track_genre.genre_source_id
+                WHERE genre.source_id IS NULL;
+                """),
+            new ReferentialWarning(
+                "Virtual-library memberships referenced tracks outside the imported track set.",
+                """
+                SELECT COUNT(*)
+                FROM catalogue_virtual_library_tracks member
+                LEFT JOIN catalogue_tracks track ON track.source_id = member.track_source_id
+                WHERE track.source_id IS NULL;
+                """)
+        };
+
+        foreach (var warning in warnings)
+        {
+            await using var connection = await OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = warning.Sql;
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+            var occurrences = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+            if (occurrences == 0)
+            {
+                continue;
+            }
+
+            await AppendRefreshLogAsync(
+                refreshId,
+                CatalogueRefreshLogLevel.Warning,
+                warning.Message,
+                occurrences,
+                null,
+                cancellationToken);
+        }
+
+    }
+
+    private async Task<int> CountRefreshWarningsAsync(
+        string refreshId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            UPDATE catalogue_refresh_runs
-            SET status = $status,
-                completed_at = $completedAt,
-                duration_ms = $duration,
-                failure_message = $failureMessage
-            WHERE id = $id AND status = 'running';
+            SELECT COUNT(*)
+            FROM catalogue_refresh_logs
+            WHERE refresh_id = $refreshId AND level = 'warning';
             """;
-        Add(command, "$status", ToText(status));
-        Add(command, "$completedAt", FormatDate(completedAt));
-        Add(command, "$duration", durationMilliseconds);
-        Add(command, "$failureMessage", failureMessage);
-        Add(command, "$id", refreshId);
-        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        Add(command, "$refreshId", refreshId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+    }
+
+    private async Task ValidateSeenCountAsync(
+        string table,
+        string refreshId,
+        int expectedCount,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM {table} WHERE seen_refresh_id = $refreshId;";
+        Add(command, "$refreshId", refreshId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        var actualCount = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+        if (actualCount != expectedCount)
         {
-            throw new InvalidOperationException("The catalogue refresh run was not active.");
+            throw new InvalidOperationException(
+                $"The catalogue refresh wrote {actualCount} unique rows to {table}, but LMS returned {expectedCount} rows.");
         }
     }
 
-    private static async Task InsertGenerationAsync(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
-        PublishedCatalogueGeneration generation,
-        CatalogueImportSnapshot snapshot,
+    private async Task ValidateVirtualLibraryMembershipCountAsync(
+        string refreshId,
+        CatalogueImportVirtualLibraryMembership membership,
         CancellationToken cancellationToken)
     {
+        await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO catalogue_generations (
-                id, source_id, source_provider, source_version, source_revision,
-                captured_at, source_last_scan_at, published_at,
-                artist_count, album_count, genre_count, track_count,
-                virtual_library_count, warning_count)
-            VALUES (
-                $id, $sourceId, $provider, $version, $revision,
-                $capturedAt, $lastScanAt, $publishedAt,
-                $artists, $albums, $genres, $tracks, $libraries, $warnings);
+            SELECT COUNT(*)
+            FROM catalogue_virtual_library_tracks
+            WHERE library_source_id = $libraryId AND seen_refresh_id = $refreshId;
             """;
-        Add(command, "$id", generation.Id);
-        Add(command, "$sourceId", snapshot.Source.Id);
-        Add(command, "$provider", snapshot.Source.Provider);
-        Add(command, "$version", snapshot.Source.Version);
-        Add(command, "$revision", snapshot.Source.Revision);
-        Add(command, "$capturedAt", FormatDate(snapshot.CapturedAt));
-        Add(command, "$lastScanAt", snapshot.SourceLastScanAt is null
-            ? null
-            : FormatDate(snapshot.SourceLastScanAt.Value));
-        Add(command, "$publishedAt", FormatDate(generation.PublishedAt));
-        Add(command, "$artists", generation.ArtistCount);
-        Add(command, "$albums", generation.AlbumCount);
-        Add(command, "$genres", generation.GenreCount);
-        Add(command, "$tracks", generation.TrackCount);
-        Add(command, "$libraries", generation.VirtualLibraryCount);
-        Add(command, "$warnings", generation.WarningCount);
+        Add(command, "$libraryId", membership.LibrarySourceId);
+        Add(command, "$refreshId", refreshId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        var actualCount = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+        if (actualCount != membership.TrackCount)
+        {
+            throw new InvalidOperationException(
+                $"The catalogue refresh wrote {actualCount} unique virtual-library memberships for {membership.LibrarySourceId}, but LMS returned {membership.TrackCount} rows.");
+        }
+    }
+
+    private async Task DeleteNotSeenAsync(
+        string table,
+        string refreshId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"DELETE FROM {table} WHERE seen_refresh_id <> $refreshId;";
+        Add(command, "$refreshId", refreshId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task InsertArtistsAsync(
+    private async Task<int> CountAsync(string table, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM {table};";
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+    }
+
+    private async Task<IReadOnlyList<CatalogueRefreshLog>> ListRefreshLogsAsync(
         SqliteConnection connection,
-        SqliteTransaction transaction,
-        string generationId,
-        IReadOnlyList<CatalogueImportArtist> artists,
+        string refreshId,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO catalogue_artists (generation_id, source_id, name, external_id)
-            VALUES ($generationId, $sourceId, $name, $externalId);
+            SELECT id, occurred_at, level, message, processed_count, total_count
+            FROM catalogue_refresh_logs
+            WHERE refresh_id = $refreshId
+            ORDER BY id;
             """;
-        Add(command, "$generationId", generationId);
-        var sourceId = Add(command, "$sourceId", null);
-        var name = Add(command, "$name", null);
-        var externalId = Add(command, "$externalId", null);
-        foreach (var artist in artists)
+        Add(command, "$refreshId", refreshId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var logs = new List<CatalogueRefreshLog>();
+        while (await reader.ReadAsync(cancellationToken))
         {
-            sourceId.Value = artist.SourceId;
-            name.Value = artist.Name;
-            externalId.Value = DbValue(artist.ExternalId);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            logs.Add(new CatalogueRefreshLog(
+                reader.GetInt64(0),
+                ParseDate(reader.GetString(1)),
+                ParseLogLevel(reader.GetString(2)),
+                reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                reader.IsDBNull(5) ? null : reader.GetInt32(5)));
         }
+
+        return logs;
     }
 
-    private static async Task InsertAlbumsAsync(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
-        string generationId,
-        IReadOnlyList<CatalogueImportAlbum> albums,
+    private async Task WriteBatchAsync<T>(
+        IReadOnlyList<T> items,
+        string sql,
+        Action<SqliteCommand> configure,
+        Action<SqliteCommand, T> setValues,
         CancellationToken cancellationToken)
     {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = """
-            INSERT INTO catalogue_albums (
-                generation_id, source_id, title, album_artist_source_id, year,
-                disc_count, is_compilation, release_type, artwork_track_source_id, external_id)
-            VALUES (
-                $generationId, $sourceId, $title, $artistId, $year,
-                $discCount, $compilation, $releaseType, $artworkTrackId, $externalId);
-            """;
-        Add(command, "$generationId", generationId);
-        var sourceId = Add(command, "$sourceId", null);
-        var title = Add(command, "$title", null);
-        var artistId = Add(command, "$artistId", null);
-        var year = Add(command, "$year", null);
-        var discCount = Add(command, "$discCount", null);
-        var compilation = Add(command, "$compilation", null);
-        var releaseType = Add(command, "$releaseType", null);
-        var artworkTrackId = Add(command, "$artworkTrackId", null);
-        var externalId = Add(command, "$externalId", null);
-        foreach (var album in albums)
+        command.CommandText = sql;
+        configure(command);
+        foreach (var item in items)
         {
-            sourceId.Value = album.SourceId;
-            title.Value = album.Title;
-            artistId.Value = DbValue(album.AlbumArtistSourceId);
-            year.Value = DbValue(album.Year);
-            discCount.Value = DbValue(album.DiscCount);
-            compilation.Value = DbValue(album.IsCompilation is null ? null : album.IsCompilation.Value ? 1 : 0);
-            releaseType.Value = DbValue(album.ReleaseType);
-            artworkTrackId.Value = DbValue(album.ArtworkTrackSourceId);
-            externalId.Value = DbValue(album.ExternalId);
+            setValues(command, item);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
-    }
 
-    private static async Task InsertGenresAsync(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
-        string generationId,
-        IReadOnlyList<CatalogueImportGenre> genres,
-        CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = """
-            INSERT INTO catalogue_genres (generation_id, source_id, name)
-            VALUES ($generationId, $sourceId, $name);
-            """;
-        Add(command, "$generationId", generationId);
-        var sourceId = Add(command, "$sourceId", null);
-        var name = Add(command, "$name", null);
-        foreach (var genre in genres)
-        {
-            sourceId.Value = genre.SourceId;
-            name.Value = genre.Name;
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-    }
-
-    private static async Task InsertTracksAsync(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
-        string generationId,
-        IReadOnlyList<CatalogueImportTrack> tracks,
-        CancellationToken cancellationToken)
-    {
-        await using var trackCommand = CreateTrackCommand(connection, transaction, generationId);
-        await using var artistCommand = CreateTrackArtistCommand(connection, transaction, generationId);
-        await using var genreCommand = CreateTrackGenreCommand(connection, transaction, generationId);
-        await using var statisticsCommand = CreateTrackStatisticsCommand(connection, transaction, generationId);
-        foreach (var track in tracks)
-        {
-            SetTrackParameters(trackCommand, track);
-            await trackCommand.ExecuteNonQueryAsync(cancellationToken);
-
-            foreach (var artistId in track.ArtistSourceIds)
-            {
-                artistCommand.Parameters["$trackId"].Value = track.SourceId;
-                artistCommand.Parameters["$artistId"].Value = artistId;
-                await artistCommand.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            foreach (var genreId in track.GenreSourceIds)
-            {
-                genreCommand.Parameters["$trackId"].Value = track.SourceId;
-                genreCommand.Parameters["$genreId"].Value = genreId;
-                await genreCommand.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            foreach (var statistics in track.Statistics)
-            {
-                statisticsCommand.Parameters["$trackId"].Value = track.SourceId;
-                statisticsCommand.Parameters["$source"].Value = statistics.Source;
-                statisticsCommand.Parameters["$rating"].Value = DbValue(statistics.Rating);
-                statisticsCommand.Parameters["$playCount"].Value = DbValue(statistics.PlayCount);
-                statisticsCommand.Parameters["$lastPlayedAt"].Value = statistics.LastPlayedAt is null
-                    ? DBNull.Value
-                    : FormatDate(statistics.LastPlayedAt.Value);
-                await statisticsCommand.ExecuteNonQueryAsync(cancellationToken);
-            }
-        }
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private static SqliteCommand CreateTrackCommand(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        string generationId)
+        string refreshId)
     {
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO catalogue_tracks (
-                generation_id, source_id, title, subtitle, url, content_type, is_remote,
+                source_id, title, subtitle, url, content_type, is_remote,
                 external_id, album_source_id, year, disc_number, disc_count, track_number,
                 duration_seconds, file_size_bytes, sample_rate, added_at, source_modified_at,
                 source_updated_at, release_type, is_compilation, artwork_track_source_id,
-                work_source_id, work_title, performance, grouping_name)
+                work_source_id, work_title, performance, grouping_name, seen_refresh_id)
             VALUES (
-                $generationId, $sourceId, $title, $subtitle, $url, $contentType, $remote,
+                $sourceId, $title, $subtitle, $url, $contentType, $remote,
                 $externalId, $albumId, $year, $discNumber, $discCount, $trackNumber,
                 $duration, $fileSize, $sampleRate, $addedAt, $modifiedAt,
                 $updatedAt, $releaseType, $compilation, $artworkTrackId,
-                $workId, $workTitle, $performance, $grouping);
+                $workId, $workTitle, $performance, $grouping, $refreshId)
+            ON CONFLICT(source_id) DO UPDATE SET
+                title = excluded.title,
+                subtitle = excluded.subtitle,
+                url = excluded.url,
+                content_type = excluded.content_type,
+                is_remote = excluded.is_remote,
+                external_id = excluded.external_id,
+                album_source_id = excluded.album_source_id,
+                year = excluded.year,
+                disc_number = excluded.disc_number,
+                disc_count = excluded.disc_count,
+                track_number = excluded.track_number,
+                duration_seconds = excluded.duration_seconds,
+                file_size_bytes = excluded.file_size_bytes,
+                sample_rate = excluded.sample_rate,
+                added_at = excluded.added_at,
+                source_modified_at = excluded.source_modified_at,
+                source_updated_at = excluded.source_updated_at,
+                release_type = excluded.release_type,
+                is_compilation = excluded.is_compilation,
+                artwork_track_source_id = excluded.artwork_track_source_id,
+                work_source_id = excluded.work_source_id,
+                work_title = excluded.work_title,
+                performance = excluded.performance,
+                grouping_name = excluded.grouping_name,
+                seen_refresh_id = excluded.seen_refresh_id;
             """;
-        Add(command, "$generationId", generationId);
         foreach (var name in new[]
                  {
                      "$sourceId", "$title", "$subtitle", "$url", "$contentType", "$remote",
@@ -407,52 +899,49 @@ public sealed class SqliteMediaCatalogueStore(
             Add(command, name, null);
         }
 
+        Add(command, "$refreshId", refreshId);
         return command;
     }
 
     private static void SetTrackParameters(SqliteCommand command, CatalogueImportTrack track)
     {
-        command.Parameters["$sourceId"].Value = track.SourceId;
-        command.Parameters["$title"].Value = track.Title;
-        command.Parameters["$subtitle"].Value = DbValue(track.Subtitle);
-        command.Parameters["$url"].Value = track.Url;
-        command.Parameters["$contentType"].Value = DbValue(track.ContentType);
-        command.Parameters["$remote"].Value = track.IsRemote ? 1 : 0;
-        command.Parameters["$externalId"].Value = DbValue(track.ExternalId);
-        command.Parameters["$albumId"].Value = DbValue(track.AlbumSourceId);
-        command.Parameters["$year"].Value = DbValue(track.Year);
-        command.Parameters["$discNumber"].Value = DbValue(track.DiscNumber);
-        command.Parameters["$discCount"].Value = DbValue(track.DiscCount);
-        command.Parameters["$trackNumber"].Value = DbValue(track.TrackNumber);
-        command.Parameters["$duration"].Value = DbValue(track.DurationSeconds);
-        command.Parameters["$fileSize"].Value = DbValue(track.FileSizeBytes);
-        command.Parameters["$sampleRate"].Value = DbValue(track.SampleRate);
-        command.Parameters["$addedAt"].Value = DbDate(track.AddedAt);
-        command.Parameters["$modifiedAt"].Value = DbDate(track.SourceModifiedAt);
-        command.Parameters["$updatedAt"].Value = DbDate(track.SourceUpdatedAt);
-        command.Parameters["$releaseType"].Value = DbValue(track.ReleaseType);
-        command.Parameters["$compilation"].Value = DbValue(
-            track.IsCompilation is null ? null : track.IsCompilation.Value ? 1 : 0);
-        command.Parameters["$artworkTrackId"].Value = DbValue(track.ArtworkTrackSourceId);
-        command.Parameters["$workId"].Value = DbValue(track.WorkSourceId);
-        command.Parameters["$workTitle"].Value = DbValue(track.WorkTitle);
-        command.Parameters["$performance"].Value = DbValue(track.Performance);
-        command.Parameters["$grouping"].Value = DbValue(track.Grouping);
+        Set(command, "$sourceId", track.SourceId);
+        Set(command, "$title", track.Title);
+        Set(command, "$subtitle", track.Subtitle);
+        Set(command, "$url", track.Url);
+        Set(command, "$contentType", track.ContentType);
+        Set(command, "$remote", track.IsRemote ? 1 : 0);
+        Set(command, "$externalId", track.ExternalId);
+        Set(command, "$albumId", track.AlbumSourceId);
+        Set(command, "$year", track.Year);
+        Set(command, "$discNumber", track.DiscNumber);
+        Set(command, "$discCount", track.DiscCount);
+        Set(command, "$trackNumber", track.TrackNumber);
+        Set(command, "$duration", track.DurationSeconds);
+        Set(command, "$fileSize", track.FileSizeBytes);
+        Set(command, "$sampleRate", track.SampleRate);
+        Set(command, "$addedAt", DbDate(track.AddedAt));
+        Set(command, "$modifiedAt", DbDate(track.SourceModifiedAt));
+        Set(command, "$updatedAt", DbDate(track.SourceUpdatedAt));
+        Set(command, "$releaseType", track.ReleaseType);
+        Set(command, "$compilation", ToDatabaseBoolean(track.IsCompilation));
+        Set(command, "$artworkTrackId", track.ArtworkTrackSourceId);
+        Set(command, "$workId", track.WorkSourceId);
+        Set(command, "$workTitle", track.WorkTitle);
+        Set(command, "$performance", track.Performance);
+        Set(command, "$grouping", track.Grouping);
     }
 
     private static SqliteCommand CreateTrackArtistCommand(
         SqliteConnection connection,
-        SqliteTransaction transaction,
-        string generationId)
+        SqliteTransaction transaction)
     {
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO catalogue_track_artists (
-                generation_id, track_source_id, artist_source_id)
-            VALUES ($generationId, $trackId, $artistId);
+            INSERT INTO catalogue_track_artists (track_source_id, artist_source_id)
+            VALUES ($trackId, $artistId);
             """;
-        Add(command, "$generationId", generationId);
         Add(command, "$trackId", null);
         Add(command, "$artistId", null);
         return command;
@@ -460,16 +949,14 @@ public sealed class SqliteMediaCatalogueStore(
 
     private static SqliteCommand CreateTrackGenreCommand(
         SqliteConnection connection,
-        SqliteTransaction transaction,
-        string generationId)
+        SqliteTransaction transaction)
     {
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO catalogue_track_genres (generation_id, track_source_id, genre_source_id)
-            VALUES ($generationId, $trackId, $genreId);
+            INSERT INTO catalogue_track_genres (track_source_id, genre_source_id)
+            VALUES ($trackId, $genreId);
             """;
-        Add(command, "$generationId", generationId);
         Add(command, "$trackId", null);
         Add(command, "$genreId", null);
         return command;
@@ -477,17 +964,15 @@ public sealed class SqliteMediaCatalogueStore(
 
     private static SqliteCommand CreateTrackStatisticsCommand(
         SqliteConnection connection,
-        SqliteTransaction transaction,
-        string generationId)
+        SqliteTransaction transaction)
     {
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO catalogue_track_statistics (
-                generation_id, track_source_id, source, rating, play_count, last_played_at)
-            VALUES ($generationId, $trackId, $source, $rating, $playCount, $lastPlayedAt);
+                track_source_id, source, rating, play_count, last_played_at)
+            VALUES ($trackId, $source, $rating, $playCount, $lastPlayedAt);
             """;
-        Add(command, "$generationId", generationId);
         Add(command, "$trackId", null);
         Add(command, "$source", null);
         Add(command, "$rating", null);
@@ -496,122 +981,25 @@ public sealed class SqliteMediaCatalogueStore(
         return command;
     }
 
-    private static async Task InsertVirtualLibrariesAsync(
+    private static SqliteCommand CreateDeleteCommand(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        string generationId,
-        IReadOnlyList<CatalogueImportVirtualLibrary> libraries,
-        CancellationToken cancellationToken)
+        string sql)
     {
-        await using var libraryCommand = connection.CreateCommand();
-        libraryCommand.Transaction = transaction;
-        libraryCommand.CommandText = """
-            INSERT INTO catalogue_virtual_libraries (generation_id, source_id, name)
-            VALUES ($generationId, $sourceId, $name);
-            """;
-        Add(libraryCommand, "$generationId", generationId);
-        Add(libraryCommand, "$sourceId", null);
-        Add(libraryCommand, "$name", null);
-
-        await using var memberCommand = connection.CreateCommand();
-        memberCommand.Transaction = transaction;
-        memberCommand.CommandText = """
-            INSERT INTO catalogue_virtual_library_tracks (
-                generation_id, library_source_id, track_source_id)
-            VALUES ($generationId, $libraryId, $trackId);
-            """;
-        Add(memberCommand, "$generationId", generationId);
-        Add(memberCommand, "$libraryId", null);
-        Add(memberCommand, "$trackId", null);
-
-        foreach (var library in libraries)
-        {
-            libraryCommand.Parameters["$sourceId"].Value = library.SourceId;
-            libraryCommand.Parameters["$name"].Value = library.Name;
-            await libraryCommand.ExecuteNonQueryAsync(cancellationToken);
-            foreach (var trackId in library.TrackSourceIds)
-            {
-                memberCommand.Parameters["$libraryId"].Value = library.SourceId;
-                memberCommand.Parameters["$trackId"].Value = trackId;
-                await memberCommand.ExecuteNonQueryAsync(cancellationToken);
-            }
-        }
-    }
-
-    private static async Task InsertWarningsAsync(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
-        string generationId,
-        IReadOnlyList<CatalogueImportWarning> warnings,
-        CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
+        var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = """
-            INSERT INTO catalogue_warnings (generation_id, code, message, occurrences)
-            VALUES ($generationId, $code, $message, $occurrences);
-            """;
-        Add(command, "$generationId", generationId);
-        Add(command, "$code", null);
-        Add(command, "$message", null);
-        Add(command, "$occurrences", null);
-        foreach (var warning in warnings)
-        {
-            command.Parameters["$code"].Value = warning.Code;
-            command.Parameters["$message"].Value = warning.Message;
-            command.Parameters["$occurrences"].Value = warning.Occurrences;
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
+        command.CommandText = sql;
+        Add(command, "$trackId", null);
+        return command;
     }
 
-    private static async Task PublishGenerationAsync(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
-        PublishedCatalogueGeneration generation,
-        string refreshId,
-        DateTimeOffset completedAt,
-        long durationMilliseconds,
+    private static async Task DeleteTrackChildrenAsync(
+        SqliteCommand command,
+        string trackId,
         CancellationToken cancellationToken)
     {
-        await using (var state = connection.CreateCommand())
-        {
-            state.Transaction = transaction;
-            state.CommandText = """
-                INSERT INTO catalogue_state (id, published_generation_id)
-                VALUES (1, $generationId)
-                ON CONFLICT(id) DO UPDATE SET published_generation_id = excluded.published_generation_id;
-                """;
-            Add(state, "$generationId", generation.Id);
-            await state.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        await using (var refresh = connection.CreateCommand())
-        {
-            refresh.Transaction = transaction;
-            refresh.CommandText = """
-                UPDATE catalogue_refresh_runs
-                SET status = 'succeeded',
-                    completed_at = $completedAt,
-                    duration_ms = $duration,
-                    published_generation_id = $generationId,
-                    failure_message = NULL
-                WHERE id = $refreshId AND status = 'running';
-                """;
-            Add(refresh, "$completedAt", FormatDate(completedAt));
-            Add(refresh, "$duration", durationMilliseconds);
-            Add(refresh, "$generationId", generation.Id);
-            Add(refresh, "$refreshId", refreshId);
-            if (await refresh.ExecuteNonQueryAsync(cancellationToken) != 1)
-            {
-                throw new InvalidOperationException("The catalogue refresh run was not active.");
-            }
-        }
-
-        await using var cleanup = connection.CreateCommand();
-        cleanup.Transaction = transaction;
-        cleanup.CommandText = "DELETE FROM catalogue_generations WHERE id <> $generationId;";
-        Add(cleanup, "$generationId", generation.Id);
-        await cleanup.ExecuteNonQueryAsync(cancellationToken);
+        Set(command, "$trackId", trackId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
@@ -639,15 +1027,12 @@ public sealed class SqliteMediaCatalogueStore(
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT version FROM catalogue_schema LIMIT 1;";
         var value = await command.ExecuteScalarAsync(cancellationToken);
-        if (value is null)
-        {
-            return 0;
-        }
-
-        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+        return value is null
+            ? 0
+            : Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
 
-    private static PublishedCatalogueGeneration ReadGeneration(SqliteDataReader reader) => new(
+    private static CatalogueSummary ReadSummary(SqliteDataReader reader) => new(
         reader.GetString(0),
         reader.GetString(1),
         reader.IsDBNull(2) ? null : reader.GetString(2),
@@ -662,14 +1047,16 @@ public sealed class SqliteMediaCatalogueStore(
         reader.GetInt32(11),
         reader.GetInt32(12));
 
-    private static CatalogueRefreshRun ReadRefreshRun(SqliteDataReader reader) => new(
+    private static CatalogueRefreshRun ReadRefreshRun(
+        SqliteDataReader reader,
+        IReadOnlyList<CatalogueRefreshLog> logs) => new(
         reader.GetString(0),
         ParseStatus(reader.GetString(1)),
         ParseDate(reader.GetString(2)),
         reader.IsDBNull(3) ? null : ParseDate(reader.GetString(3)),
         reader.IsDBNull(4) ? null : reader.GetInt64(4),
         reader.IsDBNull(5) ? null : reader.GetString(5),
-        reader.IsDBNull(6) ? null : reader.GetString(6));
+        logs);
 
     private static CatalogueRefreshRunStatus ParseStatus(string value) => value switch
     {
@@ -681,6 +1068,14 @@ public sealed class SqliteMediaCatalogueStore(
         _ => throw new InvalidOperationException("Unknown stored catalogue refresh status.")
     };
 
+    private static CatalogueRefreshLogLevel ParseLogLevel(string value) => value switch
+    {
+        "information" => CatalogueRefreshLogLevel.Information,
+        "warning" => CatalogueRefreshLogLevel.Warning,
+        "error" => CatalogueRefreshLogLevel.Error,
+        _ => throw new InvalidOperationException("Unknown stored catalogue refresh log level.")
+    };
+
     private static string ToText(CatalogueRefreshRunStatus value) => value switch
     {
         CatalogueRefreshRunStatus.Running => "running",
@@ -688,7 +1083,15 @@ public sealed class SqliteMediaCatalogueStore(
         CatalogueRefreshRunStatus.Failed => "failed",
         CatalogueRefreshRunStatus.Cancelled => "cancelled",
         CatalogueRefreshRunStatus.Interrupted => "interrupted",
-        _ => throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown catalogue refresh status.")
+        _ => throw new InvalidOperationException("Unknown catalogue refresh status.")
+    };
+
+    private static string ToText(CatalogueRefreshLogLevel value) => value switch
+    {
+        CatalogueRefreshLogLevel.Information => "information",
+        CatalogueRefreshLogLevel.Warning => "warning",
+        CatalogueRefreshLogLevel.Error => "error",
+        _ => throw new InvalidOperationException("Unknown catalogue refresh log level.")
     };
 
     private static SqliteParameter Add(SqliteCommand command, string name, object? value)
@@ -700,25 +1103,50 @@ public sealed class SqliteMediaCatalogueStore(
         return parameter;
     }
 
+    private static void Set(SqliteCommand command, string name, object? value) =>
+        command.Parameters[name].Value = DbValue(value);
+
+    private static int? ToDatabaseBoolean(bool? value) => value is null ? null : value.Value ? 1 : 0;
     private static object DbValue(object? value) => value ?? DBNull.Value;
     private static object DbDate(DateTimeOffset? value) => value is null ? DBNull.Value : FormatDate(value.Value);
     private static string FormatDate(DateTimeOffset value) => value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
     private static DateTimeOffset ParseDate(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
 
+    private sealed record ReferentialWarning(string Message, string Sql);
+
+    private const string ResetSchemaSql = """
+        DROP TABLE IF EXISTS catalogue_warnings;
+        DROP TABLE IF EXISTS catalogue_virtual_library_tracks;
+        DROP TABLE IF EXISTS catalogue_virtual_libraries;
+        DROP TABLE IF EXISTS catalogue_track_statistics;
+        DROP TABLE IF EXISTS catalogue_track_genres;
+        DROP TABLE IF EXISTS catalogue_track_artists;
+        DROP TABLE IF EXISTS catalogue_tracks;
+        DROP TABLE IF EXISTS catalogue_genres;
+        DROP TABLE IF EXISTS catalogue_albums;
+        DROP TABLE IF EXISTS catalogue_artists;
+        DROP TABLE IF EXISTS catalogue_artist_lookup;
+        DROP TABLE IF EXISTS catalogue_refresh_logs;
+        DROP TABLE IF EXISTS catalogue_refresh_runs;
+        DROP TABLE IF EXISTS catalogue_state;
+        DROP TABLE IF EXISTS catalogue_generations;
+        DROP TABLE IF EXISTS catalogue_schema;
+        """;
+
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS catalogue_schema (version INTEGER NOT NULL);
         INSERT INTO catalogue_schema (version)
-            SELECT 2 WHERE NOT EXISTS (SELECT 1 FROM catalogue_schema);
+            SELECT 4 WHERE NOT EXISTS (SELECT 1 FROM catalogue_schema);
 
-        CREATE TABLE IF NOT EXISTS catalogue_generations (
-            id TEXT PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS catalogue_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
             source_id TEXT NOT NULL,
             source_provider TEXT NOT NULL,
             source_version TEXT NULL,
             source_revision TEXT NULL,
             captured_at TEXT NOT NULL,
             source_last_scan_at TEXT NULL,
-            published_at TEXT NOT NULL,
+            refreshed_at TEXT NOT NULL,
             artist_count INTEGER NOT NULL,
             album_count INTEGER NOT NULL,
             genre_count INTEGER NOT NULL,
@@ -726,36 +1154,47 @@ public sealed class SqliteMediaCatalogueStore(
             virtual_library_count INTEGER NOT NULL,
             warning_count INTEGER NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS catalogue_state (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            published_generation_id TEXT NOT NULL,
-            FOREIGN KEY (published_generation_id) REFERENCES catalogue_generations(id)
-        );
         CREATE TABLE IF NOT EXISTS catalogue_refresh_runs (
             id TEXT PRIMARY KEY,
             status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'cancelled', 'interrupted')),
             started_at TEXT NOT NULL,
             completed_at TEXT NULL,
             duration_ms INTEGER NULL,
-            published_generation_id TEXT NULL,
             failure_message TEXT NULL
         );
         CREATE INDEX IF NOT EXISTS ix_catalogue_refresh_runs_started_at
             ON catalogue_refresh_runs(started_at DESC);
         CREATE UNIQUE INDEX IF NOT EXISTS ux_catalogue_refresh_runs_running
             ON catalogue_refresh_runs(status) WHERE status = 'running';
+        CREATE TABLE IF NOT EXISTS catalogue_refresh_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            refresh_id TEXT NOT NULL,
+            occurred_at TEXT NOT NULL,
+            level TEXT NOT NULL CHECK (level IN ('information', 'warning', 'error')),
+            message TEXT NOT NULL,
+            processed_count INTEGER NULL,
+            total_count INTEGER NULL,
+            FOREIGN KEY (refresh_id) REFERENCES catalogue_refresh_runs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS ix_catalogue_refresh_logs_refresh_id
+            ON catalogue_refresh_logs(refresh_id, id);
 
         CREATE TABLE IF NOT EXISTS catalogue_artists (
-            generation_id TEXT NOT NULL,
-            source_id TEXT NOT NULL,
+            source_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             external_id TEXT NULL,
-            PRIMARY KEY (generation_id, source_id),
-            FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
+            seen_refresh_id TEXT NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS ix_catalogue_artists_seen_refresh_id
+            ON catalogue_artists(seen_refresh_id);
+        CREATE TABLE IF NOT EXISTS catalogue_artist_lookup (
+            source_id TEXT PRIMARY KEY,
+            seen_refresh_id TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_catalogue_artist_lookup_seen_refresh_id
+            ON catalogue_artist_lookup(seen_refresh_id);
         CREATE TABLE IF NOT EXISTS catalogue_albums (
-            generation_id TEXT NOT NULL,
-            source_id TEXT NOT NULL,
+            source_id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
             album_artist_source_id TEXT NULL,
             year INTEGER NULL,
@@ -764,19 +1203,21 @@ public sealed class SqliteMediaCatalogueStore(
             release_type TEXT NULL,
             artwork_track_source_id TEXT NULL,
             external_id TEXT NULL,
-            PRIMARY KEY (generation_id, source_id),
-            FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
+            seen_refresh_id TEXT NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS ix_catalogue_albums_seen_refresh_id
+            ON catalogue_albums(seen_refresh_id);
+        CREATE INDEX IF NOT EXISTS ix_catalogue_albums_album_artist_source_id
+            ON catalogue_albums(album_artist_source_id);
         CREATE TABLE IF NOT EXISTS catalogue_genres (
-            generation_id TEXT NOT NULL,
-            source_id TEXT NOT NULL,
+            source_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            PRIMARY KEY (generation_id, source_id),
-            FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
+            seen_refresh_id TEXT NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS ix_catalogue_genres_seen_refresh_id
+            ON catalogue_genres(seen_refresh_id);
         CREATE TABLE IF NOT EXISTS catalogue_tracks (
-            generation_id TEXT NOT NULL,
-            source_id TEXT NOT NULL,
+            source_id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
             subtitle TEXT NULL,
             url TEXT NOT NULL,
@@ -801,134 +1242,48 @@ public sealed class SqliteMediaCatalogueStore(
             work_title TEXT NULL,
             performance TEXT NULL,
             grouping_name TEXT NULL,
-            PRIMARY KEY (generation_id, source_id),
-            FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
+            seen_refresh_id TEXT NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS ix_catalogue_tracks_seen_refresh_id
+            ON catalogue_tracks(seen_refresh_id);
         CREATE TABLE IF NOT EXISTS catalogue_track_artists (
-            generation_id TEXT NOT NULL,
             track_source_id TEXT NOT NULL,
             artist_source_id TEXT NOT NULL,
-            PRIMARY KEY (generation_id, track_source_id, artist_source_id),
-            FOREIGN KEY (generation_id, track_source_id)
-                REFERENCES catalogue_tracks(generation_id, source_id) ON DELETE CASCADE
+            PRIMARY KEY (track_source_id, artist_source_id),
+            FOREIGN KEY (track_source_id) REFERENCES catalogue_tracks(source_id) ON DELETE CASCADE
         );
+        CREATE INDEX IF NOT EXISTS ix_catalogue_track_artists_artist_source_id
+            ON catalogue_track_artists(artist_source_id);
         CREATE TABLE IF NOT EXISTS catalogue_track_genres (
-            generation_id TEXT NOT NULL,
             track_source_id TEXT NOT NULL,
             genre_source_id TEXT NOT NULL,
-            PRIMARY KEY (generation_id, track_source_id, genre_source_id),
-            FOREIGN KEY (generation_id, track_source_id)
-                REFERENCES catalogue_tracks(generation_id, source_id) ON DELETE CASCADE
+            PRIMARY KEY (track_source_id, genre_source_id),
+            FOREIGN KEY (track_source_id) REFERENCES catalogue_tracks(source_id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS catalogue_track_statistics (
-            generation_id TEXT NOT NULL,
             track_source_id TEXT NOT NULL,
             source TEXT NOT NULL,
             rating INTEGER NULL,
             play_count INTEGER NULL,
             last_played_at TEXT NULL,
-            PRIMARY KEY (generation_id, track_source_id, source),
-            FOREIGN KEY (generation_id, track_source_id)
-                REFERENCES catalogue_tracks(generation_id, source_id) ON DELETE CASCADE
+            PRIMARY KEY (track_source_id, source),
+            FOREIGN KEY (track_source_id) REFERENCES catalogue_tracks(source_id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS catalogue_virtual_libraries (
-            generation_id TEXT NOT NULL,
-            source_id TEXT NOT NULL,
+            source_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            PRIMARY KEY (generation_id, source_id),
-            FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
+            seen_refresh_id TEXT NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS ix_catalogue_virtual_libraries_seen_refresh_id
+            ON catalogue_virtual_libraries(seen_refresh_id);
         CREATE TABLE IF NOT EXISTS catalogue_virtual_library_tracks (
-            generation_id TEXT NOT NULL,
             library_source_id TEXT NOT NULL,
             track_source_id TEXT NOT NULL,
-            PRIMARY KEY (generation_id, library_source_id, track_source_id),
-            FOREIGN KEY (generation_id, library_source_id)
-                REFERENCES catalogue_virtual_libraries(generation_id, source_id) ON DELETE CASCADE
+            seen_refresh_id TEXT NOT NULL,
+            PRIMARY KEY (library_source_id, track_source_id),
+            FOREIGN KEY (library_source_id) REFERENCES catalogue_virtual_libraries(source_id) ON DELETE CASCADE
         );
-        CREATE TABLE IF NOT EXISTS catalogue_warnings (
-            generation_id TEXT NOT NULL,
-            code TEXT NOT NULL,
-            message TEXT NOT NULL,
-            occurrences INTEGER NOT NULL,
-            PRIMARY KEY (generation_id, code),
-            FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
-        );
-        """;
-
-    private const string Migration1To2Sql = """
-        BEGIN IMMEDIATE;
-        ALTER TABLE catalogue_generations RENAME COLUMN contributor_count TO artist_count;
-        CREATE TABLE catalogue_artists (
-            generation_id TEXT NOT NULL,
-            source_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            external_id TEXT NULL,
-            PRIMARY KEY (generation_id, source_id),
-            FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
-        );
-        INSERT INTO catalogue_artists (generation_id, source_id, name, external_id)
-            SELECT contributor.generation_id, contributor.source_id,
-                   contributor.name, contributor.external_id
-            FROM catalogue_contributors contributor
-            WHERE EXISTS (
-                SELECT 1
-                FROM catalogue_track_contributors track_artist
-                WHERE track_artist.generation_id = contributor.generation_id
-                  AND track_artist.contributor_source_id = contributor.source_id
-                  AND track_artist.role = 'ARTIST'
-            ) OR EXISTS (
-                SELECT 1
-                FROM catalogue_albums album
-                WHERE album.generation_id = contributor.generation_id
-                  AND album.album_artist_source_id = contributor.source_id
-            );
-        CREATE TABLE catalogue_track_artists (
-            generation_id TEXT NOT NULL,
-            track_source_id TEXT NOT NULL,
-            artist_source_id TEXT NOT NULL,
-            PRIMARY KEY (generation_id, track_source_id, artist_source_id),
-            FOREIGN KEY (generation_id, track_source_id)
-                REFERENCES catalogue_tracks(generation_id, source_id) ON DELETE CASCADE
-        );
-        INSERT INTO catalogue_track_artists (generation_id, track_source_id, artist_source_id)
-            SELECT generation_id, track_source_id, contributor_source_id
-            FROM catalogue_track_contributors
-            WHERE role = 'ARTIST';
-        DELETE FROM catalogue_warnings WHERE code = 'missing-contributor';
-        INSERT INTO catalogue_warnings (generation_id, code, message, occurrences)
-            SELECT reference.generation_id,
-                   'missing-artist',
-                   'Track or album artist references were not present in the imported artist set.',
-                   COUNT(*)
-            FROM (
-                SELECT generation_id, album_artist_source_id AS artist_source_id
-                FROM catalogue_albums
-                WHERE album_artist_source_id IS NOT NULL
-                UNION ALL
-                SELECT generation_id, contributor_source_id AS artist_source_id
-                FROM catalogue_track_contributors
-                WHERE role = 'ARTIST'
-            ) reference
-            LEFT JOIN catalogue_contributors contributor
-              ON contributor.generation_id = reference.generation_id
-             AND contributor.source_id = reference.artist_source_id
-            WHERE contributor.source_id IS NULL
-            GROUP BY reference.generation_id;
-        UPDATE catalogue_generations
-        SET artist_count = (
-                SELECT COUNT(*)
-                FROM catalogue_artists artist
-                WHERE artist.generation_id = catalogue_generations.id
-            ),
-            warning_count = (
-                SELECT COUNT(*)
-                FROM catalogue_warnings warning
-                WHERE warning.generation_id = catalogue_generations.id
-            );
-        DROP TABLE catalogue_track_contributors;
-        DROP TABLE catalogue_contributors;
-        UPDATE catalogue_schema SET version = 2;
-        COMMIT;
+        CREATE INDEX IF NOT EXISTS ix_catalogue_virtual_library_tracks_seen_refresh_id
+            ON catalogue_virtual_library_tracks(seen_refresh_id);
         """;
 }

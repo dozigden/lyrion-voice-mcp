@@ -36,22 +36,22 @@ public static class CatalogueEndpoints
     }
 
     private static CatalogueStatusResponse ToResponse(CatalogueStatus status) => new(
-        status.PublishedGeneration is null
+        status.Summary is null
             ? null
-            : new PublishedCatalogueGenerationResponse(
-                status.PublishedGeneration.Id,
-                status.PublishedGeneration.SourceId,
-                status.PublishedGeneration.SourceRevision,
-                status.PublishedGeneration.SourceVersion,
-                status.PublishedGeneration.CapturedAt,
-                status.PublishedGeneration.SourceLastScanAt,
-                status.PublishedGeneration.PublishedAt,
-                status.PublishedGeneration.ArtistCount,
-                status.PublishedGeneration.AlbumCount,
-                status.PublishedGeneration.GenreCount,
-                status.PublishedGeneration.TrackCount,
-                status.PublishedGeneration.VirtualLibraryCount,
-                status.PublishedGeneration.WarningCount),
+            : new CatalogueSummaryResponse(
+                status.Summary.SourceId,
+                status.Summary.Provider,
+                status.Summary.SourceRevision,
+                status.Summary.SourceVersion,
+                status.Summary.CapturedAt,
+                status.Summary.SourceLastScanAt,
+                status.Summary.RefreshedAt,
+                status.Summary.ArtistCount,
+                status.Summary.AlbumCount,
+                status.Summary.GenreCount,
+                status.Summary.TrackCount,
+                status.Summary.VirtualLibraryCount,
+                status.Summary.WarningCount),
         status.LatestRefresh is null
             ? null
             : new CatalogueRefreshRunResponse(
@@ -60,8 +60,15 @@ public static class CatalogueEndpoints
                 status.LatestRefresh.StartedAt,
                 status.LatestRefresh.CompletedAt,
                 status.LatestRefresh.DurationMilliseconds,
-                status.LatestRefresh.PublishedGenerationId,
-                status.LatestRefresh.FailureMessage));
+                status.LatestRefresh.FailureMessage,
+                status.LatestRefresh.Logs.Select(log => new CatalogueRefreshLogResponse(
+                    log.Id,
+                    log.OccurredAt,
+                    ToText(log.Level),
+                    log.Message,
+                    log.ProcessedCount,
+                    log.TotalCount)).ToArray()));
 
     private static string ToText(CatalogueRefreshRunStatus status) => status.ToString().ToLowerInvariant();
+    private static string ToText(CatalogueRefreshLogLevel level) => level.ToString().ToLowerInvariant();
 }

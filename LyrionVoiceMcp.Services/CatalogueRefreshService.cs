@@ -21,7 +21,7 @@ public sealed class CatalogueRefreshService(
     private int pending;
 
     public async Task<CatalogueStatus> GetStatusAsync(CancellationToken cancellationToken) => new(
-        await store.GetPublishedGenerationAsync(cancellationToken),
+        await store.GetSummaryAsync(cancellationToken),
         await store.GetLatestRefreshRunAsync(cancellationToken));
 
     public async Task<CatalogueRefreshOutcome> RefreshAsync(CancellationToken cancellationToken)
@@ -74,11 +74,11 @@ public sealed class CatalogueRefreshService(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var sourceReader = scope.ServiceProvider.GetRequiredService<ICatalogueSourceReader>();
-            var snapshot = await sourceReader.ReadAsync(cancellationToken);
+            var source = await sourceReader.ReadAsync(request.Id, store, cancellationToken);
             var completedAt = timeProvider.GetUtcNow();
-            await store.PublishAsync(
-                snapshot,
+            await store.CompleteRefreshAsync(
                 request.Id,
+                source,
                 completedAt,
                 DurationMilliseconds(request.StartedAt, completedAt),
                 cancellationToken);
@@ -86,25 +86,49 @@ public sealed class CatalogueRefreshService(
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             var completedAt = timeProvider.GetUtcNow();
-            await store.CompleteFailedRefreshAsync(
+            await TryCompleteFailedRefreshAsync(
                 request.Id,
                 CatalogueRefreshRunStatus.Cancelled,
                 completedAt,
                 DurationMilliseconds(request.StartedAt, completedAt),
-                "Catalogue refresh was cancelled.",
-                CancellationToken.None);
+                "Catalogue refresh was cancelled.");
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "Catalogue refresh {RefreshId} failed.", request.Id);
             var completedAt = timeProvider.GetUtcNow();
-            await store.CompleteFailedRefreshAsync(
+            await TryCompleteFailedRefreshAsync(
                 request.Id,
                 CatalogueRefreshRunStatus.Failed,
                 completedAt,
                 DurationMilliseconds(request.StartedAt, completedAt),
-                "Catalogue refresh failed. See the service logs for details.",
+                "Catalogue refresh failed. See the service logs for details.");
+        }
+    }
+
+    private async Task TryCompleteFailedRefreshAsync(
+        string refreshId,
+        CatalogueRefreshRunStatus status,
+        DateTimeOffset completedAt,
+        long durationMilliseconds,
+        string failureMessage)
+    {
+        try
+        {
+            await store.CompleteFailedRefreshAsync(
+                refreshId,
+                status,
+                completedAt,
+                durationMilliseconds,
+                failureMessage,
                 CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Catalogue refresh {RefreshId} could not record its terminal state.",
+                refreshId);
         }
     }
 
