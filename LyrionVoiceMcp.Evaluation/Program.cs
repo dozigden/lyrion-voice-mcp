@@ -38,9 +38,7 @@ if (corpusOutcome is CorpusRejected rejectedCorpus)
     return 2;
 }
 
-var configurationOutcome = await EvaluationConfiguration.LoadAsync(
-    options.SettingsPath,
-    CancellationToken.None);
+var configurationOutcome = EvaluationConfiguration.LoadFromEnvironment();
 if (configurationOutcome is EvaluationConfigurationRejected rejectedConfiguration)
 {
     Console.Error.WriteLine(rejectedConfiguration.Error);
@@ -97,10 +95,12 @@ catch (OperationCanceledException)
 
 static void PrintHelp()
 {
-    Console.WriteLine("Usage: evaluate.sh [--corpus PATH] [--settings PATH] [--output PATH]");
+    Console.WriteLine("Usage: evaluate.sh [--corpus PATH] [--output PATH]");
+    Console.WriteLine();
+    Console.WriteLine("Required environment:");
+    Console.WriteLine("  LVM_EVALUATION_LMS_BASE_URL   live LMS HTTP or HTTPS origin");
     Console.WriteLine();
     Console.WriteLine("Defaults:");
     Console.WriteLine("  corpus   ../lyrion-voice-evaluation/corpus.json");
-    Console.WriteLine("  settings .data/dev/appsettings.local.json");
     Console.WriteLine("  output   .data/evaluation/lms-pass-through-<timestamp>.json");
 }

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using LyrionVoiceMcp.Lms;
 
 namespace LyrionVoiceMcp.Evaluation;
@@ -13,76 +12,33 @@ public sealed record EvaluationConfigurationRejected(
 
 public static class EvaluationConfiguration
 {
-    public static async Task<EvaluationConfigurationOutcome> LoadAsync(
-        string path,
-        CancellationToken cancellationToken)
+    public const string BaseUrlEnvironmentVariable = "LVM_EVALUATION_LMS_BASE_URL";
+    private const string EvaluationServerId = "live-evaluation";
+
+    public static EvaluationConfigurationOutcome LoadFromEnvironment() =>
+        FromBaseUrl(Environment.GetEnvironmentVariable(BaseUrlEnvironmentVariable));
+
+    public static EvaluationConfigurationOutcome FromBaseUrl(string? baseUrl)
     {
-        if (!File.Exists(path))
+        if (string.IsNullOrWhiteSpace(baseUrl))
         {
             return new EvaluationConfigurationRejected(
-                $"LMS settings file was not found: {path}");
+                $"Set {BaseUrlEnvironmentVariable} to the live LMS HTTP or HTTPS origin before running evaluation.");
         }
 
         try
         {
-            await using var stream = File.OpenRead(path);
-            using var document = await JsonDocument.ParseAsync(
-                stream,
-                cancellationToken: cancellationToken);
-            if (!document.RootElement.TryGetProperty("LyrionVoiceMcpLms", out var section)
-                || section.ValueKind != JsonValueKind.Object)
-            {
-                return new EvaluationConfigurationRejected(
-                    "LMS settings file does not contain a LyrionVoiceMcpLms object.");
-            }
-
-            var serverId = Environment.GetEnvironmentVariable("LyrionVoiceMcpLms__ServerId")
-                ?? ReadValue(section, "ServerId");
-            var baseUrl = Environment.GetEnvironmentVariable("LyrionVoiceMcpLms__BaseUrl")
-                ?? ReadValue(section, "BaseUrl");
-            var requestTimeout = Environment.GetEnvironmentVariable(
-                    "LyrionVoiceMcpLms__RequestTimeoutSeconds")
-                ?? ReadValue(section, "RequestTimeoutSeconds");
             var settings = LmsConnectionSettings.FromValues(
-                serverId,
+                EvaluationServerId,
                 baseUrl,
-                requestTimeout);
-            if (!settings.IsConfigured)
-            {
-                return new EvaluationConfigurationRejected(
-                    "LMS is not configured in the evaluation settings file.");
-            }
+                requestTimeoutSeconds: null);
 
             return new EvaluationConfigurationLoaded(settings);
         }
-        catch (JsonException exception)
-        {
-            return new EvaluationConfigurationRejected(
-                $"LMS settings JSON is invalid: {exception.Message}");
-        }
         catch (InvalidOperationException exception)
         {
-            return new EvaluationConfigurationRejected(exception.Message);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
             return new EvaluationConfigurationRejected(
-                $"LMS settings file could not be read: {exception.Message}");
+                $"{BaseUrlEnvironmentVariable} is invalid: {exception.Message}");
         }
-    }
-
-    private static string? ReadValue(JsonElement section, string propertyName)
-    {
-        if (!section.TryGetProperty(propertyName, out var value))
-        {
-            return null;
-        }
-
-        return value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
     }
 }

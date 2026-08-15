@@ -12,10 +12,10 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 
 ## Evaluation
 
-- `evaluate.sh` and `evaluate.ps1` run the current LMS pass-through against the private sibling corpus without requiring environment variables.
-- They use the same ignored `.data/dev/appsettings.local.json` LMS settings as local development.
+- `evaluate.sh` and `evaluate.ps1` run the current LMS pass-through against the private sibling corpus and require `LVM_EVALUATION_LMS_BASE_URL` to identify the live, read-only LMS origin.
+- Evaluation must not fall back to `.data/dev/appsettings.local.json` or consume the application's `LyrionVoiceMcpLms__*` variables. This keeps real-corpus results separate from the artificial development LMS and prevents evaluation configuration from redirecting normal development.
 - The default corpus is `../lyrion-voice-evaluation/corpus.json`; generated reports go to ignored `.data/evaluation`.
-- Pass `--corpus`, `--settings`, or `--output` only when overriding those defaults.
+- Pass `--corpus` or `--output` only when overriding those path defaults.
 
 ## Containers
 

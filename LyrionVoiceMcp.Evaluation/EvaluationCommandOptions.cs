@@ -4,7 +4,6 @@ public abstract record EvaluationArgumentsOutcome;
 
 public sealed record EvaluationArgumentsParsed(
     string CorpusPath,
-    string SettingsPath,
     string OutputPath) : EvaluationArgumentsOutcome;
 
 public sealed record EvaluationHelpRequested : EvaluationArgumentsOutcome;
@@ -20,7 +19,6 @@ public static class EvaluationCommandOptions
         DateTimeOffset now)
     {
         string? corpusPath = null;
-        string? settingsPath = null;
         string? outputPath = null;
         for (var index = 0; index < arguments.Count; index++)
         {
@@ -30,7 +28,7 @@ public static class EvaluationCommandOptions
                 return new EvaluationHelpRequested();
             }
 
-            if (argument is not ("--corpus" or "--settings" or "--output"))
+            if (argument is not ("--corpus" or "--output"))
             {
                 return new EvaluationArgumentsRejected($"Unknown argument: {argument}");
             }
@@ -46,9 +44,6 @@ public static class EvaluationCommandOptions
                 case "--corpus":
                     corpusPath = value;
                     break;
-                case "--settings":
-                    settingsPath = value;
-                    break;
                 case "--output":
                     outputPath = value;
                     break;
@@ -57,17 +52,12 @@ public static class EvaluationCommandOptions
 
         corpusPath ??= Path.GetFullPath(
             Path.Combine(repositoryRoot, "..", "lyrion-voice-evaluation", "corpus.json"));
-        settingsPath ??= Path.Combine(
-            repositoryRoot,
-            ".data",
-            "dev",
-            "appsettings.local.json");
         outputPath ??= Path.Combine(
             repositoryRoot,
             ".data",
             "evaluation",
             $"lms-pass-through-{now:yyyyMMdd-HHmmss}.json");
 
-        return new EvaluationArgumentsParsed(corpusPath, settingsPath, outputPath);
+        return new EvaluationArgumentsParsed(corpusPath, outputPath);
     }
 }
