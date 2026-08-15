@@ -134,7 +134,7 @@ public sealed class BrowseServiceTests
         Assert.Equal(
             new PlayableMedia(
                 new MediaIdentity(MediaEntityKind.Artist, "101"),
-                MediaContributorRole.AlbumArtist),
+                ArtistSelectionScope.AlbumArtist),
             decoded?.Media);
     }
 
@@ -360,7 +360,7 @@ public sealed class BrowseReferenceCodecTests
             new BrowseTarget(LmsBrowseQueryKind.AlbumArtistAlbums, "204", 0),
             new PlayableMedia(
                 new MediaIdentity(MediaEntityKind.Artist, "204"),
-                MediaContributorRole.AlbumArtist));
+                ArtistSelectionScope.AlbumArtist));
 
         // Act
         var decoded = codec.TryDecode(codec.Encode(expected));
@@ -417,7 +417,7 @@ public sealed class PlayableReferenceResolverTests
             browseCodec);
         var expected = new PlayableMedia(
             new MediaIdentity(MediaEntityKind.Artist, "204"),
-            MediaContributorRole.AlbumArtist);
+            ArtistSelectionScope.AlbumArtist);
         var reference = browseCodec.Encode(new BrowseReferenceValue(
             new BrowseTarget(LmsBrowseQueryKind.AlbumArtistAlbums, "204", 0),
             expected));

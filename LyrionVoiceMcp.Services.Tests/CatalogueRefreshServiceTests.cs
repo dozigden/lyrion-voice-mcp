@@ -154,7 +154,7 @@ public sealed class CatalogueRefreshServiceTests
                 snapshot.CapturedAt,
                 snapshot.SourceLastScanAt,
                 completedAt,
-                snapshot.Contributors.Count,
+                snapshot.Artists.Count,
                 snapshot.Albums.Count,
                 snapshot.Genres.Count,
                 snapshot.Tracks.Count,

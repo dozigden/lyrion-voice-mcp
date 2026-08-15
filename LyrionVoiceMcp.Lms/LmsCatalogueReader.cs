@@ -18,12 +18,12 @@ public sealed class LmsCatalogueReader(
         var initialStatus = await ReadStatusAsync(cancellationToken);
         EnsureReady(initialStatus);
 
-        var contributors = await ReadCountedPagesAsync(
-            "contributors",
+        var artistLookup = await ReadCountedPagesAsync(
+            "artist lookup",
             "artists_loop",
             (offset, limit) => ["artists", offset, limit, "tags:E"],
-            MapContributor,
-            contributor => contributor.SourceId,
+            MapArtist,
+            artist => artist.SourceId,
             cancellationToken);
         var albums = await ReadCountedPagesAsync(
             "albums",
@@ -46,6 +46,7 @@ public sealed class LmsCatalogueReader(
             MapTrack,
             track => track.SourceId,
             cancellationToken);
+        var artists = SelectReferencedArtists(artistLookup, albums, tracks);
         var virtualLibraries = await ReadVirtualLibrariesAsync(cancellationToken);
 
         var finalStatus = await ReadStatusAsync(cancellationToken);
@@ -55,7 +56,7 @@ public sealed class LmsCatalogueReader(
             ?? throw new LmsRequestException("LMS is not configured.");
         var warnings = BuildWarnings(
             initialStatus,
-            contributors,
+            artists,
             albums,
             genres,
             tracks,
@@ -68,7 +69,7 @@ public sealed class LmsCatalogueReader(
                 initialStatus.LastScan),
             timeProvider.GetUtcNow(),
             ReadUnixTime(initialStatus.LastScan, "server status", "lastscan"),
-            contributors,
+            artists,
             albums,
             genres,
             tracks,
@@ -194,10 +195,10 @@ public sealed class LmsCatalogueReader(
         return libraries;
     }
 
-    private static CatalogueImportContributor MapContributor(JsonElement item) =>
+    private static CatalogueImportArtist MapArtist(JsonElement item) =>
         new(
-            ReadRequiredString(item, "id", "contributors"),
-            ReadRequiredString(item, "artist", "contributors"),
+            ReadRequiredString(item, "id", "artists"),
+            ReadRequiredString(item, "artist", "artists"),
             ReadOptionalString(item, "extid"));
 
     private static CatalogueImportAlbum MapAlbum(JsonElement item) =>
@@ -252,7 +253,7 @@ public sealed class LmsCatalogueReader(
             ReadOptionalString(item, "work"),
             ReadOptionalString(item, "performance"),
             ReadOptionalString(item, "grouping"),
-            ReadContributors(item),
+            ReadDelimitedIds(item, "artist_ids"),
             ReadDelimitedIds(item, "genre_ids"),
             [
                 new CatalogueImportTrackStatistics(
@@ -269,31 +270,20 @@ public sealed class LmsCatalogueReader(
             ReadRequiredString(item, "name", "virtual libraries"),
             []);
 
-    private static IReadOnlyList<CatalogueImportTrackContributor> ReadContributors(
-        JsonElement item)
+    private static IReadOnlyList<CatalogueImportArtist> SelectReferencedArtists(
+        IReadOnlyList<CatalogueImportArtist> artistLookup,
+        IReadOnlyList<CatalogueImportAlbum> albums,
+        IReadOnlyList<CatalogueImportTrack> tracks)
     {
-        var contributors = new List<CatalogueImportTrackContributor>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var property in item.EnumerateObject())
-        {
-            if (!property.Name.EndsWith("_ids", StringComparison.Ordinal)
-                || string.Equals(property.Name, "genre_ids", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var role = property.Name[..^4].ToUpperInvariant();
-            foreach (var contributorId in ReadDelimitedIds(property.Value, property.Name, "tracks"))
-            {
-                var key = $"{role}\0{contributorId}";
-                if (seen.Add(key))
-                {
-                    contributors.Add(new CatalogueImportTrackContributor(contributorId, role));
-                }
-            }
-        }
-
-        return contributors;
+        var referencedIds = tracks
+            .SelectMany(track => track.ArtistSourceIds)
+            .Concat(albums
+                .Select(album => album.AlbumArtistSourceId)
+                .OfType<string>())
+            .ToHashSet(StringComparer.Ordinal);
+        return artistLookup
+            .Where(artist => referencedIds.Contains(artist.SourceId))
+            .ToArray();
     }
 
     private static IReadOnlyList<string> ReadDelimitedIds(JsonElement item, string name)
@@ -328,13 +318,13 @@ public sealed class LmsCatalogueReader(
 
     private static IReadOnlyList<CatalogueImportWarning> BuildWarnings(
         LmsCatalogueStatus status,
-        IReadOnlyList<CatalogueImportContributor> contributors,
+        IReadOnlyList<CatalogueImportArtist> artists,
         IReadOnlyList<CatalogueImportAlbum> albums,
         IReadOnlyList<CatalogueImportGenre> genres,
         IReadOnlyList<CatalogueImportTrack> tracks,
         IReadOnlyList<CatalogueImportVirtualLibrary> virtualLibraries)
     {
-        var contributorIds = contributors.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
+        var artistIds = artists.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
         var albumIds = albums.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
         var genreIds = genres.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
         var trackIds = tracks.Select(item => item.SourceId).ToHashSet(StringComparer.Ordinal);
@@ -347,12 +337,12 @@ public sealed class LmsCatalogueReader(
             tracks.Count(track => track.AlbumSourceId is not null && !albumIds.Contains(track.AlbumSourceId)));
         AddWarning(
             warnings,
-            "missing-contributor",
-            "Track contributor references were not present in the imported contributor set.",
+            "missing-artist",
+            "Track or album artist references were not present in the imported artist set.",
             albums.Count(album => album.AlbumArtistSourceId is not null
-                                  && !contributorIds.Contains(album.AlbumArtistSourceId))
-            + tracks.Sum(track => track.Contributors.Count(
-                contributor => !contributorIds.Contains(contributor.ContributorSourceId))));
+                                  && !artistIds.Contains(album.AlbumArtistSourceId))
+            + tracks.Sum(track => track.ArtistSourceIds.Count(
+                artistId => !artistIds.Contains(artistId))));
         AddWarning(
             warnings,
             "missing-genre",
@@ -369,7 +359,6 @@ public sealed class LmsCatalogueReader(
             "Server-status totals differed from the corresponding catalogue query totals.",
             CountServerTotalMismatches(
                 status,
-                contributors.Count,
                 albums.Count,
                 genres.Count,
                 tracks.Count));
@@ -416,13 +405,11 @@ public sealed class LmsCatalogueReader(
 
     private static int CountServerTotalMismatches(
         LmsCatalogueStatus status,
-        int contributorCount,
         int albumCount,
         int genreCount,
         int trackCount)
     {
         var mismatches = 0;
-        mismatches += status.ArtistCount is not null && status.ArtistCount != contributorCount ? 1 : 0;
         mismatches += status.AlbumCount is not null && status.AlbumCount != albumCount ? 1 : 0;
         mismatches += status.GenreCount is not null && status.GenreCount != genreCount ? 1 : 0;
         mismatches += status.TrackCount is not null && status.TrackCount != trackCount ? 1 : 0;

@@ -46,7 +46,7 @@ public static class CatalogueEndpoints
                 status.PublishedGeneration.CapturedAt,
                 status.PublishedGeneration.SourceLastScanAt,
                 status.PublishedGeneration.PublishedAt,
-                status.PublishedGeneration.ContributorCount,
+                status.PublishedGeneration.ArtistCount,
                 status.PublishedGeneration.AlbumCount,
                 status.PublishedGeneration.GenreCount,
                 status.PublishedGeneration.TrackCount,

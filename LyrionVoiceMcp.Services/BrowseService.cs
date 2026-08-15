@@ -159,7 +159,7 @@ public sealed class BrowseService(
         BrowseItemKind.AlbumArtist =>
             new PlayableMedia(
                 new MediaIdentity(MediaEntityKind.Artist, item.Id),
-                MediaContributorRole.AlbumArtist),
+                ArtistSelectionScope.AlbumArtist),
         BrowseItemKind.Artist =>
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Artist, item.Id)),
         BrowseItemKind.Album =>

@@ -17,14 +17,14 @@ public sealed record PlaybackRejected(
     PlaybackRejectionReason Reason,
     string Message) : PlaybackOutcome;
 
-public enum MediaContributorRole
+public enum ArtistSelectionScope
 {
     AlbumArtist
 }
 
 public sealed record PlayableMedia(
     MediaIdentity Identity,
-    MediaContributorRole? ContributorRole = null);
+    ArtistSelectionScope? ArtistScope = null);
 
 public interface ILmsPlaybackClient
 {

@@ -12,7 +12,7 @@ public sealed record PublishedCatalogueGenerationResponse(
     DateTimeOffset CapturedAt,
     DateTimeOffset? SourceLastScanAt,
     DateTimeOffset PublishedAt,
-    int ContributorCount,
+    int ArtistCount,
     int AlbumCount,
     int GenreCount,
     int TrackCount,

@@ -132,6 +132,7 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
 
         // Assert
         Assert.Equal("generation-1", response?.PublishedGeneration?.Id);
+        Assert.Equal(6_530, response?.PublishedGeneration?.ArtistCount);
         Assert.Equal(33_687, response?.PublishedGeneration?.TrackCount);
         Assert.Equal("succeeded", response?.LatestRefresh?.Status);
         Assert.Equal("generation-1", response?.LatestRefresh?.PublishedGenerationId);

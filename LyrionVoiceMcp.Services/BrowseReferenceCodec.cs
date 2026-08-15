@@ -23,7 +23,7 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             value.Target?.Offset,
             value.Media?.Identity.Kind,
             value.Media?.Identity.Id,
-            value.Media?.ContributorRole,
+            value.Media?.ArtistScope,
             value.SearchCorrelationId);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
         return Prefix + EncodeBase64Url(bytes);
@@ -52,10 +52,10 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             var media = payload.MediaKind is { } mediaKind
                 ? new PlayableMedia(
                     new MediaIdentity(mediaKind, payload.MediaId ?? string.Empty),
-                    payload.ContributorRole)
+                    payload.ArtistScope)
                 : null;
             if (media is null
-                && (payload.MediaId is not null || payload.ContributorRole is not null))
+                && (payload.MediaId is not null || payload.ArtistScope is not null))
             {
                 return null;
             }
@@ -110,8 +110,8 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             return false;
         }
 
-        return media.ContributorRole is not { } contributorRole
-            || Enum.IsDefined(contributorRole)
+        return media.ArtistScope is not { } artistScope
+            || Enum.IsDefined(artistScope)
                 && media.Identity.Kind == MediaEntityKind.Artist;
     }
 
@@ -155,6 +155,6 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
         int? Offset,
         MediaEntityKind? MediaKind,
         string? MediaId,
-        MediaContributorRole? ContributorRole,
+        ArtistSelectionScope? ArtistScope,
         string? SearchCorrelationId);
 }

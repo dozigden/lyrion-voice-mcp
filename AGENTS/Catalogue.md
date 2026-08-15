@@ -10,18 +10,19 @@ The import contracts, LMS snapshot reader, durable atomic publication, refresh s
 - Do not expose LMS JSON response types, a concrete database, or a search-engine document through catalogue contracts.
 - The catalogue is canonical application data. Search indexes are disposable derived data and operational search observations remain separate application data.
 - Preserve provider/source metadata needed for later Spotify, BBC Sounds, and other plugin adapters. Do not model every item as a local file merely because the first representative library currently contains local tracks.
-- Keep typed entities and relationships for contributors, albums, tracks, genres, playlists, and virtual libraries. Avoid an untyped metadata bag as the primary model.
+- Keep typed entities and relationships for artists, albums, tracks, genres, playlists, and virtual libraries. Avoid an untyped metadata bag as the primary model.
+- Artists mean main track artists and album artists. Do not generalise them into contributors or ingest composer, conductor, band, or other contributor-role relationships.
 - Represent works, provider-specific statistics, and other optional capabilities through explicit extension points rather than forcing them into unrelated core fields.
 
 ## LMS ingestion
 
-- `LmsCatalogueReader` currently reads contributors, albums, genres, tracks, native statistics, virtual libraries, and their memberships into one `CatalogueImportSnapshot`. Playlists remain a later part of the catalogue story.
+- `LmsCatalogueReader` currently reads a broad LMS artist-name lookup, albums, genres, tracks, native statistics, virtual libraries, and their memberships into one `CatalogueImportSnapshot`. The published artist set is the lookup filtered to IDs referenced by track `artist_ids` or album `artist_id`; unreferenced person roles never enter the snapshot. Playlists remain a later part of the catalogue story.
 - The reader uses sequential 500-item pages, checks `serverstatus` before and after the snapshot, refuses to read during a scan, rejects changing command counts and duplicate IDs, and returns aggregate referential warnings without media names or paths.
 - Page every collection that supports paging and validate each command's actual response shape. The `libraries` command is the exception: it ignores paging arguments, returns all virtual libraries in one `folder_loop`, and may omit `count`; read it once, then page each library's track membership separately.
-- Use role-specific contributor ID fields from title tag `S`; use a separate contributor listing for names. Do not split the corresponding comma-separated contributor-name fields because LMS itself notes that names containing commas are ambiguous.
+- Title tag `S` exposes role-specific LMS ID fields. Ingest only `artist_ids` and resolve names through the separate broad `artists` lookup; album `artist_id` supplies album artists. Ignore composer, conductor, band, and other role fields, and discard lookup entries not referenced through one of those two artist fields. Do not split comma-separated artist-name fields because LMS itself notes that names containing commas are ambiguous.
 - Use genre ID tag `P` and model track-to-genre as many-to-many. The ordinary `g` tag can return an arbitrary single genre for multi-genre tracks.
 - Treat rating tag `R` as an optional raw 0–100 track rating and play-count tag `O` as the native LMS statistic. Do not represent a missing value as a known zero.
-- Preserve remote/local state, URL, extension identity, release type, contributor roles, disc/track ordering, dates, and current LMS IDs even when a field is absent on the initial library.
+- Preserve remote/local state, URL, extension identity, release type, main track artists, album artists, disc/track ordering, dates, and current LMS IDs even when a field is absent on the initial library.
 - Treat a current numeric LMS media ID as a source locator needed for browse and playback, not as the application's only durable identity across destructive rescans.
 - Core LMS stores a last-played value but the supported `titles`/`songinfo` tag surface does not return it. Keep last-played optional until a supported capability adapter is proven; do not reach into the LMS database or expose raw SQL.
 

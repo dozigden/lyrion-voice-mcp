@@ -19,19 +19,20 @@ public sealed class LmsCatalogueReaderTests
         {
             "serverstatus" =>
                 """
-                {"id":1,"result":{"version":"9.1.2","lastscan":"1786379003","info total artists":2,"info total albums":1,"info total genres":2,"info total songs":1}}
+                {"id":1,"result":{"version":"9.1.2","lastscan":"1786379003","info total artists":3,"info total albums":1,"info total genres":2,"info total songs":1}}
                 """,
             "artists" =>
                 """
-                {"id":1,"result":{"count":2,"artists_loop":[
+                {"id":1,"result":{"count":3,"artists_loop":[
                   {"id":11,"artist":"The Glass Harbours","extid":"artist:glass-harbours"},
-                  {"id":12,"artist":"Orla Meridian"}
+                  {"id":12,"artist":"Orla Meridian"},
+                  {"id":13,"artist":"Rowan Almanac"}
                 ]}}
                 """,
             "albums" =>
                 """
                 {"id":1,"result":{"count":1,"albums_loop":[
-                  {"id":21,"title":"Compass Weather","artist_id":11,"year":"2025","disccount":2,"compilation":"0","release_type":"ALBUM","artwork_track_id":31}
+                  {"id":21,"title":"Compass Weather","artist_id":12,"year":"2025","disccount":2,"compilation":"0","release_type":"ALBUM","artwork_track_id":31}
                 ]}}
                 """,
             "genres" =>
@@ -73,7 +74,7 @@ public sealed class LmsCatalogueReaderTests
                   "performance":"Live at Low Water",
                   "grouping":"Tidal pieces",
                   "artist_ids":"11",
-                  "composer_ids":"12",
+                  "composer_ids":"13",
                   "genre_ids":"41,42",
                   "rating":"80",
                   "playcount":"7"
@@ -100,14 +101,17 @@ public sealed class LmsCatalogueReaderTests
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1786379003), snapshot.SourceLastScanAt);
         Assert.Empty(snapshot.Warnings);
 
-        var contributor = snapshot.Contributors[0];
-        Assert.Equal("11", contributor.SourceId);
-        Assert.Equal("The Glass Harbours", contributor.Name);
-        Assert.Equal("artist:glass-harbours", contributor.ExternalId);
+        Assert.Equal(2, snapshot.Artists.Count);
+        var artist = snapshot.Artists[0];
+        Assert.Equal("11", artist.SourceId);
+        Assert.Equal("The Glass Harbours", artist.Name);
+        Assert.Equal("artist:glass-harbours", artist.ExternalId);
+        Assert.Contains(snapshot.Artists, item => item.SourceId == "12");
+        Assert.DoesNotContain(snapshot.Artists, item => item.SourceId == "13");
 
         var album = Assert.Single(snapshot.Albums);
         Assert.Equal("21", album.SourceId);
-        Assert.Equal("11", album.AlbumArtistSourceId);
+        Assert.Equal("12", album.AlbumArtistSourceId);
         Assert.False(album.IsCompilation);
 
         var track = Assert.Single(snapshot.Tracks);
@@ -117,12 +121,7 @@ public sealed class LmsCatalogueReaderTests
         Assert.Equal(42_000_000, track.FileSizeBytes);
         Assert.Equal(96_000, track.SampleRate);
         Assert.Equal(["41", "42"], track.GenreSourceIds);
-        Assert.Contains(
-            track.Contributors,
-            credit => credit is { ContributorSourceId: "11", Role: "ARTIST" });
-        Assert.Contains(
-            track.Contributors,
-            credit => credit is { ContributorSourceId: "12", Role: "COMPOSER" });
+        Assert.Equal(["11"], track.ArtistSourceIds);
         var statistics = Assert.Single(track.Statistics);
         Assert.Equal("lms-core", statistics.Source);
         Assert.Equal(80, statistics.Rating);
@@ -152,7 +151,7 @@ public sealed class LmsCatalogueReaderTests
         var handler = new CatalogueHandler(command => command[0] switch
         {
             "serverstatus" => StatusResponse(501, 0, 0, 0),
-            "artists" => ContributorsPage(int.Parse(command[1], System.Globalization.CultureInfo.InvariantCulture)),
+            "artists" => ArtistsPage(int.Parse(command[1], System.Globalization.CultureInfo.InvariantCulture)),
             "albums" => EmptyCountedResponse(),
             "genres" => EmptyCountedResponse(),
             "titles" => EmptyCountedResponse(),
@@ -166,7 +165,7 @@ public sealed class LmsCatalogueReaderTests
         var snapshot = await reader.ReadAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(501, snapshot.Contributors.Count);
+        Assert.Empty(snapshot.Artists);
         Assert.Contains(
             handler.Commands,
             command => command.SequenceEqual(["artists", "500", "500", "tags:E"]));
@@ -203,7 +202,7 @@ public sealed class LmsCatalogueReaderTests
         Assert.Collection(
             snapshot.Warnings,
             warning => Assert.Equal(("missing-album", 1), (warning.Code, warning.Occurrences)),
-            warning => Assert.Equal(("missing-contributor", 1), (warning.Code, warning.Occurrences)),
+            warning => Assert.Equal(("missing-artist", 1), (warning.Code, warning.Occurrences)),
             warning => Assert.Equal(("missing-genre", 1), (warning.Code, warning.Occurrences)),
             warning => Assert.Equal(("missing-library-track", 1), (warning.Code, warning.Occurrences)));
         Assert.DoesNotContain(snapshot.Warnings, warning => warning.Message.Contains("Clockwork", StringComparison.Ordinal));
@@ -290,7 +289,7 @@ public sealed class LmsCatalogueReaderTests
     private static string EmptyCountedResponse() =>
         """{"id":1,"result":{"count":0}}""";
 
-    private static string ContributorsPage(int offset)
+    private static string ArtistsPage(int offset)
     {
         var items = offset == 0
             ? Enumerable.Range(1, 500)
@@ -304,7 +303,7 @@ public sealed class LmsCatalogueReaderTests
                 artists_loop = items.Select(id => new
                 {
                     id,
-                    artist = $"Fictional Contributor {id}"
+                    artist = $"Fictional Artist {id}"
                 })
             }
         });

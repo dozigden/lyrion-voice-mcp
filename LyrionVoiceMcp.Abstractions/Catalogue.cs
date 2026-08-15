@@ -6,7 +6,7 @@ public sealed record CatalogueImportSource(
     string? Version,
     string? Revision);
 
-public sealed record CatalogueImportContributor(
+public sealed record CatalogueImportArtist(
     string SourceId,
     string Name,
     string? ExternalId);
@@ -25,10 +25,6 @@ public sealed record CatalogueImportAlbum(
 public sealed record CatalogueImportGenre(
     string SourceId,
     string Name);
-
-public sealed record CatalogueImportTrackContributor(
-    string ContributorSourceId,
-    string Role);
 
 public sealed record CatalogueImportTrackStatistics(
     string Source,
@@ -62,7 +58,7 @@ public sealed record CatalogueImportTrack(
     string? WorkTitle,
     string? Performance,
     string? Grouping,
-    IReadOnlyList<CatalogueImportTrackContributor> Contributors,
+    IReadOnlyList<string> ArtistSourceIds,
     IReadOnlyList<string> GenreSourceIds,
     IReadOnlyList<CatalogueImportTrackStatistics> Statistics);
 
@@ -80,7 +76,7 @@ public sealed record CatalogueImportSnapshot(
     CatalogueImportSource Source,
     DateTimeOffset CapturedAt,
     DateTimeOffset? SourceLastScanAt,
-    IReadOnlyList<CatalogueImportContributor> Contributors,
+    IReadOnlyList<CatalogueImportArtist> Artists,
     IReadOnlyList<CatalogueImportAlbum> Albums,
     IReadOnlyList<CatalogueImportGenre> Genres,
     IReadOnlyList<CatalogueImportTrack> Tracks,
@@ -100,7 +96,7 @@ public sealed record PublishedCatalogueGeneration(
     DateTimeOffset CapturedAt,
     DateTimeOffset? SourceLastScanAt,
     DateTimeOffset PublishedAt,
-    int ContributorCount,
+    int ArtistCount,
     int AlbumCount,
     int GenreCount,
     int TrackCount,

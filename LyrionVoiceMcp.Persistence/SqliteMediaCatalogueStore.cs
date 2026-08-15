@@ -8,7 +8,7 @@ public sealed class SqliteMediaCatalogueStore(
     CatalogueSettings settings,
     TimeProvider timeProvider) : IMediaCatalogueStore
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
         DataSource = settings.DatabasePath,
@@ -22,16 +22,28 @@ public sealed class SqliteMediaCatalogueStore(
         Directory.CreateDirectory(Path.GetDirectoryName(settings.DatabasePath)!);
         await using var connection = await OpenAsync(cancellationToken);
         await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;", cancellationToken);
-        await ExecuteAsync(connection, SchemaSql, cancellationToken);
-
-        await using (var version = connection.CreateCommand())
+        await ExecuteAsync(
+            connection,
+            "CREATE TABLE IF NOT EXISTS catalogue_schema (version INTEGER NOT NULL);",
+            cancellationToken);
+        var storedVersion = await ReadSchemaVersionAsync(connection, cancellationToken);
+        if (storedVersion == 0)
         {
-            version.CommandText = "SELECT version FROM catalogue_schema LIMIT 1;";
-            var value = await version.ExecuteScalarAsync(cancellationToken);
-            if (Convert.ToInt32(value, CultureInfo.InvariantCulture) != SchemaVersion)
-            {
-                throw new InvalidOperationException("The catalogue database schema is not supported.");
-            }
+            await ExecuteAsync(connection, SchemaSql, cancellationToken);
+        }
+        else if (storedVersion == 1)
+        {
+            await ExecuteAsync(connection, Migration1To2Sql, cancellationToken);
+        }
+        else if (storedVersion == SchemaVersion)
+        {
+            await ExecuteAsync(connection, SchemaSql, cancellationToken);
+        }
+
+        storedVersion = await ReadSchemaVersionAsync(connection, cancellationToken);
+        if (storedVersion != SchemaVersion)
+        {
+            throw new InvalidOperationException("The catalogue database schema is not supported.");
         }
 
         await using var interrupted = connection.CreateCommand();
@@ -55,7 +67,7 @@ public sealed class SqliteMediaCatalogueStore(
         command.CommandText = """
             SELECT g.id, g.source_id, g.source_revision, g.source_version,
                    g.captured_at, g.source_last_scan_at, g.published_at,
-                   g.contributor_count, g.album_count, g.genre_count, g.track_count,
+                   g.artist_count, g.album_count, g.genre_count, g.track_count,
                    g.virtual_library_count, g.warning_count
             FROM catalogue_state s
             JOIN catalogue_generations g ON g.id = s.published_generation_id
@@ -116,7 +128,7 @@ public sealed class SqliteMediaCatalogueStore(
             snapshot.CapturedAt,
             snapshot.SourceLastScanAt,
             completedAt,
-            snapshot.Contributors.Count,
+            snapshot.Artists.Count,
             snapshot.Albums.Count,
             snapshot.Genres.Count,
             snapshot.Tracks.Count,
@@ -126,7 +138,7 @@ public sealed class SqliteMediaCatalogueStore(
         await using var connection = await OpenAsync(cancellationToken);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
         await InsertGenerationAsync(connection, transaction, generation, snapshot, cancellationToken);
-        await InsertContributorsAsync(connection, transaction, generation.Id, snapshot.Contributors, cancellationToken);
+        await InsertArtistsAsync(connection, transaction, generation.Id, snapshot.Artists, cancellationToken);
         await InsertAlbumsAsync(connection, transaction, generation.Id, snapshot.Albums, cancellationToken);
         await InsertGenresAsync(connection, transaction, generation.Id, snapshot.Genres, cancellationToken);
         await InsertTracksAsync(connection, transaction, generation.Id, snapshot.Tracks, cancellationToken);
@@ -199,12 +211,12 @@ public sealed class SqliteMediaCatalogueStore(
             INSERT INTO catalogue_generations (
                 id, source_id, source_provider, source_version, source_revision,
                 captured_at, source_last_scan_at, published_at,
-                contributor_count, album_count, genre_count, track_count,
+                artist_count, album_count, genre_count, track_count,
                 virtual_library_count, warning_count)
             VALUES (
                 $id, $sourceId, $provider, $version, $revision,
                 $capturedAt, $lastScanAt, $publishedAt,
-                $contributors, $albums, $genres, $tracks, $libraries, $warnings);
+                $artists, $albums, $genres, $tracks, $libraries, $warnings);
             """;
         Add(command, "$id", generation.Id);
         Add(command, "$sourceId", snapshot.Source.Id);
@@ -216,7 +228,7 @@ public sealed class SqliteMediaCatalogueStore(
             ? null
             : FormatDate(snapshot.SourceLastScanAt.Value));
         Add(command, "$publishedAt", FormatDate(generation.PublishedAt));
-        Add(command, "$contributors", generation.ContributorCount);
+        Add(command, "$artists", generation.ArtistCount);
         Add(command, "$albums", generation.AlbumCount);
         Add(command, "$genres", generation.GenreCount);
         Add(command, "$tracks", generation.TrackCount);
@@ -225,28 +237,28 @@ public sealed class SqliteMediaCatalogueStore(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task InsertContributorsAsync(
+    private static async Task InsertArtistsAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
         string generationId,
-        IReadOnlyList<CatalogueImportContributor> contributors,
+        IReadOnlyList<CatalogueImportArtist> artists,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO catalogue_contributors (generation_id, source_id, name, external_id)
+            INSERT INTO catalogue_artists (generation_id, source_id, name, external_id)
             VALUES ($generationId, $sourceId, $name, $externalId);
             """;
         Add(command, "$generationId", generationId);
         var sourceId = Add(command, "$sourceId", null);
         var name = Add(command, "$name", null);
         var externalId = Add(command, "$externalId", null);
-        foreach (var contributor in contributors)
+        foreach (var artist in artists)
         {
-            sourceId.Value = contributor.SourceId;
-            name.Value = contributor.Name;
-            externalId.Value = DbValue(contributor.ExternalId);
+            sourceId.Value = artist.SourceId;
+            name.Value = artist.Name;
+            externalId.Value = DbValue(artist.ExternalId);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
@@ -325,7 +337,7 @@ public sealed class SqliteMediaCatalogueStore(
         CancellationToken cancellationToken)
     {
         await using var trackCommand = CreateTrackCommand(connection, transaction, generationId);
-        await using var contributorCommand = CreateTrackContributorCommand(connection, transaction, generationId);
+        await using var artistCommand = CreateTrackArtistCommand(connection, transaction, generationId);
         await using var genreCommand = CreateTrackGenreCommand(connection, transaction, generationId);
         await using var statisticsCommand = CreateTrackStatisticsCommand(connection, transaction, generationId);
         foreach (var track in tracks)
@@ -333,12 +345,11 @@ public sealed class SqliteMediaCatalogueStore(
             SetTrackParameters(trackCommand, track);
             await trackCommand.ExecuteNonQueryAsync(cancellationToken);
 
-            foreach (var contributor in track.Contributors)
+            foreach (var artistId in track.ArtistSourceIds)
             {
-                contributorCommand.Parameters["$trackId"].Value = track.SourceId;
-                contributorCommand.Parameters["$contributorId"].Value = contributor.ContributorSourceId;
-                contributorCommand.Parameters["$role"].Value = contributor.Role;
-                await contributorCommand.ExecuteNonQueryAsync(cancellationToken);
+                artistCommand.Parameters["$trackId"].Value = track.SourceId;
+                artistCommand.Parameters["$artistId"].Value = artistId;
+                await artistCommand.ExecuteNonQueryAsync(cancellationToken);
             }
 
             foreach (var genreId in track.GenreSourceIds)
@@ -429,7 +440,7 @@ public sealed class SqliteMediaCatalogueStore(
         command.Parameters["$grouping"].Value = DbValue(track.Grouping);
     }
 
-    private static SqliteCommand CreateTrackContributorCommand(
+    private static SqliteCommand CreateTrackArtistCommand(
         SqliteConnection connection,
         SqliteTransaction transaction,
         string generationId)
@@ -437,14 +448,13 @@ public sealed class SqliteMediaCatalogueStore(
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO catalogue_track_contributors (
-                generation_id, track_source_id, contributor_source_id, role)
-            VALUES ($generationId, $trackId, $contributorId, $role);
+            INSERT INTO catalogue_track_artists (
+                generation_id, track_source_id, artist_source_id)
+            VALUES ($generationId, $trackId, $artistId);
             """;
         Add(command, "$generationId", generationId);
         Add(command, "$trackId", null);
-        Add(command, "$contributorId", null);
-        Add(command, "$role", null);
+        Add(command, "$artistId", null);
         return command;
     }
 
@@ -622,6 +632,21 @@ public sealed class SqliteMediaCatalogueStore(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task<int> ReadSchemaVersionAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT version FROM catalogue_schema LIMIT 1;";
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is null)
+        {
+            return 0;
+        }
+
+        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+    }
+
     private static PublishedCatalogueGeneration ReadGeneration(SqliteDataReader reader) => new(
         reader.GetString(0),
         reader.GetString(1),
@@ -683,7 +708,7 @@ public sealed class SqliteMediaCatalogueStore(
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS catalogue_schema (version INTEGER NOT NULL);
         INSERT INTO catalogue_schema (version)
-            SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM catalogue_schema);
+            SELECT 2 WHERE NOT EXISTS (SELECT 1 FROM catalogue_schema);
 
         CREATE TABLE IF NOT EXISTS catalogue_generations (
             id TEXT PRIMARY KEY,
@@ -694,7 +719,7 @@ public sealed class SqliteMediaCatalogueStore(
             captured_at TEXT NOT NULL,
             source_last_scan_at TEXT NULL,
             published_at TEXT NOT NULL,
-            contributor_count INTEGER NOT NULL,
+            artist_count INTEGER NOT NULL,
             album_count INTEGER NOT NULL,
             genre_count INTEGER NOT NULL,
             track_count INTEGER NOT NULL,
@@ -720,7 +745,7 @@ public sealed class SqliteMediaCatalogueStore(
         CREATE UNIQUE INDEX IF NOT EXISTS ux_catalogue_refresh_runs_running
             ON catalogue_refresh_runs(status) WHERE status = 'running';
 
-        CREATE TABLE IF NOT EXISTS catalogue_contributors (
+        CREATE TABLE IF NOT EXISTS catalogue_artists (
             generation_id TEXT NOT NULL,
             source_id TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -779,12 +804,11 @@ public sealed class SqliteMediaCatalogueStore(
             PRIMARY KEY (generation_id, source_id),
             FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
         );
-        CREATE TABLE IF NOT EXISTS catalogue_track_contributors (
+        CREATE TABLE IF NOT EXISTS catalogue_track_artists (
             generation_id TEXT NOT NULL,
             track_source_id TEXT NOT NULL,
-            contributor_source_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            PRIMARY KEY (generation_id, track_source_id, contributor_source_id, role),
+            artist_source_id TEXT NOT NULL,
+            PRIMARY KEY (generation_id, track_source_id, artist_source_id),
             FOREIGN KEY (generation_id, track_source_id)
                 REFERENCES catalogue_tracks(generation_id, source_id) ON DELETE CASCADE
         );
@@ -830,5 +854,81 @@ public sealed class SqliteMediaCatalogueStore(
             PRIMARY KEY (generation_id, code),
             FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
         );
+        """;
+
+    private const string Migration1To2Sql = """
+        BEGIN IMMEDIATE;
+        ALTER TABLE catalogue_generations RENAME COLUMN contributor_count TO artist_count;
+        CREATE TABLE catalogue_artists (
+            generation_id TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            external_id TEXT NULL,
+            PRIMARY KEY (generation_id, source_id),
+            FOREIGN KEY (generation_id) REFERENCES catalogue_generations(id) ON DELETE CASCADE
+        );
+        INSERT INTO catalogue_artists (generation_id, source_id, name, external_id)
+            SELECT contributor.generation_id, contributor.source_id,
+                   contributor.name, contributor.external_id
+            FROM catalogue_contributors contributor
+            WHERE EXISTS (
+                SELECT 1
+                FROM catalogue_track_contributors track_artist
+                WHERE track_artist.generation_id = contributor.generation_id
+                  AND track_artist.contributor_source_id = contributor.source_id
+                  AND track_artist.role = 'ARTIST'
+            ) OR EXISTS (
+                SELECT 1
+                FROM catalogue_albums album
+                WHERE album.generation_id = contributor.generation_id
+                  AND album.album_artist_source_id = contributor.source_id
+            );
+        CREATE TABLE catalogue_track_artists (
+            generation_id TEXT NOT NULL,
+            track_source_id TEXT NOT NULL,
+            artist_source_id TEXT NOT NULL,
+            PRIMARY KEY (generation_id, track_source_id, artist_source_id),
+            FOREIGN KEY (generation_id, track_source_id)
+                REFERENCES catalogue_tracks(generation_id, source_id) ON DELETE CASCADE
+        );
+        INSERT INTO catalogue_track_artists (generation_id, track_source_id, artist_source_id)
+            SELECT generation_id, track_source_id, contributor_source_id
+            FROM catalogue_track_contributors
+            WHERE role = 'ARTIST';
+        DELETE FROM catalogue_warnings WHERE code = 'missing-contributor';
+        INSERT INTO catalogue_warnings (generation_id, code, message, occurrences)
+            SELECT reference.generation_id,
+                   'missing-artist',
+                   'Track or album artist references were not present in the imported artist set.',
+                   COUNT(*)
+            FROM (
+                SELECT generation_id, album_artist_source_id AS artist_source_id
+                FROM catalogue_albums
+                WHERE album_artist_source_id IS NOT NULL
+                UNION ALL
+                SELECT generation_id, contributor_source_id AS artist_source_id
+                FROM catalogue_track_contributors
+                WHERE role = 'ARTIST'
+            ) reference
+            LEFT JOIN catalogue_contributors contributor
+              ON contributor.generation_id = reference.generation_id
+             AND contributor.source_id = reference.artist_source_id
+            WHERE contributor.source_id IS NULL
+            GROUP BY reference.generation_id;
+        UPDATE catalogue_generations
+        SET artist_count = (
+                SELECT COUNT(*)
+                FROM catalogue_artists artist
+                WHERE artist.generation_id = catalogue_generations.id
+            ),
+            warning_count = (
+                SELECT COUNT(*)
+                FROM catalogue_warnings warning
+                WHERE warning.generation_id = catalogue_generations.id
+            );
+        DROP TABLE catalogue_track_contributors;
+        DROP TABLE catalogue_contributors;
+        UPDATE catalogue_schema SET version = 2;
+        COMMIT;
         """;
 }

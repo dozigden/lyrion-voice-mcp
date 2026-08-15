@@ -406,8 +406,8 @@ public sealed class PlaybackServiceTests
         }
 
         private static string Describe(PlayableMedia media) =>
-            media.ContributorRole is { } role
-                ? $"{media.Identity.Kind}:{media.Identity.Id}:{role}"
+            media.ArtistScope is { } scope
+                ? $"{media.Identity.Kind}:{media.Identity.Id}:{scope}"
                 : $"{media.Identity.Kind}:{media.Identity.Id}";
 
     }

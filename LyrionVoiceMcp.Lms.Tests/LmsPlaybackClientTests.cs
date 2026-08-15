@@ -54,7 +54,7 @@ public sealed class LmsPlaybackClientTests
         var client = CreateClient(httpClient);
         var media = new PlayableMedia(
             new MediaIdentity(MediaEntityKind.Artist, "11"),
-            MediaContributorRole.AlbumArtist);
+            ArtistSelectionScope.AlbumArtist);
 
         // Act
         var count = await client.GetPlayableItemCountAsync(

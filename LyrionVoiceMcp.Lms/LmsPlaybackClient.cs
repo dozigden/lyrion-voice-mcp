@@ -141,14 +141,14 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
                 $"Unsupported media entity kind {media.Identity.Kind}.")
         };
 
-        return media.ContributorRole switch
+        return media.ArtistScope switch
         {
             null => [identityParameter],
-            MediaContributorRole.AlbumArtist
+            ArtistSelectionScope.AlbumArtist
                 when media.Identity.Kind == MediaEntityKind.Artist =>
                 [identityParameter, "role_id:ALBUMARTIST"],
             _ => throw new ArgumentException(
-                "The media contributor role is not valid for this media identity.",
+                "The artist selection scope is not valid for this media identity.",
                 nameof(media))
         };
     }

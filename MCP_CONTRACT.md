@@ -67,7 +67,7 @@ Pages use an internal 50-item size. The caller cannot select an offset, limit, f
 
 Each item contains only `reference`, `kind`, `title`, optional `artist`, optional `album`, `browsable`, and `playable`. The response contains `items` and nullable `continuation`. Album-artist, artist, album, playlist, and track items are playable; genres and years are navigation only. Tracks are playable but not browsable.
 
-Playing or queueing an album-artist item retains LMS's album-artist role constraint. It therefore selects the same album-artist catalogue represented by that browse item rather than every track on which the contributor has any role. Ordinary artist items remain unrestricted.
+Playing or queueing an album-artist item retains LMS's album-artist selection constraint. It therefore selects the same album-artist catalogue represented by that browse item. This is a narrow LMS query scope, not a general contributor-role model; ordinary artist items remain unrestricted.
 
 The implemented first pass excludes LMS plugins and providers, virtual-library selection, subscriptions, and player-dependent browsing. Invalid references and attempts to browse a playable-only item return MCP tool execution errors with `isError: true`.
 
