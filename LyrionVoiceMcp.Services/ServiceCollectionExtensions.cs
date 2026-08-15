@@ -8,6 +8,11 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddLyrionVoiceMcpServices(this IServiceCollection services)
     {
         services.AddSingleton<IOperationalStatusService, OperationalStatusService>();
+        services.AddSingleton<CatalogueRefreshService>();
+        services.AddSingleton<ICatalogueRefreshService>(provider =>
+            provider.GetRequiredService<CatalogueRefreshService>());
+        services.AddHostedService(provider =>
+            provider.GetRequiredService<CatalogueRefreshService>());
         services.AddTransient<IBrowseService, BrowseService>();
         services.AddTransient<ILmsConnectionStatusService, LmsConnectionStatusService>();
         services.AddTransient<IPlaybackService, PlaybackService>();

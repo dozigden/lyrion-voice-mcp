@@ -20,7 +20,7 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 ## Containers
 
 - The Docker image is the production-shaped deployment unit and serves API, MCP, and Vue on port 5600.
-- Container search observations live under `/data`; keep that path on a persistent volume.
+- Container search observations and the separate canonical catalogue database live under `/data`; keep that path on a persistent volume.
 - Supported architectures are `linux/amd64` and `linux/arm64` only.
 - Do not bake LMS environment addresses or local credentials into an image.
 - The current CI builds and smoke-tests images but does not publish them.
@@ -31,6 +31,7 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 - The local settings file is ignored and must never be committed. Environment variables may override it for exceptional automation, but are not the normal interactive workflow.
 - Compose maps `LVM_LMS_SERVER_ID`, `LVM_LMS_BASE_URL`, and optional `LVM_LMS_REQUEST_TIMEOUT_SECONDS` into the container.
 - Compose accepts optional `LVM_SEARCH_RETENTION_DAYS`; operational search history defaults to 90 days.
+- Catalogue storage uses `LyrionVoiceMcpCatalogue:DatabasePath`, defaults to `.data/catalogue.db` in local development, and is fixed to `/data/catalogue.db` in the container. It is intentionally separate from both search observations and the future search index.
 - Do not commit environment-specific LMS values. An unconfigured runtime is valid and reports `not_configured` from `/api/lms`.
 
 ## Build metadata

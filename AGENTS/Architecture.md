@@ -9,7 +9,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Abstractions`: domain-facing interfaces and transport-neutral models.
 - `LyrionVoiceMcp.Services`: application orchestration and policy.
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
-- `LyrionVoiceMcp.Persistence`: SQLite-backed operational search-observation storage behind abstractions.
+- `LyrionVoiceMcp.Persistence`: separate SQLite-backed catalogue and operational search-observation stores behind abstractions.
 - `LyrionVoiceMcp.Evaluation`: offline corpus validation and sequential LMS baseline benchmarking; it is not part of the deployed service.
 - `LyrionVoiceMcp.Web`: Vue administration and review UI.
 - `LyrionVoiceMcp.Dev`: local API/Vite process supervisor only.
@@ -32,7 +32,8 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - Health is process liveness and must not depend on LMS availability.
 - LMS connectivity is reported separately by `/api/lms`; an unavailable LMS must not make `/api/health` fail.
 - Operational search observations use SQLite through `ISearchObservationStore`. Do not let persistence types leak into Services or reuse this database as a future catalogue or search index.
+- The canonical catalogue uses its own SQLite database through `IMediaCatalogueStore`. SQLite is an adapter choice for durable application data, not a decision about the replaceable search index.
 
 ## Planned boundaries
 
-Storage-neutral catalogue import records, source-reader and atomic-publication contracts are implemented in Abstractions, and the first LMS snapshot reader is implemented in Lms. Catalogue persistence, refresh orchestration, canonical ID reconciliation, catalogue queries, and the replaceable search index remain planned. Keep all of them independent of the operational observation store and selected index technology.
+Storage-neutral catalogue import records and publication contracts are implemented in Abstractions, the LMS snapshot reader is implemented in Lms, refresh orchestration is implemented in Services, and atomic SQLite generation publication is implemented in Persistence. Canonical ID reconciliation, catalogue queries, scheduled refresh, playlists, and the replaceable search index remain planned. Keep them independent of the operational observation store and selected index technology.

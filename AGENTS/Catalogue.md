@@ -2,7 +2,7 @@
 
 Read this before changing catalogue models, LMS ingestion, provider metadata, catalogue persistence, or refresh orchestration.
 
-The import contracts and first LMS snapshot reader are implemented; persistent publication and the queryable canonical catalogue are not. The evidence, provisional data shape, and implementation status are recorded in [CATALOGUE_RECONNAISSANCE.md](../CATALOGUE_RECONNAISSANCE.md).
+The import contracts, LMS snapshot reader, durable atomic publication, refresh status, and manual refresh orchestration are implemented; the queryable canonical catalogue is not. The evidence and provisional data shape are recorded in [CATALOGUE_RECONNAISSANCE.md](../CATALOGUE_RECONNAISSANCE.md).
 
 ## Boundaries
 
@@ -27,9 +27,11 @@ The import contracts and first LMS snapshot reader are implemented; persistent p
 
 ## Refresh
 
-- `IMediaCatalogueStore.PublishAsync` is the storage-neutral atomic-publication boundary. It has no implementation yet; do not register an ephemeral production store merely to make the reader run automatically.
+- `IMediaCatalogueStore.PublishAsync` is the storage-neutral atomic-publication boundary. `SqliteMediaCatalogueStore` implements it in a catalogue database separate from search observations; do not leak this adapter choice into catalogue consumers or the future search index.
 - The safe initial strategy is a complete paged snapshot reconciled into a staging generation and published atomically only after successful validation.
 - Never delete or partially replace the current generation because a page, plugin, or LMS call failed. Retain run status, source freshness, counts, duration, and sanitised warnings.
+- A refresh run is recorded before LMS reading begins. Successful publication, the active-generation switch, and refresh completion share one transaction; failed and cancelled reads leave the active generation unchanged. Startup marks a previously running refresh as interrupted.
+- `GET /api/catalogue` exposes the current published generation and latest refresh status. `POST /api/catalogue/refresh` records and queues one background refresh, returns `202 Accepted`, and rejects concurrent attempts. The background operation is tied to application lifetime rather than request lifetime because a representative import takes about two minutes. Refresh remains deliberately manual; do not add startup or scheduled LMS reads without an explicit policy.
 - `serverstatus lastscan` is a useful library-scan signal but not a complete change token: ratings, play counts, dynamic virtual-library membership, and plugin statistics can change without a media scan.
 - Derive a catalogue revision only after publication. Downstream search indexes must be able to rebuild from a specific published revision.
 - Do not choose SQLite, FTS5, Lucene.NET, or another backend as part of the ingestion contract. Storage and search-engine selection remain separate decisions.

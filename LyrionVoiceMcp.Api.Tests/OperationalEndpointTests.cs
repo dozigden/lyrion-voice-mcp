@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Contracts;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace LyrionVoiceMcp.Api.Tests;
 
@@ -107,5 +110,127 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
         Assert.NotNull(response);
         Assert.Equal(90, response.RetentionDays);
         Assert.NotNull(response.Items);
+    }
+
+    [Fact]
+    public async Task CatalogueShouldExposePublishedGenerationAndLatestRefresh()
+    {
+        // Arrange
+        var status = CreateCatalogueStatus(CatalogueRefreshRunStatus.Succeeded);
+        using var configuredFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<ICatalogueRefreshService>();
+                services.AddSingleton<ICatalogueRefreshService>(new StubCatalogueRefreshService(status));
+            }));
+        using var client = configuredFactory.CreateClient();
+
+        // Act
+        var response = await client.GetFromJsonAsync<CatalogueStatusResponse>(
+            "/api/catalogue",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal("generation-1", response?.PublishedGeneration?.Id);
+        Assert.Equal(33_687, response?.PublishedGeneration?.TrackCount);
+        Assert.Equal("succeeded", response?.LatestRefresh?.Status);
+        Assert.Equal("generation-1", response?.LatestRefresh?.PublishedGenerationId);
+    }
+
+    [Fact]
+    public async Task CatalogueRefreshShouldReportConflictWhenARefreshIsAlreadyRunning()
+    {
+        // Arrange
+        var status = CreateCatalogueStatus(CatalogueRefreshRunStatus.Running);
+        using var configuredFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<ICatalogueRefreshService>();
+                services.AddSingleton<ICatalogueRefreshService>(
+                    new StubCatalogueRefreshService(
+                        status,
+                        new CatalogueRefreshAlreadyRunning(status)));
+            }));
+        using var client = configuredFactory.CreateClient();
+
+        // Act
+        var response = await client.PostAsync(
+            "/api/catalogue/refresh",
+            null,
+            TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadFromJsonAsync<CatalogueStatusResponse>(
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("running", body?.LatestRefresh?.Status);
+    }
+
+    [Fact]
+    public async Task CatalogueRefreshShouldQueueBackgroundWorkAndReturnStatusLocation()
+    {
+        // Arrange
+        var status = CreateCatalogueStatus(CatalogueRefreshRunStatus.Running);
+        using var configuredFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<ICatalogueRefreshService>();
+                services.AddSingleton<ICatalogueRefreshService>(
+                    new StubCatalogueRefreshService(
+                        status,
+                        new CatalogueRefreshStarted(status)));
+            }));
+        using var client = configuredFactory.CreateClient();
+
+        // Act
+        var response = await client.PostAsync(
+            "/api/catalogue/refresh",
+            null,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("/api/catalogue", response.Headers.Location?.OriginalString);
+    }
+
+    private static CatalogueStatus CreateCatalogueStatus(CatalogueRefreshRunStatus status)
+    {
+        var published = new PublishedCatalogueGeneration(
+            "generation-1",
+            "development",
+            "revision-1",
+            "9.1.2",
+            DateTimeOffset.Parse("2026-08-15T09:59:58Z"),
+            DateTimeOffset.Parse("2026-08-15T09:55:00Z"),
+            DateTimeOffset.Parse("2026-08-15T10:00:12Z"),
+            6_530,
+            3_003,
+            128,
+            33_687,
+            6,
+            0);
+        return new CatalogueStatus(
+            published,
+            new CatalogueRefreshRun(
+                "refresh-1",
+                status,
+                DateTimeOffset.Parse("2026-08-15T10:00:00Z"),
+                status == CatalogueRefreshRunStatus.Running
+                    ? null
+                    : DateTimeOffset.Parse("2026-08-15T10:00:12Z"),
+                status == CatalogueRefreshRunStatus.Running ? null : 12_000,
+                status == CatalogueRefreshRunStatus.Succeeded ? published.Id : null,
+                null));
+    }
+
+    private sealed class StubCatalogueRefreshService(
+        CatalogueStatus status,
+        CatalogueRefreshOutcome? outcome = null) : ICatalogueRefreshService
+    {
+        public Task<CatalogueStatus> GetStatusAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(status);
+
+        public Task<CatalogueRefreshOutcome> RefreshAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(outcome ?? new CatalogueRefreshStarted(status));
     }
 }

@@ -44,6 +44,7 @@ ENV LyrionVoiceMcpBuild__Channel=$LVM_CHANNEL
 ENV LyrionVoiceMcpBuild__Build=$LVM_BUILD
 ENV LyrionVoiceMcpBuild__Commit=$LVM_COMMIT
 ENV LyrionVoiceMcpObservations__DatabasePath=/data/search-observations.db
+ENV LyrionVoiceMcpCatalogue__DatabasePath=/data/catalogue.db
 EXPOSE 5600
 VOLUME ["/data"]
 USER $APP_UID

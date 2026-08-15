@@ -37,10 +37,14 @@ var observationSettings = SearchObservationSettings.FromValues(
     builder.Environment.ContentRootPath,
     builder.Configuration["LyrionVoiceMcpObservations:DatabasePath"],
     builder.Configuration["LyrionVoiceMcpObservations:RetentionDays"]);
+var catalogueSettings = CatalogueSettings.FromValues(
+    builder.Environment.ContentRootPath,
+    builder.Configuration["LyrionVoiceMcpCatalogue:DatabasePath"]);
 
 builder.Services.AddSingleton(buildInfo);
 builder.Services.AddSingleton(lmsSettings);
 builder.Services.AddSearchObservationPersistence(observationSettings);
+builder.Services.AddCataloguePersistence(catalogueSettings);
 builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
 {
     client.Timeout = lmsSettings.RequestTimeout;
@@ -80,11 +84,14 @@ var app = builder.Build();
 
 await app.Services.GetRequiredService<ISearchObservationStore>()
     .InitialiseAsync(CancellationToken.None);
+await app.Services.GetRequiredService<IMediaCatalogueStore>()
+    .InitialiseAsync(CancellationToken.None);
 
 app.Logger.LogWarning(
     "Lyrion Voice MCP is unauthenticated trusted-LAN software. Do not expose this service to untrusted networks.");
 
 app.MapOperationalEndpoints();
+app.MapCatalogueEndpoints();
 app.MapSearchObservationEndpoints();
 app.MapMcp("/mcp");
 

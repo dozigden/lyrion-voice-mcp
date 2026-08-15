@@ -96,6 +96,9 @@ public sealed record PublishedCatalogueGeneration(
     string Id,
     string SourceId,
     string? SourceRevision,
+    string? SourceVersion,
+    DateTimeOffset CapturedAt,
+    DateTimeOffset? SourceLastScanAt,
     DateTimeOffset PublishedAt,
     int ContributorCount,
     int AlbumCount,
@@ -104,12 +107,51 @@ public sealed record PublishedCatalogueGeneration(
     int VirtualLibraryCount,
     int WarningCount);
 
+public enum CatalogueRefreshRunStatus
+{
+    Running,
+    Succeeded,
+    Failed,
+    Cancelled,
+    Interrupted
+}
+
+public sealed record CatalogueRefreshRun(
+    string Id,
+    CatalogueRefreshRunStatus Status,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? CompletedAt,
+    long? DurationMilliseconds,
+    string? PublishedGenerationId,
+    string? FailureMessage);
+
 public interface IMediaCatalogueStore
 {
+    Task InitialiseAsync(CancellationToken cancellationToken);
+
     Task<PublishedCatalogueGeneration?> GetPublishedGenerationAsync(
+        CancellationToken cancellationToken);
+
+    Task<CatalogueRefreshRun?> GetLatestRefreshRunAsync(
+        CancellationToken cancellationToken);
+
+    Task BeginRefreshAsync(
+        string refreshId,
+        DateTimeOffset startedAt,
         CancellationToken cancellationToken);
 
     Task<PublishedCatalogueGeneration> PublishAsync(
         CatalogueImportSnapshot snapshot,
+        string refreshId,
+        DateTimeOffset completedAt,
+        long durationMilliseconds,
+        CancellationToken cancellationToken);
+
+    Task CompleteFailedRefreshAsync(
+        string refreshId,
+        CatalogueRefreshRunStatus status,
+        DateTimeOffset completedAt,
+        long durationMilliseconds,
+        string failureMessage,
         CancellationToken cancellationToken);
 }

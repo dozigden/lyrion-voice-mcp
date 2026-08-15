@@ -16,6 +16,9 @@ public sealed class LyrionVoiceMcpApiFactory : WebApplicationFactory<Program>
         builder.UseSetting(
             "LyrionVoiceMcpObservations:DatabasePath",
             Path.Combine(directory, "search-observations.db"));
+        builder.UseSetting(
+            "LyrionVoiceMcpCatalogue:DatabasePath",
+            Path.Combine(directory, "catalogue.db"));
     }
 
     protected override void Dispose(bool disposing)
