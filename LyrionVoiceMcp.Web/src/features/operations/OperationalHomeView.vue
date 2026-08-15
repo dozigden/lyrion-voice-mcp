@@ -101,6 +101,44 @@
           </div>
         </dl>
       </article>
+
+      <article class="status-card status-card--catalogue">
+        <div class="status-card__heading">
+          <div>
+            <p class="status-card__label">Canonical catalogue</p>
+            <h2>Library snapshot</h2>
+          </div>
+          <span class="status-pill" :class="catalogueStatusPillClass" role="status">
+            <span class="status-pill__dot" aria-hidden="true"></span>
+            {{ catalogueStatusLabel }}
+          </span>
+        </div>
+
+        <p v-if="operations.catalogueErrorMessage" class="error-message" role="alert">
+          {{ operations.catalogueErrorMessage }}
+        </p>
+        <p v-else-if="operations.catalogue?.summary" class="status-card__copy">
+          {{ formatCount(operations.catalogue.summary.trackCount) }} tracks. Last rebuilt
+          <time :datetime="operations.catalogue.summary.refreshedAt">
+            {{ formatDate(operations.catalogue.summary.refreshedAt) }}.
+          </time>
+        </p>
+        <p v-else-if="!operations.catalogueLoading" class="catalogue-empty">
+          The catalogue has not been built yet. Rebuilding reads LMS metadata without altering media or playback.
+        </p>
+        <p v-if="operations.catalogue?.latestRefresh?.failureMessage" class="error-message">
+          {{ operations.catalogue.latestRefresh.failureMessage }}
+        </p>
+
+        <button
+          class="refresh-button catalogue-rebuild"
+          type="button"
+          :disabled="catalogueButtonDisabled"
+          @click="rebuildCatalogue"
+        >
+          {{ catalogueButtonLabel }}
+        </button>
+      </article>
     </section>
 
     <aside class="trust-notice" aria-labelledby="trust-title">
@@ -122,10 +160,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import { useOperationsStore } from './operationsStore';
 
 const operations = useOperationsStore();
+let cataloguePollTimer: ReturnType<typeof setTimeout> | undefined;
+let cataloguePollingActive = false;
 
 const statusLabel = computed(() => {
   if (operations.loading) {
@@ -165,12 +205,105 @@ const lmsStatusPillClass = computed(() => ({
   'status-pill--error': operations.lmsConnection?.status === 'unavailable'
 }));
 
+const catalogueStatusLabel = computed(() => {
+  if (operations.catalogueLoading && operations.catalogue === null) {
+    return 'Checking';
+  }
+
+  if (operations.catalogueRebuilding) {
+    return 'Rebuilding';
+  }
+
+  if (operations.catalogue?.latestRefresh?.status === 'failed'
+    || operations.catalogue?.latestRefresh?.status === 'interrupted'
+    || operations.catalogue?.latestRefresh?.status === 'cancelled') {
+    return 'Attention';
+  }
+
+  if (operations.catalogue?.summary) {
+    return 'Ready';
+  }
+
+  return 'Not built';
+});
+
+const catalogueStatusPillClass = computed(() => ({
+  'status-pill--online': operations.catalogue !== null
+    && operations.catalogue.summary !== null
+    && !operations.catalogueRebuilding,
+  'status-pill--working': operations.catalogueRebuilding,
+  'status-pill--error': operations.catalogueErrorMessage !== null
+    || catalogueStatusLabel.value === 'Attention'
+}));
+
+const catalogueButtonDisabled = computed(() =>
+  operations.catalogueLoading
+  || operations.catalogueRebuildPending
+  || operations.catalogueRebuilding);
+
+const catalogueButtonLabel = computed(() => {
+  if (operations.catalogueRebuildPending) {
+    return 'Starting rebuild…';
+  }
+
+  if (operations.catalogueRebuilding) {
+    return 'Rebuild in progress…';
+  }
+
+  return 'Rebuild catalogue';
+});
+
 onMounted(async () => {
-  await operations.load();
+  cataloguePollingActive = true;
+  await Promise.all([
+    operations.load(),
+    operations.loadCatalogue()
+  ]);
+  scheduleCataloguePoll();
+});
+
+onUnmounted(() => {
+  cataloguePollingActive = false;
+  clearCataloguePoll();
 });
 
 async function refresh(): Promise<void> {
   await operations.load();
+}
+
+async function rebuildCatalogue(): Promise<void> {
+  await operations.rebuild();
+  scheduleCataloguePoll();
+}
+
+function scheduleCataloguePoll(): void {
+  clearCataloguePoll();
+  if (!cataloguePollingActive || !operations.catalogueRebuilding) {
+    return;
+  }
+
+  cataloguePollTimer = setTimeout(async () => {
+    await operations.loadCatalogue();
+    scheduleCataloguePoll();
+  }, 2_000);
+}
+
+function clearCataloguePoll(): void {
+  if (cataloguePollTimer !== undefined) {
+    clearTimeout(cataloguePollTimer);
+    cataloguePollTimer = undefined;
+  }
+}
+
+function formatCount(value: number): string {
+  return value.toLocaleString('en-GB');
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleString('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
 }
 </script>
 
@@ -327,6 +460,11 @@ h1 {
   color: var(--danger-text);
 }
 
+.status-pill--working {
+  border-color: rgba(244, 175, 65, 0.4);
+  color: var(--accent);
+}
+
 .refresh-button {
   padding: 10px 15px;
   border: 1px solid var(--border-strong);
@@ -395,6 +533,22 @@ code {
   color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.status-card--catalogue {
+  min-height: 190px;
+  grid-column: 1 / -1;
+  background: linear-gradient(145deg, rgba(38, 34, 27, 0.96), rgba(25, 23, 19, 0.98));
+}
+
+.catalogue-empty {
+  min-height: 48px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.catalogue-rebuild {
+  min-width: 170px;
 }
 
 .trust-notice {

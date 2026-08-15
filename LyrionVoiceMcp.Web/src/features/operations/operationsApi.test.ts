@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getHealth, getLmsConnection } from './operationsApi';
+import { getCatalogue, getHealth, getLmsConnection, rebuildCatalogue } from './operationsApi';
 
 describe('operationsApi', () => {
   afterEach(() => {
@@ -70,4 +70,79 @@ describe('operationsApi', () => {
     expect(result.serverId).toBe('development');
     expect(result.serverVersion).toBe('9.0.1');
   });
+
+  it('returns catalogue status', async () => {
+    // Arrange
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(catalogueStatus('succeeded'), 200));
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Act
+    const result = await getCatalogue();
+
+    // Assert
+    expect(result.summary?.trackCount).toBe(12_345);
+    expect(result.latestRefresh?.status).toBe('succeeded');
+    expect(fetchMock).toHaveBeenCalledWith('/api/catalogue', expect.objectContaining({
+      headers: { Accept: 'application/json' }
+    }));
+  });
+
+  it('starts a catalogue rebuild', async () => {
+    // Arrange
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(catalogueStatus('running'), 202));
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Act
+    const result = await rebuildCatalogue();
+
+    // Assert
+    expect(result.latestRefresh?.status).toBe('running');
+    expect(fetchMock).toHaveBeenCalledWith('/api/catalogue/refresh', expect.objectContaining({
+      method: 'POST',
+      headers: { Accept: 'application/json' }
+    }));
+  });
 });
+
+function catalogueStatus(status: 'running' | 'succeeded'): Record<string, unknown> {
+  return {
+    summary: {
+      sourceId: 'development',
+      provider: 'lms',
+      sourceRevision: '1786379003',
+      sourceVersion: '9.1.2',
+      capturedAt: '2026-08-15T12:00:00Z',
+      sourceLastScanAt: '2026-08-15T11:30:00Z',
+      refreshedAt: '2026-08-15T12:00:01Z',
+      artistCount: 1_234,
+      albumCount: 2_345,
+      genreCount: 67,
+      trackCount: 12_345,
+      virtualLibraryCount: 4,
+      warningCount: 0
+    },
+    latestRefresh: {
+      id: 'refresh-1',
+      status,
+      startedAt: '2026-08-15T12:00:00Z',
+      completedAt: status === 'running' ? null : '2026-08-15T12:02:38Z',
+      durationMilliseconds: status === 'running' ? null : 158_000,
+      failureMessage: null,
+      logs: [{
+        id: 1,
+        occurredAt: '2026-08-15T12:00:01Z',
+        level: 'information',
+        message: 'Started reading the LMS catalogue.',
+        processedCount: null,
+        totalCount: null
+      }]
+    }
+  };
+}
+
+function jsonResponse(value: unknown, status: number): Response {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
