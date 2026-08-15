@@ -21,4 +21,5 @@ Read this before changing search contracts, ranking, observation capture, catalo
 - A later catalogue is canonical application data; a search index is rebuildable derived data.
 - Spotify may be used only in a later offline experiment over recorded misses. It is not a runtime fallback or dependency.
 - The first catalogue-backed benchmark resolver lives only in Evaluation and may read the concrete catalogue SQLite database directly. This is intentional experimental coupling, not a production search decision. It covers normalised lexical/token/prefix/bounded-edit matching only; do not describe it as phonetic or production-ready.
+- The second `catalogue-phuzzy` evaluator adds transliteration, query spans, joined tokens, character trigrams, a deliberately simple consonant skeleton, uppercase spoken aliases, and query-coverage ranking. It is a quality probe that still scans every candidate and has no calibrated no-match threshold; do not promote its heuristics or latency profile into production.
 - Use `SEARCH_RESEARCH.md` for the existing research baseline and update it when new evidence changes the decision space.

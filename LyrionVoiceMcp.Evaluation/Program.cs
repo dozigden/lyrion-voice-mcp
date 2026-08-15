@@ -95,9 +95,18 @@ else
                 + $"{summary.AlbumCount} albums, {summary.TrackCount} tracks.");
         }
 
-        resolver = await CatalogueLexicalSearchResolver.CreateAsync(
-            cataloguePath,
-            cancellation.Token);
+        resolver = options.Resolver switch
+        {
+            EvaluationResolverSelection.CatalogueLexical =>
+                await CatalogueLexicalSearchResolver.CreateAsync(
+                    cataloguePath,
+                    cancellation.Token),
+            EvaluationResolverSelection.CataloguePhuzzy =>
+                await CataloguePhuzzySearchResolver.CreateAsync(
+                    cataloguePath,
+                    cancellation.Token),
+            _ => throw new InvalidOperationException("The catalogue resolver is not supported.")
+        };
     }
     catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
     {
@@ -157,7 +166,7 @@ catch (OperationCanceledException)
 static void PrintHelp()
 {
     Console.WriteLine(
-        "Usage: evaluate.sh [--resolver lms-pass-through|catalogue-lexical] "
+        "Usage: evaluate.sh [--resolver lms-pass-through|catalogue-lexical|catalogue-phuzzy] "
         + "[--refresh-catalogue] [--catalogue PATH] [--corpus PATH] [--output PATH]");
     Console.WriteLine();
     Console.WriteLine("Resolver requirements:");
@@ -165,6 +174,8 @@ static void PrintHelp()
     Console.WriteLine(
         "  catalogue-lexical  reads .data/evaluation/catalogue.db; builds it from the live "
         + "LMS when missing");
+    Console.WriteLine(
+        "  catalogue-phuzzy   uses the same catalogue with experimental voice-tolerant scoring");
     Console.WriteLine(
         "                     --refresh-catalogue refreshes that local snapshot before use");
     Console.WriteLine();

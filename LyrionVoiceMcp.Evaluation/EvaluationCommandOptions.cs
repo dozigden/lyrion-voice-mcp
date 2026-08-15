@@ -12,7 +12,8 @@ public sealed record EvaluationArgumentsParsed(
 public enum EvaluationResolverSelection
 {
     LmsPassThrough,
-    CatalogueLexical
+    CatalogueLexical,
+    CataloguePhuzzy
 }
 
 public sealed record EvaluationHelpRequested : EvaluationArgumentsOutcome;
@@ -78,12 +79,14 @@ public static class EvaluationCommandOptions
         {
             null or "lms-pass-through" => EvaluationResolverSelection.LmsPassThrough,
             "catalogue-lexical" => EvaluationResolverSelection.CatalogueLexical,
+            "catalogue-phuzzy" => EvaluationResolverSelection.CataloguePhuzzy,
             _ => (EvaluationResolverSelection?)null
         };
         if (resolver is null)
         {
             return new EvaluationArgumentsRejected(
-                $"Unknown resolver: {resolverName}. Use lms-pass-through or catalogue-lexical.");
+                $"Unknown resolver: {resolverName}. Use lms-pass-through, catalogue-lexical, "
+                + "or catalogue-phuzzy.");
         }
 
         if (resolver == EvaluationResolverSelection.LmsPassThrough
@@ -91,12 +94,12 @@ public static class EvaluationCommandOptions
         {
             return new EvaluationArgumentsRejected(
                 "--catalogue and --refresh-catalogue can only be used with "
-                + "--resolver catalogue-lexical.");
+                + "a catalogue resolver.");
         }
 
         corpusPath ??= Path.GetFullPath(
             Path.Combine(repositoryRoot, "..", "lyrion-voice-evaluation", "corpus.json"));
-        if (resolver == EvaluationResolverSelection.CatalogueLexical)
+        if (resolver != EvaluationResolverSelection.LmsPassThrough)
         {
             cataloguePath ??= Path.Combine(
                 repositoryRoot,
@@ -105,9 +108,13 @@ public static class EvaluationCommandOptions
                 "catalogue.db");
         }
 
-        var resolverFileName = resolver == EvaluationResolverSelection.LmsPassThrough
-            ? "lms-pass-through"
-            : "catalogue-lexical";
+        var resolverFileName = resolver switch
+        {
+            EvaluationResolverSelection.LmsPassThrough => "lms-pass-through",
+            EvaluationResolverSelection.CatalogueLexical => "catalogue-lexical",
+            EvaluationResolverSelection.CataloguePhuzzy => "catalogue-phuzzy",
+            _ => throw new InvalidOperationException("The evaluation resolver is not supported.")
+        };
         outputPath ??= Path.Combine(
             repositoryRoot,
             ".data",

@@ -75,6 +75,24 @@ public sealed class EvaluationCommandOptionsTests
     }
 
     [Fact]
+    public void Parse_selects_the_phuzzy_resolver_and_shared_catalogue()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lyrion-voice-mcp");
+
+        var outcome = EvaluationCommandOptions.Parse(
+            ["--resolver", "catalogue-phuzzy"],
+            root,
+            DateTimeOffset.UtcNow);
+
+        var parsed = Assert.IsType<EvaluationArgumentsParsed>(outcome);
+        Assert.Equal(EvaluationResolverSelection.CataloguePhuzzy, parsed.Resolver);
+        Assert.Equal(
+            Path.Combine(root, ".data", "evaluation", "catalogue.db"),
+            parsed.CataloguePath);
+        Assert.Contains("catalogue-phuzzy", parsed.OutputPath, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Parse_rejects_catalogue_path_for_the_lms_resolver()
     {
         var root = Path.Combine(Path.GetTempPath(), "lyrion-voice-mcp");
@@ -85,7 +103,7 @@ public sealed class EvaluationCommandOptionsTests
             DateTimeOffset.UtcNow);
 
         var rejected = Assert.IsType<EvaluationArgumentsRejected>(outcome);
-        Assert.Contains("catalogue-lexical", rejected.Error, StringComparison.Ordinal);
+        Assert.Contains("catalogue resolver", rejected.Error, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -99,6 +117,6 @@ public sealed class EvaluationCommandOptionsTests
             DateTimeOffset.UtcNow);
 
         var rejected = Assert.IsType<EvaluationArgumentsRejected>(outcome);
-        Assert.Contains("catalogue-lexical", rejected.Error, StringComparison.Ordinal);
+        Assert.Contains("catalogue resolver", rejected.Error, StringComparison.Ordinal);
     }
 }
