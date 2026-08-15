@@ -6,6 +6,7 @@ public sealed record EvaluationReport(
     string CorpusHash,
     string Resolver,
     string ResolverVersion,
+    EvaluationResolverMetrics ResolverMetrics,
     EvaluationSummary Summary,
     IReadOnlyList<EvaluationCaseResult> Cases);
 

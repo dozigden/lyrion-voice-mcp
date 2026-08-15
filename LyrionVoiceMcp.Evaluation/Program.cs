@@ -1,6 +1,7 @@
 using System.Text.Json;
 using LyrionVoiceMcp.Evaluation;
 using LyrionVoiceMcp.Lms;
+using LyrionVoiceMcp.Persistence;
 
 var repositoryRoot = RepositoryRoot.Find(Environment.CurrentDirectory);
 if (repositoryRoot is null)
@@ -38,13 +39,6 @@ if (corpusOutcome is CorpusRejected rejectedCorpus)
     return 2;
 }
 
-var configurationOutcome = EvaluationConfiguration.LoadFromEnvironment();
-if (configurationOutcome is EvaluationConfigurationRejected rejectedConfiguration)
-{
-    Console.Error.WriteLine(rejectedConfiguration.Error);
-    return 2;
-}
-
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>
 {
@@ -53,19 +47,86 @@ Console.CancelKeyPress += (_, eventArgs) =>
 };
 
 var loadedCorpus = (CorpusRead)corpusOutcome;
-var settings = ((EvaluationConfigurationLoaded)configurationOutcome).Settings;
-using var httpClient = new HttpClient
+HttpClient? httpClient = null;
+IEvaluationSearchResolver resolver;
+if (options.Resolver == EvaluationResolverSelection.LmsPassThrough)
 {
-    Timeout = settings.RequestTimeout
-};
-httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("LyrionVoiceMcp.Evaluation/0.1.0");
-var searchClient = new LmsSearchClient(new LmsJsonRpcClient(settings, httpClient));
-var runner = new EvaluationRunner(searchClient, TimeProvider.System);
+    var settings = LoadEvaluationLmsSettings();
+    if (settings is null)
+    {
+        return 2;
+    }
+
+    httpClient = CreateHttpClient(settings);
+    var searchClient = new LmsSearchClient(new LmsJsonRpcClient(settings, httpClient));
+    resolver = new LmsEvaluationSearchResolver(searchClient);
+}
+else
+{
+    try
+    {
+        var cataloguePath = options.CataloguePath!;
+        if (options.RefreshCatalogue || !File.Exists(cataloguePath))
+        {
+            var settings = LoadEvaluationLmsSettings();
+            if (settings is null)
+            {
+                return 2;
+            }
+
+            httpClient = CreateHttpClient(settings);
+            var jsonRpcClient = new LmsJsonRpcClient(settings, httpClient);
+            var store = new SqliteMediaCatalogueStore(
+                new CatalogueSettings(cataloguePath),
+                TimeProvider.System);
+            var sourceReader = new LmsCatalogueReader(
+                jsonRpcClient,
+                settings,
+                TimeProvider.System);
+            var refresher = new EvaluationCatalogueRefresher(
+                store,
+                sourceReader,
+                TimeProvider.System);
+
+            Console.WriteLine($"Refreshing the local evaluation catalogue at {cataloguePath}...");
+            var summary = await refresher.RefreshAsync(cancellation.Token);
+            Console.WriteLine(
+                $"Catalogue refreshed: {summary.ArtistCount} artists, "
+                + $"{summary.AlbumCount} albums, {summary.TrackCount} tracks.");
+        }
+
+        resolver = await CatalogueLexicalSearchResolver.CreateAsync(
+            cataloguePath,
+            cancellation.Token);
+    }
+    catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+    {
+        httpClient?.Dispose();
+        Console.Error.WriteLine("Evaluation catalogue refresh cancelled.");
+        return 130;
+    }
+    catch (Exception exception) when (exception is not OperationCanceledException)
+    {
+        httpClient?.Dispose();
+        Console.Error.WriteLine($"Could not prepare the catalogue: {exception.Message}");
+        return 2;
+    }
+}
+
+using var httpClientLifetime = httpClient;
+var runner = new EvaluationRunner(resolver, TimeProvider.System);
 
 try
 {
     Console.WriteLine(
-        $"Running {loadedCorpus.Corpus.Cases.Count} cases against lms-pass-through 1...");
+        $"Running {loadedCorpus.Corpus.Cases.Count} cases against {resolver.Name} {resolver.Version}...");
+    if (resolver.Metrics.IndexedCandidateCount is { } candidateCount)
+    {
+        Console.WriteLine(
+            $"Prepared {candidateCount} candidates in "
+            + $"{resolver.Metrics.PreparationDurationMilliseconds} ms.");
+    }
+
     var report = await runner.RunAsync(
         loadedCorpus.Corpus,
         loadedCorpus.ContentHash,
@@ -95,12 +156,39 @@ catch (OperationCanceledException)
 
 static void PrintHelp()
 {
-    Console.WriteLine("Usage: evaluate.sh [--corpus PATH] [--output PATH]");
+    Console.WriteLine(
+        "Usage: evaluate.sh [--resolver lms-pass-through|catalogue-lexical] "
+        + "[--refresh-catalogue] [--catalogue PATH] [--corpus PATH] [--output PATH]");
     Console.WriteLine();
-    Console.WriteLine("Required environment:");
-    Console.WriteLine("  LVM_EVALUATION_LMS_BASE_URL   live LMS HTTP or HTTPS origin");
+    Console.WriteLine("Resolver requirements:");
+    Console.WriteLine("  lms-pass-through   LVM_EVALUATION_LMS_BASE_URL must identify the live LMS origin");
+    Console.WriteLine(
+        "  catalogue-lexical  reads .data/evaluation/catalogue.db; builds it from the live "
+        + "LMS when missing");
+    Console.WriteLine(
+        "                     --refresh-catalogue refreshes that local snapshot before use");
     Console.WriteLine();
     Console.WriteLine("Defaults:");
-    Console.WriteLine("  corpus   ../lyrion-voice-evaluation/corpus.json");
-    Console.WriteLine("  output   .data/evaluation/lms-pass-through-<timestamp>.json");
+    Console.WriteLine("  resolver   lms-pass-through");
+    Console.WriteLine("  corpus     ../lyrion-voice-evaluation/corpus.json");
+    Console.WriteLine("  output     .data/evaluation/<resolver>-<timestamp>.json");
+}
+
+static LmsConnectionSettings? LoadEvaluationLmsSettings()
+{
+    var configurationOutcome = EvaluationConfiguration.LoadFromEnvironment();
+    if (configurationOutcome is EvaluationConfigurationRejected rejectedConfiguration)
+    {
+        Console.Error.WriteLine(rejectedConfiguration.Error);
+        return null;
+    }
+
+    return ((EvaluationConfigurationLoaded)configurationOutcome).Settings;
+}
+
+static HttpClient CreateHttpClient(LmsConnectionSettings settings)
+{
+    var client = new HttpClient { Timeout = settings.RequestTimeout };
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("LyrionVoiceMcp.Evaluation/0.1.0");
+    return client;
 }

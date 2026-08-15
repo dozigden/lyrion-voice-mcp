@@ -84,7 +84,8 @@ assertProjectReferences('LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persist
 ]);
 assertProjectReferences('LyrionVoiceMcp.Evaluation/LyrionVoiceMcp.Evaluation.csproj', [
   'LyrionVoiceMcp.Abstractions',
-  'LyrionVoiceMcp.Lms'
+  'LyrionVoiceMcp.Lms',
+  'LyrionVoiceMcp.Persistence'
 ]);
 assertProjectReferences('LyrionVoiceMcp.Evaluation.Tests/LyrionVoiceMcp.Evaluation.Tests.csproj', [
   'LyrionVoiceMcp.Evaluation'

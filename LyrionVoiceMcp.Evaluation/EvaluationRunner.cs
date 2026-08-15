@@ -1,10 +1,8 @@
 using System.Diagnostics;
-using LyrionVoiceMcp.Abstractions;
-
 namespace LyrionVoiceMcp.Evaluation;
 
 public sealed class EvaluationRunner(
-    ILmsSearchClient searchClient,
+    IEvaluationSearchResolver resolver,
     TimeProvider timeProvider)
 {
     public async Task<EvaluationReport> RunAsync(
@@ -19,11 +17,12 @@ public sealed class EvaluationRunner(
         }
 
         return new EvaluationReport(
-            1,
+            2,
             timeProvider.GetUtcNow(),
             corpusHash,
-            "lms-pass-through",
-            "1",
+            resolver.Name,
+            resolver.Version,
+            resolver.Metrics,
             Summarise(results),
             results);
     }
@@ -35,18 +34,13 @@ public sealed class EvaluationRunner(
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var response = await searchClient.SearchAsync(item.Query, cancellationToken);
-            stopwatch.Stop();
-            return BuildResult(item, response.Candidates, stopwatch.ElapsedMilliseconds, null);
-        }
-        catch (LmsSearchFailedException exception)
-        {
+            var response = await resolver.SearchAsync(item.Query, cancellationToken);
             stopwatch.Stop();
             return BuildResult(
                 item,
-                exception.Response.Candidates,
+                response.Candidates,
                 stopwatch.ElapsedMilliseconds,
-                exception.Message);
+                response.Error);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -57,14 +51,14 @@ public sealed class EvaluationRunner(
 
     private static EvaluationCaseResult BuildResult(
         EvaluationCase item,
-        IReadOnlyList<LmsSearchCandidate> candidates,
+        IReadOnlyList<EvaluationSearchCandidate> candidates,
         long durationMilliseconds,
         string? error)
     {
         var reportCandidates = candidates.Select((candidate, index) =>
             new EvaluationResultCandidate(
                 index + 1,
-                candidate.Identity.Kind.ToString().ToLowerInvariant(),
+                candidate.Kind.ToString().ToLowerInvariant(),
                 candidate.Title,
                 candidate.Artist,
                 candidate.Album,
@@ -91,8 +85,8 @@ public sealed class EvaluationRunner(
             reportCandidates);
     }
 
-    private static bool Matches(ExpectedEntity expected, LmsSearchCandidate candidate) =>
-        expected.Kind == candidate.Identity.Kind
+    private static bool Matches(ExpectedEntity expected, EvaluationSearchCandidate candidate) =>
+        expected.Kind == candidate.Kind
         && Same(expected.Title, candidate.Title)
         && OptionalSame(expected.Artist, candidate.Artist)
         && OptionalSame(expected.Album, candidate.Album);

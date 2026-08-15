@@ -15,7 +15,7 @@
 - LMS tests own configuration validation, JSON-RPC request/response plumbing, and upstream failure mapping.
 - Persistence tests own schema initialisation/rebuild, bounded catalogue batch durability, source-identity count validation, convergence, refresh-run recovery/logs, retention, filtering, selection correlation, review round-trips, and export privacy.
 - Dev tests own command construction, process state, recognised listener detection, and bounded log handling.
-- Evaluation tests own corpus parsing and validation, descriptive matching, scoring, and report privacy. They use fictional cases and fake LMS responses.
+- Evaluation tests own corpus parsing and validation, local evaluation-catalogue refresh orchestration, descriptive matching, scoring, and report privacy. They use fictional cases and fake LMS responses; routine tests never contact a real LMS.
 - Vitest owns frontend API/state/component behaviour.
 - Container smoke tests prove release assembly and runtime wiring, not business-rule matrices.
 

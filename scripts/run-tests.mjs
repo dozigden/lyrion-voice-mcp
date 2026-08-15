@@ -91,7 +91,7 @@ function resolveLanes(selectedMode, lane) {
   const lms = changed.some(path => path.startsWith('LyrionVoiceMcp.Lms') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const persistence = changed.some(path => path.startsWith('LyrionVoiceMcp.Persistence') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const dev = changed.some(path => path.startsWith('LyrionVoiceMcp.Dev'));
-  const evaluation = changed.some(path => path.startsWith('LyrionVoiceMcp.Evaluation') || path.startsWith('LyrionVoiceMcp.Lms') || path.startsWith('LyrionVoiceMcp.Abstractions'));
+  const evaluation = changed.some(path => path.startsWith('LyrionVoiceMcp.Evaluation') || path.startsWith('LyrionVoiceMcp.Lms') || path.startsWith('LyrionVoiceMcp.Persistence') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const global = changed.some(path => !path.includes('/') || path.startsWith('scripts/') || path.startsWith('.github/'));
 
   return {

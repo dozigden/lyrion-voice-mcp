@@ -10,7 +10,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Services`: application orchestration and policy.
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
 - `LyrionVoiceMcp.Persistence`: separate SQLite-backed catalogue and operational search-observation stores behind abstractions.
-- `LyrionVoiceMcp.Evaluation`: offline corpus validation and sequential LMS baseline benchmarking; it is not part of the deployed service.
+- `LyrionVoiceMcp.Evaluation`: offline corpus validation and sequential replaceable-resolver benchmarking; it is not part of the deployed service. Evaluation-only candidates may inspect the concrete catalogue adapter as an explicitly ring-fenced experiment.
 - `LyrionVoiceMcp.Web`: Vue administration and review UI.
 - `LyrionVoiceMcp.Dev`: local API/Vite process supervisor only.
 
@@ -18,7 +18,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 
 - Contracts and Abstractions have no project references.
 - Services, Lms, and Persistence may depend on Abstractions.
-- Evaluation depends on Abstractions and Lms so it can run the implemented LMS adapter without exposing an evaluation HTTP or MCP surface.
+- Evaluation depends on Abstractions, Lms, and Persistence so it can build a separate local catalogue and run implemented adapters without exposing an evaluation HTTP or MCP surface. Its concrete persistence dependency is for offline experiments only and does not establish a production dependency direction.
 - Api composes Contracts, Abstractions, Services, Lms, and Persistence.
 - Only Api owns ASP.NET and MCP SDK transport wiring.
 - Endpoint and MCP handlers stay thin and delegate behaviour to Services.
