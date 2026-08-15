@@ -13,7 +13,9 @@ public enum EvaluationResolverSelection
 {
     LmsPassThrough,
     CatalogueLexical,
-    CataloguePhuzzy
+    CataloguePhuzzy,
+    CataloguePhuzzyIndexed,
+    CatalogueLucene
 }
 
 public sealed record EvaluationHelpRequested : EvaluationArgumentsOutcome;
@@ -80,13 +82,15 @@ public static class EvaluationCommandOptions
             null or "lms-pass-through" => EvaluationResolverSelection.LmsPassThrough,
             "catalogue-lexical" => EvaluationResolverSelection.CatalogueLexical,
             "catalogue-phuzzy" => EvaluationResolverSelection.CataloguePhuzzy,
+            "catalogue-phuzzy-indexed" => EvaluationResolverSelection.CataloguePhuzzyIndexed,
+            "catalogue-lucene" => EvaluationResolverSelection.CatalogueLucene,
             _ => (EvaluationResolverSelection?)null
         };
         if (resolver is null)
         {
             return new EvaluationArgumentsRejected(
                 $"Unknown resolver: {resolverName}. Use lms-pass-through, catalogue-lexical, "
-                + "or catalogue-phuzzy.");
+                + "catalogue-phuzzy, catalogue-phuzzy-indexed, or catalogue-lucene.");
         }
 
         if (resolver == EvaluationResolverSelection.LmsPassThrough
@@ -113,6 +117,8 @@ public static class EvaluationCommandOptions
             EvaluationResolverSelection.LmsPassThrough => "lms-pass-through",
             EvaluationResolverSelection.CatalogueLexical => "catalogue-lexical",
             EvaluationResolverSelection.CataloguePhuzzy => "catalogue-phuzzy",
+            EvaluationResolverSelection.CataloguePhuzzyIndexed => "catalogue-phuzzy-indexed",
+            EvaluationResolverSelection.CatalogueLucene => "catalogue-lucene",
             _ => throw new InvalidOperationException("The evaluation resolver is not supported.")
         };
         outputPath ??= Path.Combine(

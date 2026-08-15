@@ -12,7 +12,7 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 
 ## Evaluation
 
-- `evaluate.sh` and `evaluate.ps1` default to the current LMS pass-through against the private sibling corpus and require `LVM_EVALUATION_LMS_BASE_URL` to identify the live, read-only LMS origin. Pass `--resolver catalogue-lexical` for the first catalogue baseline or `--resolver catalogue-phuzzy` for the experimental voice-tolerant scorer. Both use the separate `.data/evaluation/catalogue.db` snapshot by default, create that snapshot from the live evaluation LMS when missing, and refresh it explicitly with `--refresh-catalogue`. An explicit `--catalogue` path follows the same missing-file and refresh rules.
+- `evaluate.sh` and `evaluate.ps1` default to the current LMS pass-through against the private sibling corpus and require `LVM_EVALUATION_LMS_BASE_URL` to identify the live, read-only LMS origin. Pass `--resolver catalogue-lexical` for the first catalogue baseline, `--resolver catalogue-phuzzy` for the full-scan voice-tolerant scorer, `--resolver catalogue-phuzzy-indexed` for its bounded SQLite retrieval comparator, or `--resolver catalogue-lucene` for the Lucene fuzzy/phonetic comparator. They use the separate `.data/evaluation/catalogue.db` snapshot by default, create that snapshot from the live evaluation LMS when missing, and refresh it explicitly with `--refresh-catalogue`. An explicit `--catalogue` path follows the same missing-file and refresh rules.
 - Evaluation must not fall back to `.data/dev/appsettings.local.json` or consume the application's `LyrionVoiceMcpLms__*` variables. This keeps real-corpus results separate from the artificial development LMS and prevents evaluation configuration from redirecting normal development.
 - The default corpus is `../lyrion-voice-evaluation/corpus.json`; generated reports go to ignored `.data/evaluation`.
 - Pass `--corpus`, `--output`, or catalogue resolver `--catalogue` only when overriding those path defaults. Use `--refresh-catalogue` when a new shared snapshot is wanted before comparing candidates; do not refresh separately for every candidate.
@@ -42,3 +42,9 @@ Use these configuration keys:
 - `LyrionVoiceMcpBuild__Channel`
 - `LyrionVoiceMcpBuild__Build`
 - `LyrionVoiceMcpBuild__Commit`
+
+## Dependencies
+
+- Check the licence, provenance, transitive dependency set, and redistribution requirements before adding a new package or frontend dependency.
+- Prefer an official or actively maintained implementation when equivalent choices exist. Do not accept a dependency merely because its declared licence is permissive when its package omits required notices or its API does not meet the use case.
+- Record any notices required by dependencies distributed with the application before committing the dependency.

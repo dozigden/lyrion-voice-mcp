@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using Lucene.Net.Analysis.Phonetic.Language;
 using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Evaluation;
@@ -22,7 +23,7 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
     }
 
     public string Name => "catalogue-phuzzy";
-    public string Version => "1";
+    public string Version => "2";
     public EvaluationResolverMetrics Metrics { get; }
 
     public static async Task<CataloguePhuzzySearchResolver> CreateAsync(
@@ -41,6 +42,12 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
 
     public Task<EvaluationSearchResponse> SearchAsync(
         string query,
+        CancellationToken cancellationToken) =>
+        SearchCandidatesAsync(query, candidates, cancellationToken);
+
+    internal static Task<EvaluationSearchResponse> SearchCandidatesAsync(
+        string query,
+        IReadOnlyList<PhuzzyCandidate> candidates,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -77,6 +84,10 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
             .ToArray();
         return Task.FromResult(new EvaluationSearchResponse(results, null));
     }
+
+    internal static PhuzzyCandidate CreateCandidate(
+        CatalogueEvaluationCandidate candidate) =>
+        CreateCandidate(candidate, new Dictionary<string, PhuzzyTextForms>(StringComparer.Ordinal));
 
     private static PhuzzyCandidate CreateCandidate(
         CatalogueEvaluationCandidate candidate,
@@ -190,6 +201,11 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
             return 1_080;
         }
 
+        if (field.DoubleMetaphoneCodes.Overlaps(query.DoubleMetaphoneCodes))
+        {
+            return 1_040;
+        }
+
         var threshold = EditDistanceThreshold(Math.Max(query.Compact.Length, field.Compact.Length));
         if (Math.Abs(query.Compact.Length - field.Compact.Length) <= threshold
             && query.Compact.Length > 0
@@ -278,23 +294,24 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
         _ => 4
     };
 
-    private sealed record PhuzzyCandidate(
-        CatalogueEvaluationCandidate Source,
-        PhuzzyTextForms Title,
-        PhuzzyTextForms Artist,
-        PhuzzyTextForms Album,
-        PhuzzyTextForms Combined);
-
     private sealed record QuerySpan(PhuzzyTextForms Forms, int TokenCount);
 
     private sealed record ScoredCandidate(PhuzzyCandidate Candidate, int Score);
 }
+
+internal sealed record PhuzzyCandidate(
+    CatalogueEvaluationCandidate Source,
+    PhuzzyTextForms Title,
+    PhuzzyTextForms Artist,
+    PhuzzyTextForms Album,
+    PhuzzyTextForms Combined);
 
 internal sealed record PhuzzyTextForms(
     string Normalised,
     string Compact,
     IReadOnlyList<string> Tokens,
     string Phonetic,
+    IReadOnlySet<string> DoubleMetaphoneCodes,
     IReadOnlySet<string> Trigrams,
     IReadOnlyList<string> SpokenAcronymAliases)
 {
@@ -307,6 +324,7 @@ internal sealed record PhuzzyTextForms(
             compact,
             CatalogueEvaluationText.SplitTokens(normalised),
             PhuzzyText.PhoneticSkeleton(compact),
+            PhuzzyText.DoubleMetaphoneCodes(normalised),
             PhuzzyText.Trigrams(compact),
             PhuzzyText.SpokenAcronymAliases(value));
     }
@@ -314,6 +332,11 @@ internal sealed record PhuzzyTextForms(
 
 internal static class PhuzzyText
 {
+    private static readonly DoubleMetaphone DoubleMetaphoneEncoder = new()
+    {
+        MaxCodeLen = 8
+    };
+
     public static string Normalise(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -399,6 +422,29 @@ internal static class PhuzzyText
         }
 
         return builder.ToString();
+    }
+
+    public static IReadOnlySet<string> DoubleMetaphoneCodes(string normalised)
+    {
+        var codes = new HashSet<string>(StringComparer.Ordinal);
+        if (normalised.Length == 0)
+        {
+            return codes;
+        }
+
+        var primary = DoubleMetaphoneEncoder.GetDoubleMetaphone(normalised);
+        var alternate = DoubleMetaphoneEncoder.GetDoubleMetaphone(normalised, alternate: true);
+        if (!string.IsNullOrEmpty(primary))
+        {
+            codes.Add(primary);
+        }
+
+        if (!string.IsNullOrEmpty(alternate))
+        {
+            codes.Add(alternate);
+        }
+
+        return codes;
     }
 
     public static IReadOnlySet<string> Trigrams(string compact)

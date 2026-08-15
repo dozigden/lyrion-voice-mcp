@@ -105,6 +105,16 @@ else
                 await CataloguePhuzzySearchResolver.CreateAsync(
                     cataloguePath,
                     cancellation.Token),
+            EvaluationResolverSelection.CataloguePhuzzyIndexed =>
+                await CataloguePhuzzyIndexedSearchResolver.CreateAsync(
+                    cataloguePath,
+                    GetPhuzzyIndexPath(cataloguePath),
+                    cancellation.Token),
+            EvaluationResolverSelection.CatalogueLucene =>
+                await CatalogueLuceneSearchResolver.CreateAsync(
+                    cataloguePath,
+                    GetLuceneIndexPath(cataloguePath),
+                    cancellation.Token),
             _ => throw new InvalidOperationException("The catalogue resolver is not supported.")
         };
     }
@@ -123,6 +133,7 @@ else
 }
 
 using var httpClientLifetime = httpClient;
+using var resolverLifetime = resolver as IDisposable;
 var runner = new EvaluationRunner(resolver, TimeProvider.System);
 
 try
@@ -166,7 +177,7 @@ catch (OperationCanceledException)
 static void PrintHelp()
 {
     Console.WriteLine(
-        "Usage: evaluate.sh [--resolver lms-pass-through|catalogue-lexical|catalogue-phuzzy] "
+        "Usage: evaluate.sh [--resolver lms-pass-through|catalogue-lexical|catalogue-phuzzy|catalogue-phuzzy-indexed|catalogue-lucene] "
         + "[--refresh-catalogue] [--catalogue PATH] [--corpus PATH] [--output PATH]");
     Console.WriteLine();
     Console.WriteLine("Resolver requirements:");
@@ -177,12 +188,30 @@ static void PrintHelp()
     Console.WriteLine(
         "  catalogue-phuzzy   uses the same catalogue with experimental voice-tolerant scoring");
     Console.WriteLine(
+        "  catalogue-phuzzy-indexed retrieves bounded lane candidates before applying that scoring");
+    Console.WriteLine(
+        "  catalogue-lucene   compares Lucene fuzzy, phonetic and lexical candidate lanes");
+    Console.WriteLine(
         "                     --refresh-catalogue refreshes that local snapshot before use");
     Console.WriteLine();
     Console.WriteLine("Defaults:");
     Console.WriteLine("  resolver   lms-pass-through");
     Console.WriteLine("  corpus     ../lyrion-voice-evaluation/corpus.json");
     Console.WriteLine("  output     .data/evaluation/<resolver>-<timestamp>.json");
+}
+
+static string GetPhuzzyIndexPath(string cataloguePath)
+{
+    var directory = Path.GetDirectoryName(cataloguePath) ?? string.Empty;
+    var fileName = Path.GetFileNameWithoutExtension(cataloguePath);
+    return Path.Combine(directory, $"{fileName}.phuzzy-index.db");
+}
+
+static string GetLuceneIndexPath(string cataloguePath)
+{
+    var directory = Path.GetDirectoryName(cataloguePath) ?? string.Empty;
+    var fileName = Path.GetFileNameWithoutExtension(cataloguePath);
+    return Path.Combine(directory, $"{fileName}.lucene-index");
 }
 
 static LmsConnectionSettings? LoadEvaluationLmsSettings()

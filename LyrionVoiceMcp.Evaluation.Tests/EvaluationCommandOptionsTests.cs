@@ -93,6 +93,42 @@ public sealed class EvaluationCommandOptionsTests
     }
 
     [Fact]
+    public void Parse_selects_the_indexed_phuzzy_resolver_and_shared_catalogue()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lyrion-voice-mcp");
+
+        var outcome = EvaluationCommandOptions.Parse(
+            ["--resolver", "catalogue-phuzzy-indexed"],
+            root,
+            DateTimeOffset.UtcNow);
+
+        var parsed = Assert.IsType<EvaluationArgumentsParsed>(outcome);
+        Assert.Equal(EvaluationResolverSelection.CataloguePhuzzyIndexed, parsed.Resolver);
+        Assert.Equal(
+            Path.Combine(root, ".data", "evaluation", "catalogue.db"),
+            parsed.CataloguePath);
+        Assert.Contains("catalogue-phuzzy-indexed", parsed.OutputPath, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Parse_selects_the_lucene_resolver_and_shared_catalogue()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lyrion-voice-mcp");
+
+        var outcome = EvaluationCommandOptions.Parse(
+            ["--resolver", "catalogue-lucene"],
+            root,
+            DateTimeOffset.UtcNow);
+
+        var parsed = Assert.IsType<EvaluationArgumentsParsed>(outcome);
+        Assert.Equal(EvaluationResolverSelection.CatalogueLucene, parsed.Resolver);
+        Assert.Equal(
+            Path.Combine(root, ".data", "evaluation", "catalogue.db"),
+            parsed.CataloguePath);
+        Assert.Contains("catalogue-lucene", parsed.OutputPath, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Parse_rejects_catalogue_path_for_the_lms_resolver()
     {
         var root = Path.Combine(Path.GetTempPath(), "lyrion-voice-mcp");

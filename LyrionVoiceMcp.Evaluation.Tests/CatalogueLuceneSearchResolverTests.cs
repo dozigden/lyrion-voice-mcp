@@ -3,16 +3,18 @@ using Microsoft.Data.Sqlite;
 
 namespace LyrionVoiceMcp.Evaluation.Tests;
 
-public sealed class CataloguePhuzzySearchResolverTests : IDisposable
+public sealed class CatalogueLuceneSearchResolverTests : IDisposable
 {
     private readonly string directory = Path.Combine(
         Path.GetTempPath(),
-        $"lyrion-voice-phuzzy-evaluation-{Guid.NewGuid():N}");
-    private readonly string databasePath;
+        $"lyrion-voice-lucene-evaluation-{Guid.NewGuid():N}");
+    private readonly string cataloguePath;
+    private readonly string indexPath;
 
-    public CataloguePhuzzySearchResolverTests()
+    public CatalogueLuceneSearchResolverTests()
     {
-        databasePath = Path.Combine(directory, "catalogue.db");
+        cataloguePath = Path.Combine(directory, "catalogue.db");
+        indexPath = Path.Combine(directory, "catalogue.lucene-index");
         Directory.CreateDirectory(directory);
     }
 
@@ -21,15 +23,16 @@ public sealed class CataloguePhuzzySearchResolverTests : IDisposable
     [InlineData("Taddy Meer", MediaEntityKind.Artist, "Taði Mýr")]
     [InlineData("some noise Paper Comets now", MediaEntityKind.Artist, "Paper Comets")]
     [InlineData("Ellie Fable", MediaEntityKind.Album, "Elephable")]
-    [InlineData("Glass Maps Mara Cobalt", MediaEntityKind.Artist, "Mara Cobalt")]
-    public async Task SearchAsync_matches_voice_tolerant_forms(
+    [InlineData("Nite", MediaEntityKind.Artist, "Knight")]
+    public async Task SearchAsync_retrieves_and_reranks_candidates(
         string query,
         MediaEntityKind expectedKind,
         string expectedTitle)
     {
         await CreateCatalogueAsync();
-        var resolver = await CataloguePhuzzySearchResolver.CreateAsync(
-            databasePath,
+        using var resolver = await CatalogueLuceneSearchResolver.CreateAsync(
+            cataloguePath,
+            indexPath,
             TestContext.Current.CancellationToken);
 
         var response = await resolver.SearchAsync(
@@ -39,6 +42,7 @@ public sealed class CataloguePhuzzySearchResolverTests : IDisposable
         var first = Assert.IsType<EvaluationSearchCandidate>(response.Candidates.First());
         Assert.Equal(expectedKind, first.Kind);
         Assert.Equal(expectedTitle, first.Title);
+        Assert.True(resolver.Metrics.IndexSizeBytes > 0);
         Assert.Null(response.Error);
     }
 
@@ -52,7 +56,7 @@ public sealed class CataloguePhuzzySearchResolverTests : IDisposable
 
     private async Task CreateCatalogueAsync()
     {
-        await using var connection = new SqliteConnection($"Data Source={databasePath}");
+        await using var connection = new SqliteConnection($"Data Source={cataloguePath}");
         await connection.OpenAsync(TestContext.Current.CancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -86,8 +90,7 @@ public sealed class CataloguePhuzzySearchResolverTests : IDisposable
                 ('artist-1', 'CMOTH'),
                 ('artist-2', 'Taði Mýr'),
                 ('artist-3', 'Paper Comets'),
-                ('artist-4', 'Cobalt'),
-                ('artist-5', 'Mara Cobalt');
+                ('artist-4', 'Knight');
             INSERT INTO catalogue_albums (source_id, title, album_artist_source_id)
             VALUES ('album-1', 'Elephable', 'artist-3');
             INSERT INTO catalogue_tracks (source_id, title, album_source_id)
