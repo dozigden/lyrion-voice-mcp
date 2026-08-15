@@ -35,4 +35,4 @@ Read this before adding projects, dependencies, storage, or new integration boun
 
 ## Planned boundaries
 
-A canonical catalogue and replaceable search index are planned but not implemented. Keep both independent of the operational observation store and selected index technology.
+Storage-neutral catalogue import records, source-reader and atomic-publication contracts are implemented in Abstractions, and the first LMS snapshot reader is implemented in Lms. Catalogue persistence, refresh orchestration, canonical ID reconciliation, catalogue queries, and the replaceable search index remain planned. Keep all of them independent of the operational observation store and selected index technology.
