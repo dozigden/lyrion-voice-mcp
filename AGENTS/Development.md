@@ -16,6 +16,7 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 - Evaluation must not fall back to `.data/dev/appsettings.local.json` or consume the application's `LyrionVoiceMcpLms__*` variables. This keeps real-corpus results separate from the artificial development LMS and prevents evaluation configuration from redirecting normal development.
 - The default corpus is `../lyrion-voice-evaluation/corpus.json`; generated reports go to ignored `.data/evaluation`.
 - Pass `--corpus`, `--output`, or catalogue resolver `--catalogue` only when overriding those path defaults. Use `--refresh-catalogue` when a new shared snapshot is wanted before comparing candidates; do not refresh separately for every candidate.
+- `evaluate.sh serve` starts the evaluation-only diagnostics REST host at `http://127.0.0.1:5610` by default. It reuses `.data/evaluation/catalogue.db`, places disposable indexes below `.data/evaluation/search-indexes`, and lazily caches each requested resolver. Use `--catalogue`, `--index-directory`, or `--url` to override those values. Binding beyond loopback is only for a trusted private network and does not make this unauthenticated host safe for public exposure.
 
 ## Containers
 

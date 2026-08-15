@@ -46,6 +46,54 @@ public sealed class CatalogueLuceneSearchResolverTests : IDisposable
         Assert.Null(response.Error);
     }
 
+    [Fact]
+    public async Task SearchDetailedAsync_returns_all_retrieved_candidates_and_explains_ranking()
+    {
+        await CreateCatalogueAsync();
+        using var resolver = await CatalogueLuceneSearchResolver.CreateAsync(
+            cataloguePath,
+            indexPath,
+            TestContext.Current.CancellationToken);
+
+        var response = await resolver.SearchDetailedAsync(
+            "Nite",
+            TestContext.Current.CancellationToken);
+        var normal = await resolver.SearchAsync(
+            "Nite",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(response.RetrievedCandidateCount, response.Results.Count);
+        Assert.NotEmpty(response.Lanes);
+        var first = Assert.IsType<EvaluationDiagnosticCandidate>(response.Results.First());
+        Assert.Equal("Knight", first.Title);
+        Assert.Contains("double_metaphone", first.RetrievalLanes);
+        var evidence = Assert.IsType<EvaluationScoreEvidence>(first.ScoreEvidence);
+        Assert.Equal("double_metaphone", evidence.Signal);
+        Assert.Equal(first.Score, evidence.FinalScore);
+        Assert.Equal(
+            normal.Candidates.Select(CandidateKey),
+            response.Results.Where(result => result.Score > 0).Take(20).Select(CandidateKey));
+    }
+
+    [Fact]
+    public async Task SearchDetailedAsync_distinguishes_matched_and_bounded_lane_candidates()
+    {
+        await CreateCatalogueAsync();
+        await InsertSaturatedArtistsAsync(100);
+        using var resolver = await CatalogueLuceneSearchResolver.CreateAsync(
+            cataloguePath,
+            indexPath,
+            TestContext.Current.CancellationToken);
+
+        var response = await resolver.SearchDetailedAsync(
+            "Quorvax",
+            TestContext.Current.CancellationToken);
+
+        var lane = Assert.Single(response.Lanes, item => item.Name == "token");
+        Assert.Equal(100, lane.MatchedCandidateCount);
+        Assert.Equal(80, lane.RetrievedCandidateCount);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(directory))
@@ -104,4 +152,34 @@ public sealed class CatalogueLuceneSearchResolverTests : IDisposable
             """;
         await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
     }
+
+    private async Task InsertSaturatedArtistsAsync(int count)
+    {
+        await using var connection = new SqliteConnection($"Data Source={cataloguePath}");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(
+            TestContext.Current.CancellationToken);
+        await using var command = connection.CreateCommand();
+        command.Transaction = (SqliteTransaction)transaction;
+        command.CommandText = """
+            INSERT INTO catalogue_artists (source_id, name)
+            VALUES ($sourceId, $name);
+            """;
+        var sourceId = command.Parameters.Add("$sourceId", SqliteType.Text);
+        var name = command.Parameters.Add("$name", SqliteType.Text);
+        for (var index = 0; index < count; index++)
+        {
+            sourceId.Value = $"saturated-{index}";
+            name.Value = $"Quorvax Ensemble {index:D3}";
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        await transaction.CommitAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static string CandidateKey(EvaluationSearchCandidate candidate) =>
+        $"{candidate.Kind}|{candidate.Title}|{candidate.Artist}|{candidate.Album}";
+
+    private static string CandidateKey(EvaluationDiagnosticCandidate candidate) =>
+        $"{candidate.Kind}|{candidate.Title}|{candidate.Artist}|{candidate.Album}";
 }

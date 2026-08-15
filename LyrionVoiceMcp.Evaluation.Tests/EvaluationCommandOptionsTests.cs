@@ -3,6 +3,53 @@ namespace LyrionVoiceMcp.Evaluation.Tests;
 public sealed class EvaluationCommandOptionsTests
 {
     [Fact]
+    public void Serve_parse_uses_local_defaults()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"lyrion-voice-serve-{Guid.NewGuid():N}");
+        var cataloguePath = Path.Combine(root, ".data", "evaluation", "catalogue.db");
+        Directory.CreateDirectory(Path.GetDirectoryName(cataloguePath)!);
+        File.WriteAllBytes(cataloguePath, []);
+        try
+        {
+            var outcome = EvaluationServerCommandOptions.Parse([], root);
+
+            var parsed = Assert.IsType<EvaluationServerArgumentsParsed>(outcome);
+            Assert.Equal(cataloguePath, parsed.CataloguePath);
+            Assert.Equal(
+                Path.Combine(root, ".data", "evaluation", "search-indexes"),
+                parsed.IndexDirectoryPath);
+            Assert.Equal("http://127.0.0.1:5610", parsed.Url);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("https://127.0.0.1:5610")]
+    [InlineData("http://127.0.0.1")]
+    [InlineData("not-a-url")]
+    public void Serve_parse_rejects_an_invalid_listen_url(string url)
+    {
+        var root = Path.GetTempPath();
+        var cataloguePath = Path.Combine(root, $"catalogue-{Guid.NewGuid():N}.db");
+        File.WriteAllBytes(cataloguePath, []);
+        try
+        {
+            var outcome = EvaluationServerCommandOptions.Parse(
+                ["--catalogue", cataloguePath, "--url", url],
+                root);
+
+            Assert.IsType<EvaluationServerArgumentsRejected>(outcome);
+        }
+        finally
+        {
+            File.Delete(cataloguePath);
+        }
+    }
+
+    [Fact]
     public void Parse_defaults_to_the_private_sibling_corpus_and_evaluation_output()
     {
         var root = Path.Combine(Path.GetTempPath(), "lyrion-voice-mcp");

@@ -10,7 +10,7 @@ using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Evaluation;
 
-public sealed class CatalogueLuceneSearchResolver : IEvaluationSearchResolver, IDisposable
+public sealed class CatalogueLuceneSearchResolver : IEvaluationDiagnosticSearchResolver, IDisposable
 {
     private const int LaneCandidateLimit = 80;
     private const LuceneVersion LuceneApiVersion = LuceneVersion.LUCENE_48;
@@ -82,44 +82,149 @@ public sealed class CatalogueLuceneSearchResolver : IEvaluationSearchResolver, I
         string query,
         CancellationToken cancellationToken)
     {
+        var execution = SearchCore(query, captureDiagnostics: false, cancellationToken);
+        var candidates = execution.Ranked
+            .Take(20)
+            .Select(result => result.Candidate.Source.Value)
+            .ToArray();
+        return Task.FromResult(new EvaluationSearchResponse(candidates, null));
+    }
+
+    public Task<EvaluationDiagnosticSearchResponse> SearchDetailedAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var execution = SearchCore(query, captureDiagnostics: true, cancellationToken);
+        return Task.FromResult(EvaluationDiagnosticResults.Create(
+            this,
+            execution.RetrievalDurationMilliseconds,
+            execution.RerankDurationMilliseconds,
+            execution.TotalDurationMilliseconds,
+            execution.Lanes,
+            execution.Ranked,
+            execution.RetrievalLanes));
+    }
+
+    private ResolverSearchExecution SearchCore(
+        string query,
+        bool captureDiagnostics,
+        CancellationToken cancellationToken)
+    {
+        var totalStopwatch = Stopwatch.StartNew();
         cancellationToken.ThrowIfCancellationRequested();
         var queryForms = PhuzzyTextForms.Create(query);
         if (queryForms.Normalised.Length == 0)
         {
-            return Task.FromResult(new EvaluationSearchResponse([], null));
+            return new ResolverSearchExecution(
+                0,
+                0,
+                totalStopwatch.Elapsed.TotalMilliseconds,
+                [],
+                [],
+                new Dictionary<string, IReadOnlyList<string>>());
         }
 
+        var retrievalStopwatch = Stopwatch.StartNew();
         var spans = CreateSpanForms(queryForms.Tokens);
-        var documentIds = new HashSet<int>();
-        AddTermLane("normalised", Values(spans, forms => forms.Normalised), documentIds);
-        AddTermLane("compact", Values(spans, forms => forms.Compact), documentIds);
-        AddTermLane("skeleton", Values(spans, forms => forms.Phonetic), documentIds);
-        AddTermLane(
+        var candidates = new CandidateCollector<int>(captureDiagnostics);
+        var laneMeasurements = new List<EvaluationLaneMeasurement>();
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
+            "normalised",
+            candidates,
+            () => AddTermLane(
+                "normalised",
+                Values(spans, forms => forms.Normalised),
+                candidates));
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
+            "compact",
+            candidates,
+            () => AddTermLane(
+                "compact",
+                Values(spans, forms => forms.Compact),
+                candidates));
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
+            "skeleton",
+            candidates,
+            () => AddTermLane(
+                "skeleton",
+                Values(spans, forms => forms.Phonetic),
+                candidates));
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
             "acronym",
-            Values(spans, forms => forms.Compact)
-                .Concat(spans.SelectMany(forms => forms.SpokenAcronymAliases))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray(),
-            documentIds);
-        AddTermLane("token", queryForms.Tokens, documentIds);
-        AddPrefixLane(spans, documentIds);
-        AddFuzzyLane(spans, documentIds);
-        AddTermLane("trigram", queryForms.Trigrams.ToArray(), documentIds);
-        AddTermLane(
+            candidates,
+            () => AddTermLane(
+                "acronym",
+                Values(spans, forms => forms.Compact)
+                    .Concat(spans.SelectMany(forms => forms.SpokenAcronymAliases))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray(),
+                candidates));
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
+            "token",
+            candidates,
+            () => AddTermLane("token", queryForms.Tokens, candidates));
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
+            "prefix",
+            candidates,
+            () => AddPrefixLane(spans, candidates));
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
+            "fuzzy",
+            candidates,
+            () => AddFuzzyLane(spans, candidates));
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
+            "trigram",
+            candidates,
+            () => AddTermLane("trigram", queryForms.Trigrams.ToArray(), candidates));
+        RetrieveLane(
+            captureDiagnostics ? laneMeasurements : null,
             "double_metaphone",
-            spans.SelectMany(forms => forms.DoubleMetaphoneCodes)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray(),
-            documentIds);
+            candidates,
+            () => AddTermLane(
+                "double_metaphone",
+                spans.SelectMany(forms => forms.DoubleMetaphoneCodes)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray(),
+                candidates));
 
         cancellationToken.ThrowIfCancellationRequested();
-        var candidates = documentIds
-            .Select(documentId => ReadCandidate(searcher.Doc(documentId)))
+        var candidateDocuments = candidates.CandidateIds
+            .Select(documentId => new CandidateDocument(documentId, searcher.Doc(documentId)))
             .ToArray();
-        return CataloguePhuzzySearchResolver.SearchCandidatesAsync(
+        var candidateValues = candidateDocuments
+            .Select(item => ReadCandidate(item.Document))
+            .ToArray();
+        var retrievalLanes = captureDiagnostics
+            ? candidateDocuments.ToDictionary(
+                item => item.Document.Get("stable_key"),
+                item => candidates.GetEvidence(item.DocumentId),
+                StringComparer.Ordinal)
+            : new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        retrievalStopwatch.Stop();
+
+        var rerankStopwatch = Stopwatch.StartNew();
+        var ranked = CataloguePhuzzySearchResolver.RankCandidates(
             query,
-            candidates,
+            candidateValues,
+            includeUnmatched: captureDiagnostics,
+            captureEvidence: captureDiagnostics,
             cancellationToken);
+        rerankStopwatch.Stop();
+        totalStopwatch.Stop();
+        return new ResolverSearchExecution(
+            retrievalStopwatch.Elapsed.TotalMilliseconds,
+            rerankStopwatch.Elapsed.TotalMilliseconds,
+            totalStopwatch.Elapsed.TotalMilliseconds,
+            laneMeasurements,
+            ranked,
+            retrievalLanes);
     }
 
     public void Dispose()
@@ -205,14 +310,14 @@ public sealed class CatalogueLuceneSearchResolver : IEvaluationSearchResolver, I
         writer.ForceMerge(1);
     }
 
-    private void AddTermLane(
+    private LaneRetrieval AddTermLane(
         string field,
         IReadOnlyCollection<string> terms,
-        HashSet<int> documentIds)
+        CandidateCollector<int> candidates)
     {
         if (terms.Count == 0)
         {
-            return;
+            return new LaneRetrieval(0, 0);
         }
 
         var query = new BooleanQuery();
@@ -224,12 +329,12 @@ public sealed class CatalogueLuceneSearchResolver : IEvaluationSearchResolver, I
             }
         }
 
-        AddHits(query, documentIds);
+        return AddHits(field, query, candidates);
     }
 
-    private void AddPrefixLane(
+    private LaneRetrieval AddPrefixLane(
         IReadOnlyList<PhuzzyTextForms> spans,
-        HashSet<int> documentIds)
+        CandidateCollector<int> candidates)
     {
         var query = new BooleanQuery();
         foreach (var value in Values(spans, forms => forms.Normalised))
@@ -237,12 +342,12 @@ public sealed class CatalogueLuceneSearchResolver : IEvaluationSearchResolver, I
             query.Add(new PrefixQuery(new Term("normalised", value)), Occur.SHOULD);
         }
 
-        AddHits(query, documentIds);
+        return AddHits("prefix", query, candidates);
     }
 
-    private void AddFuzzyLane(
+    private LaneRetrieval AddFuzzyLane(
         IReadOnlyList<PhuzzyTextForms> spans,
-        HashSet<int> documentIds)
+        CandidateCollector<int> candidates)
     {
         var query = new BooleanQuery();
         foreach (var span in spans)
@@ -264,21 +369,50 @@ public sealed class CatalogueLuceneSearchResolver : IEvaluationSearchResolver, I
                 Occur.SHOULD);
         }
 
-        AddHits(query, documentIds);
+        return AddHits("fuzzy", query, candidates);
     }
 
-    private void AddHits(Query query, HashSet<int> documentIds)
+    private LaneRetrieval AddHits(
+        string lane,
+        Query query,
+        CandidateCollector<int> candidates)
     {
         if (query is BooleanQuery booleanQuery && booleanQuery.Clauses.Count == 0)
         {
-            return;
+            return new LaneRetrieval(0, 0);
         }
 
         var hits = searcher.Search(query, LaneCandidateLimit);
         foreach (var hit in hits.ScoreDocs)
         {
-            documentIds.Add(hit.Doc);
+            candidates.Add(hit.Doc, lane);
         }
+
+        return new LaneRetrieval(hits.TotalHits, hits.ScoreDocs.Length);
+    }
+
+    private static void RetrieveLane(
+        List<EvaluationLaneMeasurement>? measurements,
+        string name,
+        CandidateCollector<int> candidates,
+        Func<LaneRetrieval> retrieve)
+    {
+        if (measurements is null)
+        {
+            retrieve();
+            return;
+        }
+
+        var candidatesBefore = candidates.Count;
+        var stopwatch = Stopwatch.StartNew();
+        var retrieval = retrieve();
+        stopwatch.Stop();
+        measurements.Add(new EvaluationLaneMeasurement(
+            name,
+            stopwatch.Elapsed.TotalMilliseconds,
+            retrieval.MatchedCandidateCount,
+            retrieval.RetrievedCandidateCount,
+            candidates.Count - candidatesBefore));
     }
 
     private static void AddTerm(Document document, string field, string value)
@@ -331,4 +465,6 @@ public sealed class CatalogueLuceneSearchResolver : IEvaluationSearchResolver, I
             string.Empty);
         return CataloguePhuzzySearchResolver.CreateCandidate(source);
     }
+
+    private sealed record CandidateDocument(int DocumentId, Document Document);
 }

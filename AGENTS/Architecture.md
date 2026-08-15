@@ -10,7 +10,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Services`: application orchestration and policy.
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
 - `LyrionVoiceMcp.Persistence`: separate SQLite-backed catalogue and operational search-observation stores behind abstractions.
-- `LyrionVoiceMcp.Evaluation`: offline corpus validation and sequential replaceable-resolver benchmarking; it is not part of the deployed service. Evaluation-only candidates may inspect the concrete catalogue adapter as an explicitly ring-fenced experiment.
+- `LyrionVoiceMcp.Evaluation`: corpus validation, sequential replaceable-resolver benchmarking, and an explicitly started evaluation-only HTTP diagnostics host; it is not part of the production service or Docker image. Evaluation-only candidates may inspect the concrete catalogue adapter as an explicitly ring-fenced experiment.
 - `LyrionVoiceMcp.Web`: Vue administration and review UI.
 - `LyrionVoiceMcp.Dev`: local API/Vite process supervisor only.
 
@@ -18,9 +18,9 @@ Read this before adding projects, dependencies, storage, or new integration boun
 
 - Contracts and Abstractions have no project references.
 - Services, Lms, and Persistence may depend on Abstractions.
-- Evaluation depends on Abstractions, Lms, and Persistence so it can build a separate local catalogue and run implemented adapters without exposing an evaluation HTTP or MCP surface. Its concrete persistence dependency is for offline experiments only and does not establish a production dependency direction.
+- Evaluation depends on Abstractions, Lms, and Persistence so it can build a separate local catalogue and run implemented adapters. Its concrete persistence dependency and optional HTTP diagnostics host are for evaluation experiments only and do not establish a production dependency direction.
 - Api composes Contracts, Abstractions, Services, Lms, and Persistence.
-- Only Api owns ASP.NET and MCP SDK transport wiring.
+- Api alone owns production ASP.NET and MCP SDK transport wiring. Evaluation may use ASP.NET only for its separately started diagnostic REST host; it must not expose MCP, application operations, or a second production API.
 - Endpoint and MCP handlers stay thin and delegate behaviour to Services.
 - Services must not depend on ASP.NET, MCP SDK types, Vue, or a concrete future search engine.
 - MCP tools must not call raw LMS JSON-RPC directly.

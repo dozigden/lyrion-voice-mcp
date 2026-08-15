@@ -3,6 +3,30 @@ using LyrionVoiceMcp.Evaluation;
 using LyrionVoiceMcp.Lms;
 using LyrionVoiceMcp.Persistence;
 
+if (args.FirstOrDefault() == "serve")
+{
+    var serverArguments = EvaluationServerCommandOptions.Parse(
+        args.Skip(1).ToArray(),
+        Environment.CurrentDirectory);
+    if (serverArguments is EvaluationServerHelpRequested)
+    {
+        PrintServerHelp();
+        return 0;
+    }
+
+    if (serverArguments is EvaluationServerArgumentsRejected rejectedServerArguments)
+    {
+        Console.Error.WriteLine(rejectedServerArguments.Error);
+        PrintServerHelp();
+        return 2;
+    }
+
+    await EvaluationHttpServer.RunAsync(
+        (EvaluationServerArgumentsParsed)serverArguments,
+        CancellationToken.None);
+    return 0;
+}
+
 var repositoryRoot = RepositoryRoot.Find(Environment.CurrentDirectory);
 if (repositoryRoot is null)
 {
@@ -198,6 +222,17 @@ static void PrintHelp()
     Console.WriteLine("  resolver   lms-pass-through");
     Console.WriteLine("  corpus     ../lyrion-voice-evaluation/corpus.json");
     Console.WriteLine("  output     .data/evaluation/<resolver>-<timestamp>.json");
+}
+
+static void PrintServerHelp()
+{
+    Console.WriteLine(
+        "Usage: evaluate.sh serve [--catalogue PATH] [--index-directory PATH] [--url URL]");
+    Console.WriteLine();
+    Console.WriteLine("Defaults:");
+    Console.WriteLine("  catalogue       .data/evaluation/catalogue.db");
+    Console.WriteLine("  index directory <catalogue-directory>/search-indexes");
+    Console.WriteLine("  URL             http://127.0.0.1:5610");
 }
 
 static string GetPhuzzyIndexPath(string cataloguePath)

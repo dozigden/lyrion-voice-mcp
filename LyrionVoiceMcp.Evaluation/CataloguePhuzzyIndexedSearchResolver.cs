@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace LyrionVoiceMcp.Evaluation;
 
-public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchResolver
+public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnosticSearchResolver
 {
     private const int LaneCandidateLimit = 80;
     private readonly string connectionString;
@@ -51,35 +51,111 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
         string query,
         CancellationToken cancellationToken)
     {
+        var execution = await SearchCoreAsync(query, captureDiagnostics: false, cancellationToken);
+        var candidates = execution.Ranked
+            .Take(20)
+            .Select(result => result.Candidate.Source.Value)
+            .ToArray();
+        return new EvaluationSearchResponse(candidates, null);
+    }
+
+    public async Task<EvaluationDiagnosticSearchResponse> SearchDetailedAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var execution = await SearchCoreAsync(query, captureDiagnostics: true, cancellationToken);
+        return EvaluationDiagnosticResults.Create(
+            this,
+            execution.RetrievalDurationMilliseconds,
+            execution.RerankDurationMilliseconds,
+            execution.TotalDurationMilliseconds,
+            execution.Lanes,
+            execution.Ranked,
+            execution.RetrievalLanes);
+    }
+
+    private async Task<ResolverSearchExecution> SearchCoreAsync(
+        string query,
+        bool captureDiagnostics,
+        CancellationToken cancellationToken)
+    {
+        var totalStopwatch = Stopwatch.StartNew();
+        cancellationToken.ThrowIfCancellationRequested();
         var queryForms = PhuzzyTextForms.Create(query);
         if (queryForms.Normalised.Length == 0)
         {
-            return new EvaluationSearchResponse([], null);
+            return new ResolverSearchExecution(
+                0,
+                0,
+                totalStopwatch.Elapsed.TotalMilliseconds,
+                [],
+                [],
+                new Dictionary<string, IReadOnlyList<string>>());
         }
 
+        var retrievalStopwatch = Stopwatch.StartNew();
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-        var candidateIds = new HashSet<long>();
+        var candidates = new CandidateCollector<long>(captureDiagnostics);
+        var laneMeasurements = new List<EvaluationLaneMeasurement>();
         foreach (var lane in CreateLookupLanes(queryForms))
         {
-            await AddLookupCandidatesAsync(
-                connection,
+            await RetrieveLaneAsync(
+                captureDiagnostics ? laneMeasurements : null,
                 lane.Name,
-                lane.Terms,
-                candidateIds,
-                cancellationToken);
+                candidates,
+                () => AddLookupCandidatesAsync(
+                    connection,
+                    lane.Name,
+                    lane.Terms,
+                    candidates,
+                    captureDiagnostics,
+                    cancellationToken));
         }
 
-        await AddFtsCandidatesAsync(connection, queryForms, candidateIds, cancellationToken);
-        await AddTrigramCandidatesAsync(connection, queryForms, candidateIds, cancellationToken);
-        var candidates = await ReadCandidatesAsync(
-            connection,
-            candidateIds.ToArray(),
-            cancellationToken);
-        return await CataloguePhuzzySearchResolver.SearchCandidatesAsync(
-            query,
+        await RetrieveLaneAsync(
+            captureDiagnostics ? laneMeasurements : null,
+            "token_prefix",
             candidates,
+            () => AddFtsCandidatesAsync(
+                connection,
+                queryForms,
+                candidates,
+                captureDiagnostics,
+                cancellationToken));
+        await RetrieveLaneAsync(
+            captureDiagnostics ? laneMeasurements : null,
+            "trigram",
+            candidates,
+            () => AddTrigramCandidatesAsync(
+                connection,
+                queryForms,
+                candidates,
+                captureDiagnostics,
+                cancellationToken));
+        var read = await ReadCandidatesAsync(
+            connection,
+            candidates,
+            captureDiagnostics,
             cancellationToken);
+        retrievalStopwatch.Stop();
+
+        var rerankStopwatch = Stopwatch.StartNew();
+        var ranked = CataloguePhuzzySearchResolver.RankCandidates(
+            query,
+            read.Candidates,
+            includeUnmatched: captureDiagnostics,
+            captureEvidence: captureDiagnostics,
+            cancellationToken);
+        rerankStopwatch.Stop();
+        totalStopwatch.Stop();
+        return new ResolverSearchExecution(
+            retrievalStopwatch.Elapsed.TotalMilliseconds,
+            rerankStopwatch.Elapsed.TotalMilliseconds,
+            totalStopwatch.Elapsed.TotalMilliseconds,
+            laneMeasurements,
+            ranked,
+            read.RetrievalLanes);
     }
 
     private static async Task BuildIndexAsync(
@@ -312,16 +388,38 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
         }
     }
 
-    private static async Task AddLookupCandidatesAsync(
+    private static async Task<LaneRetrieval> AddLookupCandidatesAsync(
         SqliteConnection connection,
         string lane,
         IReadOnlyList<string> terms,
-        HashSet<long> candidateIds,
+        CandidateCollector<long> candidates,
+        bool countMatches,
         CancellationToken cancellationToken)
     {
         if (terms.Count == 0)
         {
-            return;
+            return new LaneRetrieval(0, 0);
+        }
+
+        var matchedCandidateCount = 0;
+        if (countMatches)
+        {
+            await using var count = connection.CreateCommand();
+            var countParameters = AddParameters(count, "$countTerm", terms);
+            count.CommandText = $"""
+                SELECT COUNT(*)
+                FROM (
+                    SELECT document_id
+                    FROM lookup_terms
+                    WHERE lane = $lane
+                      AND term IN ({string.Join(", ", countParameters)})
+                    GROUP BY document_id
+                );
+                """;
+            count.Parameters.AddWithValue("$lane", lane);
+            matchedCandidateCount = Convert.ToInt32(
+                await count.ExecuteScalarAsync(cancellationToken),
+                CultureInfo.InvariantCulture);
         }
 
         await using var command = connection.CreateCommand();
@@ -336,13 +434,21 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
             LIMIT {LaneCandidateLimit};
             """;
         command.Parameters.AddWithValue("$lane", lane);
-        await AddIdsAsync(command, candidateIds, cancellationToken);
+        var retrievedCandidateCount = await AddIdsAsync(
+            command,
+            lane,
+            candidates,
+            cancellationToken);
+        return new LaneRetrieval(
+            countMatches ? matchedCandidateCount : retrievedCandidateCount,
+            retrievedCandidateCount);
     }
 
-    private static async Task AddFtsCandidatesAsync(
+    private static async Task<LaneRetrieval> AddFtsCandidatesAsync(
         SqliteConnection connection,
         PhuzzyTextForms query,
-        HashSet<long> candidateIds,
+        CandidateCollector<long> candidates,
+        bool countMatches,
         CancellationToken cancellationToken)
     {
         var tokens = query.Tokens
@@ -352,9 +458,17 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
             .ToArray();
         if (tokens.Length == 0)
         {
-            return;
+            return new LaneRetrieval(0, 0);
         }
 
+        var expression = string.Join(" OR ", tokens);
+        var matchedCandidateCount = countMatches
+            ? await CountFtsMatchesAsync(
+                connection,
+                "document_fts",
+                expression,
+                cancellationToken)
+            : 0;
         await using var command = connection.CreateCommand();
         command.CommandText = $"""
             SELECT document_id
@@ -363,14 +477,22 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
             ORDER BY bm25(document_fts), document_id
             LIMIT {LaneCandidateLimit};
             """;
-        command.Parameters.AddWithValue("$query", string.Join(" OR ", tokens));
-        await AddIdsAsync(command, candidateIds, cancellationToken);
+        command.Parameters.AddWithValue("$query", expression);
+        var retrievedCandidateCount = await AddIdsAsync(
+            command,
+            "token_prefix",
+            candidates,
+            cancellationToken);
+        return new LaneRetrieval(
+            countMatches ? matchedCandidateCount : retrievedCandidateCount,
+            retrievedCandidateCount);
     }
 
-    private static async Task AddTrigramCandidatesAsync(
+    private static async Task<LaneRetrieval> AddTrigramCandidatesAsync(
         SqliteConnection connection,
         PhuzzyTextForms query,
-        HashSet<long> candidateIds,
+        CandidateCollector<long> candidates,
+        bool countMatches,
         CancellationToken cancellationToken)
     {
         var terms = query.Trigrams
@@ -378,9 +500,17 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
             .ToArray();
         if (terms.Length == 0)
         {
-            return;
+            return new LaneRetrieval(0, 0);
         }
 
+        var expression = string.Join(" OR ", terms);
+        var matchedCandidateCount = countMatches
+            ? await CountFtsMatchesAsync(
+                connection,
+                "document_trigram_fts",
+                expression,
+                cancellationToken)
+            : 0;
         await using var command = connection.CreateCommand();
         command.CommandText = $"""
             SELECT document_id
@@ -389,8 +519,29 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
             ORDER BY bm25(document_trigram_fts), document_id
             LIMIT {LaneCandidateLimit};
             """;
-        command.Parameters.AddWithValue("$query", string.Join(" OR ", terms));
-        await AddIdsAsync(command, candidateIds, cancellationToken);
+        command.Parameters.AddWithValue("$query", expression);
+        var retrievedCandidateCount = await AddIdsAsync(
+            command,
+            "trigram",
+            candidates,
+            cancellationToken);
+        return new LaneRetrieval(
+            countMatches ? matchedCandidateCount : retrievedCandidateCount,
+            retrievedCandidateCount);
+    }
+
+    private static async Task<int> CountFtsMatchesAsync(
+        SqliteConnection connection,
+        string table,
+        string expression,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM {table} WHERE {table} MATCH $query;";
+        command.Parameters.AddWithValue("$query", expression);
+        return Convert.ToInt32(
+            await command.ExecuteScalarAsync(cancellationToken),
+            CultureInfo.InvariantCulture);
     }
 
     private static IReadOnlyList<string> AddParameters(
@@ -408,26 +559,34 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
         return names;
     }
 
-    private static async Task AddIdsAsync(
+    private static async Task<int> AddIdsAsync(
         SqliteCommand command,
-        HashSet<long> candidateIds,
+        string lane,
+        CandidateCollector<long> candidates,
         CancellationToken cancellationToken)
     {
+        var hitCount = 0;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            candidateIds.Add(reader.GetInt64(0));
+            hitCount++;
+            var documentId = reader.GetInt64(0);
+            candidates.Add(documentId, lane);
         }
+
+        return hitCount;
     }
 
-    private static async Task<IReadOnlyList<PhuzzyCandidate>> ReadCandidatesAsync(
+    private static async Task<CandidateReadResult> ReadCandidatesAsync(
         SqliteConnection connection,
-        IReadOnlyList<long> documentIds,
+        CandidateCollector<long> collectedCandidates,
+        bool captureEvidence,
         CancellationToken cancellationToken)
     {
-        if (documentIds.Count == 0)
+        var documentIds = collectedCandidates.CandidateIds.ToArray();
+        if (documentIds.Length == 0)
         {
-            return [];
+            return new CandidateReadResult([], new Dictionary<string, IReadOnlyList<string>>());
         }
 
         await using var command = connection.CreateCommand();
@@ -435,37 +594,71 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationSearchReso
             command,
             "$documentId",
             documentIds.Select(value => value.ToString(CultureInfo.InvariantCulture)).ToArray());
-        for (var index = 0; index < documentIds.Count; index++)
+        for (var index = 0; index < documentIds.Length; index++)
         {
             command.Parameters[parameters[index]].Value = documentIds[index];
         }
 
         command.CommandText = $"""
-            SELECT stable_key, kind, title, artist, album
+            SELECT document_id, stable_key, kind, title, artist, album
             FROM documents
             WHERE document_id IN ({string.Join(", ", parameters)});
             """;
-        var candidates = new List<PhuzzyCandidate>(documentIds.Count);
+        var candidates = new List<PhuzzyCandidate>(documentIds.Length);
+        var retrievalLanes = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
+            var documentId = reader.GetInt64(0);
+            var stableKey = reader.GetString(1);
             var source = new CatalogueEvaluationCandidate(
-                reader.GetString(0),
+                stableKey,
                 new EvaluationSearchCandidate(
-                    (MediaEntityKind)reader.GetInt32(1),
-                    reader.GetString(2),
-                    reader.IsDBNull(3) ? null : reader.GetString(3),
-                    reader.IsDBNull(4) ? null : reader.GetString(4)),
-                PhuzzyText.Normalise(reader.GetString(2)),
-                reader.IsDBNull(3) ? string.Empty : PhuzzyText.Normalise(reader.GetString(3)),
+                    (MediaEntityKind)reader.GetInt32(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5)),
+                PhuzzyText.Normalise(reader.GetString(3)),
                 reader.IsDBNull(4) ? string.Empty : PhuzzyText.Normalise(reader.GetString(4)),
+                reader.IsDBNull(5) ? string.Empty : PhuzzyText.Normalise(reader.GetString(5)),
                 string.Empty);
             candidates.Add(CataloguePhuzzySearchResolver.CreateCandidate(source));
+            if (captureEvidence)
+            {
+                retrievalLanes.Add(stableKey, collectedCandidates.GetEvidence(documentId));
+            }
         }
 
-        return candidates;
+        return new CandidateReadResult(candidates, retrievalLanes);
+    }
+
+    private static async Task RetrieveLaneAsync(
+        List<EvaluationLaneMeasurement>? measurements,
+        string name,
+        CandidateCollector<long> candidates,
+        Func<Task<LaneRetrieval>> retrieve)
+    {
+        if (measurements is null)
+        {
+            await retrieve();
+            return;
+        }
+
+        var candidatesBefore = candidates.Count;
+        var stopwatch = Stopwatch.StartNew();
+        var retrieval = await retrieve();
+        stopwatch.Stop();
+        measurements.Add(new EvaluationLaneMeasurement(
+            name,
+            stopwatch.Elapsed.TotalMilliseconds,
+            retrieval.MatchedCandidateCount,
+            retrieval.RetrievedCandidateCount,
+            candidates.Count - candidatesBefore));
     }
 
     private sealed record LookupTerm(string Name, string Value);
     private sealed record LookupLane(string Name, IReadOnlyList<string> Terms);
+    private sealed record CandidateReadResult(
+        IReadOnlyList<PhuzzyCandidate> Candidates,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> RetrievalLanes);
 }

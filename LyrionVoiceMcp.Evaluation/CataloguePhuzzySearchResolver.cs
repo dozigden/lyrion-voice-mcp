@@ -50,15 +50,34 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
         IReadOnlyList<PhuzzyCandidate> candidates,
         CancellationToken cancellationToken)
     {
+        var results = RankCandidates(
+                query,
+                candidates,
+                includeUnmatched: false,
+                captureEvidence: false,
+                cancellationToken)
+            .Take(ResultLimit)
+            .Select(item => item.Candidate.Source.Value)
+            .ToArray();
+        return Task.FromResult(new EvaluationSearchResponse(results, null));
+    }
+
+    internal static IReadOnlyList<RankedPhuzzyCandidate> RankCandidates(
+        string query,
+        IReadOnlyList<PhuzzyCandidate> candidates,
+        bool includeUnmatched,
+        bool captureEvidence,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var queryForms = PhuzzyTextForms.Create(query);
         if (queryForms.Normalised.Length == 0)
         {
-            return Task.FromResult(new EvaluationSearchResponse([], null));
+            return [];
         }
 
         var spans = CreateQuerySpans(queryForms.Tokens);
-        var scored = new List<ScoredCandidate>();
+        var ranked = new List<RankedPhuzzyCandidate>(candidates.Count);
         for (var index = 0; index < candidates.Count; index++)
         {
             if ((index & 255) == 0)
@@ -67,22 +86,26 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
             }
 
             var candidate = candidates[index];
-            var score = Score(candidate, spans, queryForms.Tokens.Count);
-            if (score > 0)
+            var score = Score(
+                candidate,
+                spans,
+                queryForms.Tokens.Count,
+                captureEvidence);
+            if (score.Score > 0 || includeUnmatched)
             {
-                scored.Add(new ScoredCandidate(candidate, score));
+                ranked.Add(new RankedPhuzzyCandidate(
+                    candidate,
+                    score.Score,
+                    score.Evidence));
             }
         }
 
-        var results = scored
+        return ranked
             .OrderByDescending(item => item.Score)
             .ThenBy(item => KindOrder(item.Candidate.Source.Value.Kind))
             .ThenBy(item => item.Candidate.Source.Value.Title, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Candidate.Source.StableKey, StringComparer.Ordinal)
-            .Take(ResultLimit)
-            .Select(item => item.Candidate.Source.Value)
             .ToArray();
-        return Task.FromResult(new EvaluationSearchResponse(results, null));
     }
 
     internal static PhuzzyCandidate CreateCandidate(
@@ -134,76 +157,130 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
         return spans;
     }
 
-    private static int Score(
+    private static CandidateScore Score(
         PhuzzyCandidate candidate,
         IReadOnlyList<QuerySpan> spans,
-        int queryTokenCount)
+        int queryTokenCount,
+        bool captureEvidence)
     {
-        var score = FieldScore(candidate.Title, spans, queryTokenCount);
-        score = Math.Max(score, FieldScore(candidate.Artist, spans, queryTokenCount) - 180);
-        score = Math.Max(score, FieldScore(candidate.Album, spans, queryTokenCount) - 240);
-        score = Math.Max(score, FieldScore(candidate.Combined, spans, queryTokenCount) - 100);
-        return Math.Max(0, score);
+        FieldScoreResult? best = null;
+        SelectBest(FieldScore("title", candidate.Title, spans, queryTokenCount, 0), ref best);
+        SelectBest(FieldScore("artist", candidate.Artist, spans, queryTokenCount, 180), ref best);
+        SelectBest(FieldScore("album", candidate.Album, spans, queryTokenCount, 240), ref best);
+        SelectBest(FieldScore("combined", candidate.Combined, spans, queryTokenCount, 100), ref best);
+        if (best is null)
+        {
+            return new CandidateScore(0, null);
+        }
+
+        var value = best.Value;
+        var evidence = captureEvidence
+            ? new EvaluationScoreEvidence(
+                value.Field,
+                value.Signal,
+                value.QuerySpan,
+                value.MatchedTokenCount,
+                value.IgnoredTokenCount,
+                value.SignalScore,
+                value.FieldPenalty,
+                value.CoveragePenalty,
+                value.FinalScore)
+            : null;
+        return new CandidateScore(value.FinalScore, evidence);
     }
 
-    private static int FieldScore(
+    private static void SelectBest(
+        FieldScoreResult? candidate,
+        ref FieldScoreResult? best)
+    {
+        if (candidate is not null
+            && candidate.Value.FinalScore > (best?.FinalScore ?? 0))
+        {
+            best = candidate;
+        }
+    }
+
+    private static FieldScoreResult? FieldScore(
+        string fieldName,
         PhuzzyTextForms field,
         IReadOnlyList<QuerySpan> spans,
-        int queryTokenCount)
+        int queryTokenCount,
+        int fieldPenalty)
     {
         if (field.Normalised.Length == 0)
         {
-            return 0;
+            return null;
         }
 
-        var best = 0;
+        FieldScoreResult? best = null;
         foreach (var span in spans)
         {
-            var ignoredTokenPenalty = (queryTokenCount - span.TokenCount) * 250;
-            best = Math.Max(
-                best,
-                SpanScore(field, span.Forms) - ignoredTokenPenalty);
+            var signal = SpanScore(field, span.Forms);
+            if (signal is null)
+            {
+                continue;
+            }
+
+            var signalValue = signal.Value;
+            var ignoredTokenCount = queryTokenCount - span.TokenCount;
+            var coveragePenalty = ignoredTokenCount * 250;
+            var finalScore = signalValue.Score - coveragePenalty - fieldPenalty;
+            if (finalScore <= 0 || finalScore <= (best?.FinalScore ?? 0))
+            {
+                continue;
+            }
+
+            best = new FieldScoreResult(
+                fieldName,
+                signalValue.Name,
+                span.Forms.Normalised,
+                span.TokenCount,
+                ignoredTokenCount,
+                signalValue.Score,
+                fieldPenalty,
+                coveragePenalty,
+                finalScore);
         }
 
-        return Math.Max(0, best);
+        return best;
     }
 
-    private static int SpanScore(PhuzzyTextForms field, PhuzzyTextForms query)
+    private static SignalScore? SpanScore(PhuzzyTextForms field, PhuzzyTextForms query)
     {
         if (string.Equals(query.Normalised, field.Normalised, StringComparison.Ordinal))
         {
-            return 1_300;
+            return new SignalScore("exact_normalised", 1_300);
         }
 
         if (SameTokens(query.Tokens, field.Tokens))
         {
-            return 1_260;
+            return new SignalScore("same_tokens", 1_260);
         }
 
         if (string.Equals(query.Compact, field.Compact, StringComparison.Ordinal))
         {
-            return 1_230;
+            return new SignalScore("exact_compact", 1_230);
         }
 
         if (field.SpokenAcronymAliases.Contains(query.Compact, StringComparer.Ordinal))
         {
-            return 1_220;
+            return new SignalScore("spoken_acronym", 1_220);
         }
 
         if (field.Normalised.StartsWith(query.Normalised, StringComparison.Ordinal))
         {
-            return 1_140;
+            return new SignalScore("prefix", 1_140);
         }
 
         if (field.Phonetic.Length >= 3
             && string.Equals(query.Phonetic, field.Phonetic, StringComparison.Ordinal))
         {
-            return 1_080;
+            return new SignalScore("consonant_skeleton", 1_080);
         }
 
         if (field.DoubleMetaphoneCodes.Overlaps(query.DoubleMetaphoneCodes))
         {
-            return 1_040;
+            return new SignalScore("double_metaphone", 1_040);
         }
 
         var threshold = EditDistanceThreshold(Math.Max(query.Compact.Length, field.Compact.Length));
@@ -215,14 +292,16 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
             var distance = BoundedEditDistance(query.Compact, field.Compact, threshold);
             if (distance <= threshold)
             {
-                return 1_000 - (distance * 40);
+                return new SignalScore("bounded_edit", 1_000 - (distance * 40));
             }
         }
 
         var similarity = TrigramDice(query.Trigrams, field.Trigrams);
         return similarity >= 0.45
-            ? 700 + (int)Math.Round(similarity * 200, MidpointRounding.AwayFromZero)
-            : 0;
+            ? new SignalScore(
+                "trigram",
+                700 + (int)Math.Round(similarity * 200, MidpointRounding.AwayFromZero))
+            : null;
     }
 
     private static bool SameTokens(
@@ -296,7 +375,22 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
 
     private sealed record QuerySpan(PhuzzyTextForms Forms, int TokenCount);
 
-    private sealed record ScoredCandidate(PhuzzyCandidate Candidate, int Score);
+    private readonly record struct CandidateScore(
+        int Score,
+        EvaluationScoreEvidence? Evidence);
+
+    private readonly record struct FieldScoreResult(
+        string Field,
+        string Signal,
+        string QuerySpan,
+        int MatchedTokenCount,
+        int IgnoredTokenCount,
+        int SignalScore,
+        int FieldPenalty,
+        int CoveragePenalty,
+        int FinalScore);
+
+    private readonly record struct SignalScore(string Name, int Score);
 }
 
 internal sealed record PhuzzyCandidate(
