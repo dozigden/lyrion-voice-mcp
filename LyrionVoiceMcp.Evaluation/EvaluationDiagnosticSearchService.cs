@@ -64,9 +64,12 @@ public static class EvaluationDiagnosticSearchValidation
             return "query must contain no more than 20 words.";
         }
 
-        return request.Resolver is "catalogue-phuzzy-indexed" or "catalogue-lucene"
+        return request.Resolver is "catalogue-phuzzy-indexed"
+            or "catalogue-lucene"
+            or "catalogue-lucene-native"
             ? null
-            : "resolver must be catalogue-phuzzy-indexed or catalogue-lucene.";
+            : "resolver must be catalogue-phuzzy-indexed, catalogue-lucene, "
+                + "or catalogue-lucene-native.";
     }
 }
 
@@ -74,7 +77,7 @@ public sealed class EvaluationDiagnosticSearchService : IAsyncDisposable
 {
     private static readonly EvaluationDiagnosticDescription description = new(
         1,
-        ["catalogue-phuzzy-indexed", "catalogue-lucene"]);
+        ["catalogue-phuzzy-indexed", "catalogue-lucene", "catalogue-lucene-native"]);
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly IEvaluationDiagnosticResolverProvider resolverProvider;
 
@@ -170,6 +173,13 @@ internal sealed class EvaluationDiagnosticResolverHost(
                     await CatalogueLuceneSearchResolver.CreateAsync(
                         settings.CataloguePath,
                         Path.Combine(settings.IndexDirectoryPath, "catalogue-lucene-index"),
+                        cancellationToken),
+                "catalogue-lucene-native" =>
+                    await CatalogueLuceneNativeSearchResolver.CreateAsync(
+                        settings.CataloguePath,
+                        Path.Combine(
+                            settings.IndexDirectoryPath,
+                            "catalogue-lucene-native-index"),
                         cancellationToken),
                 _ => throw new InvalidOperationException(
                     $"Evaluation resolver '{name}' is not supported.")

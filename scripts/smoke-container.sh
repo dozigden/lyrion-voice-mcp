@@ -48,7 +48,7 @@ curl --fail --silent "$base_url/api/lms" | jq --exit-status '.status == "not_con
 curl --fail --silent "$base_url/api/search-observations?limit=1" \
   | jq --exit-status '.items == [] and .retentionDays == 90' >/dev/null
 curl --fail --silent "$base_url/api/evaluation" \
-  | jq --exit-status '.schemaVersion == 1 and (.resolvers | index("catalogue-phuzzy-indexed")) and (.resolvers | index("catalogue-lucene"))' >/dev/null
+  | jq --exit-status '.schemaVersion == 1 and (.resolvers | index("catalogue-phuzzy-indexed")) and (.resolvers | index("catalogue-lucene")) and (.resolvers | index("catalogue-lucene-native"))' >/dev/null
 docker exec "$container_name" test -r /app/licenses/Apache-2.0.txt
 docker exec "$container_name" test -r /app/licenses/Lucene.Net-NOTICE.txt
 curl --fail --silent "$base_url/" | grep --quiet 'Lyrion Voice MCP'

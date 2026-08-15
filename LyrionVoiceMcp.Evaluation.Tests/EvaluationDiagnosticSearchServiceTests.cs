@@ -57,6 +57,18 @@ public sealed class EvaluationDiagnosticSearchServiceTests
         Assert.Contains("resolver", error, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Validation_accepts_the_native_lucene_resolver()
+    {
+        var request = new EvaluationDiagnosticSearchRequest(
+            "catalogue-lucene-native",
+            "Kngiht");
+
+        var error = EvaluationDiagnosticSearchValidation.Validate(request);
+
+        Assert.Null(error);
+    }
+
     private sealed class StubResolverProvider(IEvaluationDiagnosticSearchResolver resolver)
         : IEvaluationDiagnosticResolverProvider
     {

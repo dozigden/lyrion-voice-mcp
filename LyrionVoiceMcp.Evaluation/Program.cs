@@ -115,6 +115,11 @@ else
                     cataloguePath,
                     GetLuceneIndexPath(cataloguePath),
                     cancellation.Token),
+            EvaluationResolverSelection.CatalogueLuceneNative =>
+                await CatalogueLuceneNativeSearchResolver.CreateAsync(
+                    cataloguePath,
+                    GetLuceneNativeIndexPath(cataloguePath),
+                    cancellation.Token),
             _ => throw new InvalidOperationException("The catalogue resolver is not supported.")
         };
     }
@@ -177,7 +182,7 @@ catch (OperationCanceledException)
 static void PrintHelp()
 {
     Console.WriteLine(
-        "Usage: evaluate.sh [--resolver lms-pass-through|catalogue-lexical|catalogue-phuzzy|catalogue-phuzzy-indexed|catalogue-lucene] "
+        "Usage: evaluate.sh [--resolver lms-pass-through|catalogue-lexical|catalogue-phuzzy|catalogue-phuzzy-indexed|catalogue-lucene|catalogue-lucene-native] "
         + "[--refresh-catalogue] [--catalogue PATH] [--corpus PATH] [--output PATH]");
     Console.WriteLine();
     Console.WriteLine("Resolver requirements:");
@@ -191,6 +196,8 @@ static void PrintHelp()
         "  catalogue-phuzzy-indexed retrieves bounded lane candidates before applying that scoring");
     Console.WriteLine(
         "  catalogue-lucene   compares Lucene fuzzy, phonetic and lexical candidate lanes");
+    Console.WriteLine(
+        "  catalogue-lucene-native uses one field-aware query and native Lucene ranking");
     Console.WriteLine(
         "                     --refresh-catalogue refreshes that local snapshot before use");
     Console.WriteLine();
@@ -212,6 +219,13 @@ static string GetLuceneIndexPath(string cataloguePath)
     var directory = Path.GetDirectoryName(cataloguePath) ?? string.Empty;
     var fileName = Path.GetFileNameWithoutExtension(cataloguePath);
     return Path.Combine(directory, $"{fileName}.lucene-index");
+}
+
+static string GetLuceneNativeIndexPath(string cataloguePath)
+{
+    var directory = Path.GetDirectoryName(cataloguePath) ?? string.Empty;
+    var fileName = Path.GetFileNameWithoutExtension(cataloguePath);
+    return Path.Combine(directory, $"{fileName}.lucene-native-index");
 }
 
 static LmsConnectionSettings? LoadEvaluationLmsSettings()

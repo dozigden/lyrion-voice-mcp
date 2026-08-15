@@ -31,6 +31,9 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
         Assert.Contains(
             document.RootElement.GetProperty("resolvers").EnumerateArray(),
             item => item.GetString() == "catalogue-phuzzy-indexed");
+        Assert.Contains(
+            document.RootElement.GetProperty("resolvers").EnumerateArray(),
+            item => item.GetString() == "catalogue-lucene-native");
     }
 
     [Fact]
