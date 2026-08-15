@@ -21,6 +21,7 @@ COPY LyrionVoiceMcp.Api.Tests/ LyrionVoiceMcp.Api.Tests/
 COPY LyrionVoiceMcp.Contracts/ LyrionVoiceMcp.Contracts/
 COPY LyrionVoiceMcp.Dev/ LyrionVoiceMcp.Dev/
 COPY LyrionVoiceMcp.Dev.Tests/ LyrionVoiceMcp.Dev.Tests/
+COPY LyrionVoiceMcp.Evaluation/ LyrionVoiceMcp.Evaluation/
 COPY LyrionVoiceMcp.Lms/ LyrionVoiceMcp.Lms/
 COPY LyrionVoiceMcp.Persistence/ LyrionVoiceMcp.Persistence/
 COPY LyrionVoiceMcp.Persistence.Tests/ LyrionVoiceMcp.Persistence.Tests/
@@ -38,6 +39,8 @@ WORKDIR /app
 RUN mkdir -p /data && chown $APP_UID:$APP_UID /data
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /src/LyrionVoiceMcp.Web/dist ./wwwroot
+COPY --from=backend-build /root/.nuget/packages/lucene.net/4.8.0-beta00018/LICENSE.txt ./licenses/Apache-2.0.txt
+COPY --from=backend-build /root/.nuget/packages/lucene.net/4.8.0-beta00018/NOTICE.txt ./licenses/Lucene.Net-NOTICE.txt
 ENV ASPNETCORE_URLS=http://0.0.0.0:5600
 ENV LyrionVoiceMcpBuild__Version=$LVM_VERSION
 ENV LyrionVoiceMcpBuild__Channel=$LVM_CHANNEL
@@ -45,6 +48,7 @@ ENV LyrionVoiceMcpBuild__Build=$LVM_BUILD
 ENV LyrionVoiceMcpBuild__Commit=$LVM_COMMIT
 ENV LyrionVoiceMcpObservations__DatabasePath=/data/search-observations.db
 ENV LyrionVoiceMcpCatalogue__DatabasePath=/data/catalogue.db
+ENV LyrionVoiceMcpEvaluation__IndexDirectoryPath=/data/search-indexes
 EXPOSE 5600
 VOLUME ["/data"]
 USER $APP_UID

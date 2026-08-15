@@ -16,12 +16,12 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 - Evaluation must not fall back to `.data/dev/appsettings.local.json` or consume the application's `LyrionVoiceMcpLms__*` variables. This keeps real-corpus results separate from the artificial development LMS and prevents evaluation configuration from redirecting normal development.
 - The default corpus is `../lyrion-voice-evaluation/corpus.json`; generated reports go to ignored `.data/evaluation`.
 - Pass `--corpus`, `--output`, or catalogue resolver `--catalogue` only when overriding those path defaults. Use `--refresh-catalogue` when a new shared snapshot is wanted before comparing candidates; do not refresh separately for every candidate.
-- `evaluate.sh serve` starts the evaluation-only diagnostics REST host at `http://127.0.0.1:5610` by default. It reuses `.data/evaluation/catalogue.db`, places disposable indexes below `.data/evaluation/search-indexes`, and lazily caches each requested resolver. Use `--catalogue`, `--index-directory`, or `--url` to override those values. Binding beyond loopback is only for a trusted private network and does not make this unauthenticated host safe for public exposure.
+- The normal API exposes evaluator discovery at `GET /api/evaluation` and comparator execution at `POST /api/evaluation/search`. It uses the normal deployed/development catalogue and lazily caches each requested resolver. `LyrionVoiceMcpEvaluation:IndexDirectoryPath` overrides the derived-index directory, which otherwise sits beside the configured catalogue.
 
 ## Containers
 
 - The Docker image is the production-shaped deployment unit and serves API, MCP, and Vue on port 5600.
-- Container search observations and the separate canonical catalogue database live under `/data`; keep that path on a persistent volume.
+- Container search observations, the canonical catalogue database, and disposable evaluation search indexes live under `/data`; keep that path on a persistent volume.
 - Supported architectures are `linux/amd64` and `linux/arm64` only.
 - Do not bake LMS environment addresses or local credentials into an image.
 - The current CI builds and smoke-tests images but does not publish them.
@@ -33,6 +33,7 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 - Compose maps `LVM_LMS_SERVER_ID`, `LVM_LMS_BASE_URL`, and optional `LVM_LMS_REQUEST_TIMEOUT_SECONDS` into the container.
 - Compose accepts optional `LVM_SEARCH_RETENTION_DAYS`; operational search history defaults to 90 days.
 - Catalogue storage uses `LyrionVoiceMcpCatalogue:DatabasePath`, defaults to `.data/catalogue.db` in local development, and is fixed to `/data/catalogue.db` in the container. It is intentionally separate from both search observations and the future search index.
+- Evaluation search indexes use `LyrionVoiceMcpEvaluation:IndexDirectoryPath`, default beside the catalogue, and `/data/search-indexes` in the container.
 - Do not commit environment-specific LMS values. An unconfigured runtime is valid and reports `not_configured` from `/api/lms`.
 
 ## Build metadata

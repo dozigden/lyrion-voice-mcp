@@ -38,6 +38,37 @@
           "xunit.v3.mtp-v1": "[3.2.2]"
         }
       },
+      "J2N": {
+        "type": "Transitive",
+        "resolved": "2.1.0",
+        "contentHash": "Vooz1wbnnqWuS+u93tADXK5Owxo8vLJhSrZ9Ac+KpgDF3GJq9TybXXTF1TFcWILgEtRThc8AOBENEzB0TQH1JA=="
+      },
+      "Lucene.Net": {
+        "type": "Transitive",
+        "resolved": "4.8.0-beta00018",
+        "contentHash": "iBkkpkDbAHjpZ0dnukFnWnjxSNmsRHOSxrYBBKbtcYJZ8PQRrKsqGGyNm8xmh4ORvsJ1WM7i5A9whiyA8WhNrQ==",
+        "dependencies": {
+          "J2N": "[2.1.0, 3.0.0)",
+          "Microsoft.Extensions.Configuration.Abstractions": "8.0.0"
+        }
+      },
+      "Lucene.Net.Analysis.Common": {
+        "type": "Transitive",
+        "resolved": "4.8.0-beta00018",
+        "contentHash": "35M1i4enb8rVeqXiKgDJzgqYDa5VtpgI2sK5gYg1Yd9kmpjPmaLHgN9/rGyHd67XWhT7fh0X8UuXu70PH58pcA==",
+        "dependencies": {
+          "Lucene.Net": "4.8.0-beta00018"
+        }
+      },
+      "Lucene.Net.Analysis.Phonetic": {
+        "type": "Transitive",
+        "resolved": "4.8.0-beta00018",
+        "contentHash": "2oac64GQNPctTYJsEO3cJY1VJkAxVKs290hNNKEW3tQhjlMdsW1C9k0rh1QPRZSBF895RZ0azw2TN8ineGqI+Q==",
+        "dependencies": {
+          "Lucene.Net": "4.8.0-beta00018",
+          "Lucene.Net.Analysis.Common": "4.8.0-beta00018"
+        }
+      },
       "Microsoft.ApplicationInsights": {
         "type": "Transitive",
         "resolved": "2.23.0",
@@ -555,6 +586,7 @@
         "dependencies": {
           "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
           "LyrionVoiceMcp.Contracts": "[0.1.0, )",
+          "LyrionVoiceMcp.Evaluation": "[0.1.0, )",
           "LyrionVoiceMcp.Lms": "[0.1.0, )",
           "LyrionVoiceMcp.Persistence": "[0.1.0, )",
           "LyrionVoiceMcp.Services": "[0.1.0, )",
@@ -563,6 +595,18 @@
       },
       "lyrionvoicemcp.contracts": {
         "type": "Project"
+      },
+      "lyrionvoicemcp.evaluation": {
+        "type": "Project",
+        "dependencies": {
+          "Lucene.Net": "[4.8.0-beta00018, )",
+          "Lucene.Net.Analysis.Common": "[4.8.0-beta00018, )",
+          "Lucene.Net.Analysis.Phonetic": "[4.8.0-beta00018, )",
+          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Lms": "[0.1.0, )",
+          "LyrionVoiceMcp.Persistence": "[0.1.0, )",
+          "Microsoft.Data.Sqlite": "[10.0.11, )"
+        }
       },
       "lyrionvoicemcp.lms": {
         "type": "Project",

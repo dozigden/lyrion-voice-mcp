@@ -10,6 +10,9 @@ public sealed class LyrionVoiceMcpApiFactory : WebApplicationFactory<Program>
         Path.GetTempPath(),
         $"lyrion-voice-mcp-api-tests-{Guid.NewGuid():N}");
 
+    public string CataloguePath => Path.Combine(directory, "catalogue.db");
+    public string EvaluationIndexDirectoryPath => Path.Combine(directory, "search-indexes");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Directory.CreateDirectory(directory);
@@ -18,7 +21,10 @@ public sealed class LyrionVoiceMcpApiFactory : WebApplicationFactory<Program>
             Path.Combine(directory, "search-observations.db"));
         builder.UseSetting(
             "LyrionVoiceMcpCatalogue:DatabasePath",
-            Path.Combine(directory, "catalogue.db"));
+            CataloguePath);
+        builder.UseSetting(
+            "LyrionVoiceMcpEvaluation:IndexDirectoryPath",
+            EvaluationIndexDirectoryPath);
     }
 
     protected override void Dispose(bool disposing)

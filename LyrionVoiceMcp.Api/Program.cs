@@ -2,6 +2,7 @@ using LyrionVoiceMcp.Api.Configuration;
 using LyrionVoiceMcp.Api.Endpoints;
 using LyrionVoiceMcp.Api.Tools;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Evaluation;
 using LyrionVoiceMcp.Lms;
 using LyrionVoiceMcp.Persistence;
 using LyrionVoiceMcp.Services;
@@ -40,11 +41,16 @@ var observationSettings = SearchObservationSettings.FromValues(
 var catalogueSettings = CatalogueSettings.FromValues(
     builder.Environment.ContentRootPath,
     builder.Configuration["LyrionVoiceMcpCatalogue:DatabasePath"]);
+var evaluationSettings = EvaluationDiagnosticSettings.FromValues(
+    builder.Environment.ContentRootPath,
+    catalogueSettings.DatabasePath,
+    builder.Configuration["LyrionVoiceMcpEvaluation:IndexDirectoryPath"]);
 
 builder.Services.AddSingleton(buildInfo);
 builder.Services.AddSingleton(lmsSettings);
 builder.Services.AddSearchObservationPersistence(observationSettings);
 builder.Services.AddCataloguePersistence(catalogueSettings);
+builder.Services.AddSingleton(_ => new EvaluationDiagnosticSearchService(evaluationSettings));
 builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
 {
     client.Timeout = lmsSettings.RequestTimeout;
@@ -92,6 +98,7 @@ app.Logger.LogWarning(
 
 app.MapOperationalEndpoints();
 app.MapCatalogueEndpoints();
+app.MapEvaluationEndpoints();
 app.MapSearchObservationEndpoints();
 app.MapMcp("/mcp");
 

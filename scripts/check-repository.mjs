@@ -19,6 +19,7 @@ const requiredPaths = [
   'scripts/test-fast.sh',
   'scripts/test-full.sh',
   'Dockerfile',
+  'THIRD-PARTY-NOTICES.md',
   'compose.yml'
 ];
 
@@ -93,6 +94,7 @@ assertProjectReferences('LyrionVoiceMcp.Evaluation.Tests/LyrionVoiceMcp.Evaluati
 assertProjectReferences('LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj', [
   'LyrionVoiceMcp.Abstractions',
   'LyrionVoiceMcp.Contracts',
+  'LyrionVoiceMcp.Evaluation',
   'LyrionVoiceMcp.Lms',
   'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Services'
