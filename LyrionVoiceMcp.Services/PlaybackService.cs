@@ -6,21 +6,22 @@ namespace LyrionVoiceMcp.Services;
 public sealed class PlaybackService(
     ILmsPlayerClient lmsPlayerClient,
     ILmsPlaybackClient lmsPlaybackClient,
+    IPlayerSelectorResolver playerSelectorResolver,
     IPlayableReferenceResolver referenceResolver,
     ISearchObservationStore observationStore,
     TimeProvider timeProvider,
     ILogger<PlaybackService> logger) : IPlaybackService
 {
     public async Task<PlaybackOutcome> PlayAsync(
-        string playerId,
+        string playerSelector,
         IReadOnlyList<string> references,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(playerId))
+        if (string.IsNullOrWhiteSpace(playerSelector))
         {
             return new PlaybackRejected(
                 PlaybackRejectionReason.InvalidPlayer,
-                "The player ID must not be empty.");
+                "The player must not be empty.");
         }
 
         if (references is null || references.Count == 0)
@@ -51,13 +52,17 @@ public sealed class PlaybackService(
             lmsPlaybackClient.GetPlayableItemCountAsync(item, cancellationToken)));
         await Task.WhenAll(playersTask, playableItemsTask);
 
-        var player = FindPlayer(await playersTask, playerId);
-        if (player is null)
+        var playerOutcome = playerSelectorResolver.Resolve(
+            await playersTask,
+            playerSelector);
+        if (playerOutcome is PlayerSelectorRejected rejectedPlayer)
         {
             return new PlaybackRejected(
-                PlaybackRejectionReason.PlayerNotFound,
-                $"LMS player '{playerId}' was not found.");
+                MapRejectionReason(rejectedPlayer.Reason),
+                rejectedPlayer.Message);
         }
+
+        var player = ((PlayerSelectorResolved)playerOutcome).Player;
 
         var playableItems = await playableItemsTask;
         var missingItemIndex = Array.FindIndex(playableItems, count => count == 0);
@@ -119,11 +124,14 @@ public sealed class PlaybackService(
         }
     }
 
-    private static LmsPlayerStatus? FindPlayer(
-        IReadOnlyList<LmsPlayerStatus> players,
-        string playerId) =>
-        players.FirstOrDefault(player =>
-            string.Equals(player.Id, playerId, StringComparison.OrdinalIgnoreCase));
+    private static PlaybackRejectionReason MapRejectionReason(
+        PlayerSelectorRejectionReason reason) => reason switch
+        {
+            PlayerSelectorRejectionReason.InvalidSelector => PlaybackRejectionReason.InvalidPlayer,
+            PlayerSelectorRejectionReason.PlayerNotFound => PlaybackRejectionReason.PlayerNotFound,
+            PlayerSelectorRejectionReason.AmbiguousPlayer => PlaybackRejectionReason.AmbiguousPlayer,
+            _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null)
+        };
 
     private static LmsPlayerStatus FindUpdatedPlayer(
         IReadOnlyList<LmsPlayerStatus> players,

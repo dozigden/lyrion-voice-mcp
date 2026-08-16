@@ -6,18 +6,19 @@ namespace LyrionVoiceMcp.Services;
 public sealed class QueueManagementService(
     ILmsPlayerClient lmsPlayerClient,
     ILmsPlaybackClient lmsPlaybackClient,
+    IPlayerSelectorResolver playerSelectorResolver,
     IPlayableReferenceResolver referenceResolver,
     ISearchObservationStore observationStore,
     TimeProvider timeProvider,
     ILogger<QueueManagementService> logger) : IQueueManagementService
 {
     public async Task<QueueManagementOutcome> ManageAsync(
-        string playerId,
+        string playerSelector,
         QueueManagementCommand command,
         IReadOnlyList<string>? references,
         CancellationToken cancellationToken)
     {
-        var validation = ValidateRequest(playerId, command, references);
+        var validation = ValidateRequest(playerSelector, command, references);
         if (validation is not null)
         {
             return validation;
@@ -35,11 +36,13 @@ public sealed class QueueManagementService(
         if (command == QueueManagementCommand.Clear)
         {
             var players = await playersTask;
-            var player = FindPlayer(players, playerId);
-            if (player is null)
+            var playerOutcome = playerSelectorResolver.Resolve(players, playerSelector);
+            if (playerOutcome is PlayerSelectorRejected rejectedPlayer)
             {
-                return PlayerNotFound(playerId);
+                return PlayerRejected(rejectedPlayer);
             }
+
+            var player = ((PlayerSelectorResolved)playerOutcome).Player;
 
             await lmsPlaybackClient.ClearAsync(player.Id, cancellationToken);
             var clearedQueueCount = await lmsPlaybackClient.GetQueueCountAsync(
@@ -61,11 +64,15 @@ public sealed class QueueManagementService(
                 cancellationToken)));
         await Task.WhenAll(playersTask, itemCountsTask);
 
-        var resolvedPlayer = FindPlayer(await playersTask, playerId);
-        if (resolvedPlayer is null)
+        var playerResolution = playerSelectorResolver.Resolve(
+            await playersTask,
+            playerSelector);
+        if (playerResolution is PlayerSelectorRejected rejectedResolution)
         {
-            return PlayerNotFound(playerId);
+            return PlayerRejected(rejectedResolution);
         }
+
+        var resolvedPlayer = ((PlayerSelectorResolved)playerResolution).Player;
 
         var itemCounts = await itemCountsTask;
         var missingItemIndex = Array.FindIndex(itemCounts, count => count == 0);
@@ -130,15 +137,15 @@ public sealed class QueueManagementService(
     }
 
     private static QueueManagementRejected? ValidateRequest(
-        string playerId,
+        string playerSelector,
         QueueManagementCommand command,
         IReadOnlyList<string>? references)
     {
-        if (string.IsNullOrWhiteSpace(playerId))
+        if (string.IsNullOrWhiteSpace(playerSelector))
         {
             return new QueueManagementRejected(
                 QueueManagementRejectionReason.InvalidPlayer,
-                "The player ID must not be empty.");
+                "The player must not be empty.");
         }
 
         if (!Enum.IsDefined(command))
@@ -209,16 +216,19 @@ public sealed class QueueManagementService(
         }
     }
 
-    private static LmsPlayerStatus? FindPlayer(
-        IReadOnlyList<LmsPlayerStatus> players,
-        string playerId) =>
-        players.FirstOrDefault(player =>
-            string.Equals(player.Id, playerId, StringComparison.OrdinalIgnoreCase));
-
-    private static QueueManagementRejected PlayerNotFound(string playerId) =>
-        new(
-            QueueManagementRejectionReason.PlayerNotFound,
-            $"LMS player '{playerId}' was not found.");
+    private static QueueManagementRejected PlayerRejected(
+        PlayerSelectorRejected rejection) => new(
+            rejection.Reason switch
+            {
+                PlayerSelectorRejectionReason.InvalidSelector => QueueManagementRejectionReason.InvalidPlayer,
+                PlayerSelectorRejectionReason.PlayerNotFound => QueueManagementRejectionReason.PlayerNotFound,
+                PlayerSelectorRejectionReason.AmbiguousPlayer => QueueManagementRejectionReason.AmbiguousPlayer,
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(rejection),
+                    rejection.Reason,
+                    null)
+            },
+            rejection.Message);
 
     private sealed record DecodedReferences(
         IReadOnlyList<PlayableReferenceValue> Values,

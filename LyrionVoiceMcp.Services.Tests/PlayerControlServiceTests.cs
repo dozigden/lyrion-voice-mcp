@@ -15,7 +15,7 @@ public sealed class PlayerControlServiceTests
         var updatedPlayer = Player(PlayerPlaybackState.Paused);
         var playerClient = new StubPlayerClient(initialPlayer, updatedPlayer);
         var controlClient = new StubPlayerControlClient();
-        var service = new PlayerControlService(playerClient, controlClient);
+        var service = CreateService(playerClient, controlClient);
 
         // Act
         var outcome = await service.ControlAsync(
@@ -31,6 +31,27 @@ public sealed class PlayerControlServiceTests
         Assert.Equal(2, playerClient.CallCount);
     }
 
+    [Fact]
+    public async Task UniquePlayerNameShouldUseTheCanonicalIdForControl()
+    {
+        // Arrange
+        var playerClient = new StubPlayerClient(
+            Player(PlayerPlaybackState.Playing),
+            Player(PlayerPlaybackState.Paused));
+        var controlClient = new StubPlayerControlClient();
+        var service = CreateService(playerClient, controlClient);
+
+        // Act
+        var outcome = await service.ControlAsync(
+            " north ROOM ",
+            PlayerControlCommand.Pause,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.IsType<PlayerControlSucceeded>(outcome);
+        Assert.Equal(PlayerId, controlClient.PlayerId);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -40,7 +61,7 @@ public sealed class PlayerControlServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player(PlayerPlaybackState.Playing));
         var controlClient = new StubPlayerControlClient();
-        var service = new PlayerControlService(playerClient, controlClient);
+        var service = CreateService(playerClient, controlClient);
 
         // Act
         var outcome = await service.ControlAsync(
@@ -61,7 +82,7 @@ public sealed class PlayerControlServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player(PlayerPlaybackState.Playing));
         var controlClient = new StubPlayerControlClient();
-        var service = new PlayerControlService(playerClient, controlClient);
+        var service = CreateService(playerClient, controlClient);
 
         // Act
         var outcome = await service.ControlAsync(
@@ -82,7 +103,7 @@ public sealed class PlayerControlServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player(PlayerPlaybackState.Playing));
         var controlClient = new StubPlayerControlClient();
-        var service = new PlayerControlService(playerClient, controlClient);
+        var service = CreateService(playerClient, controlClient);
 
         // Act
         var outcome = await service.ControlAsync(
@@ -103,7 +124,7 @@ public sealed class PlayerControlServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player(PlayerPlaybackState.Playing));
         var controlClient = new StubPlayerControlClient();
-        var service = new PlayerControlService(playerClient, controlClient);
+        var service = CreateService(playerClient, controlClient);
 
         // Act
         var exception = await Assert.ThrowsAsync<LmsRequestException>(() =>
@@ -122,6 +143,11 @@ public sealed class PlayerControlServiceTests
 
     private static LmsPlayerStatus Player(PlayerPlaybackState playbackState) =>
         new(PlayerId, "North Room", true, playbackState);
+
+    private static PlayerControlService CreateService(
+        ILmsPlayerClient playerClient,
+        ILmsPlayerControlClient controlClient) =>
+        new(playerClient, controlClient, new PlayerSelectorResolver());
 
     private sealed class StubPlayerClient(params LmsPlayerStatus[] results)
         : ILmsPlayerClient

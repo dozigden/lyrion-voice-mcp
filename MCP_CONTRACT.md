@@ -7,16 +7,16 @@ This documents the currently implemented public tools. It does not limit the ser
 1. `search` returns ranked media candidates.
 2. `browse` returns local-library roots or descends through an opaque reference returned by an earlier browse call.
 3. `get_player_status` discovers LMS players and their voice-relevant state.
-4. The caller can pass one discovered LMS player ID and an action to `control_player`.
-5. The caller can pass one discovered LMS player ID to `get_queue`.
+4. The caller can pass one discovered LMS player ID or exact unique player name and an action to `control_player`.
+5. The caller can pass one discovered LMS player ID or exact unique player name to `get_queue`.
 6. The caller can clear that player's queue or pass playable search or browse references to `manage_queue` for append or play-next placement.
-7. The caller passes one discovered LMS player ID and one or more playable search or browse references to `play`.
+7. The caller passes one discovered LMS player ID or exact unique player name and one or more playable search or browse references to `play`.
 
 The current public MCP surface contains `search`, `browse`, `get_player_status`, `control_player`, `get_queue`, `manage_queue`, and `play`.
 
 Structured results conform to their advertised output schemas. Properties that are required but nullable are emitted explicitly as JSON `null` when no value is available rather than being omitted.
 
-During MCP initialisation, the server supplies concise agent guidance connecting these tools: discover player IDs rather than inventing them, choose search for named media and browse for exploration, keep references opaque, route search and browse references according to their actual capabilities, distinguish replace-and-start playback from queue addition and clearing, and ask when player or media selection is genuinely ambiguous.
+During MCP initialisation, the server supplies concise agent guidance connecting these tools: discover players rather than inventing IDs or names, use a returned raw ID or exact unique name, choose search for named media and browse for exploration, keep references opaque, route search and browse references according to their actual capabilities, distinguish replace-and-start playback from queue addition and clearing, and ask when player or media selection is genuinely ambiguous.
 
 ## Result references
 
@@ -77,11 +77,11 @@ The implemented `get_player_status` takes no input and returns all players disco
 
 Each player contains the raw LMS player ID, friendly name, power state, playback mode, nullable volume, nullable mute state, and nullable now-playing details. Now-playing details contain title plus optional artist, album, duration, and elapsed time. Queue, connectivity, and grouping information are excluded.
 
-The raw LMS player ID is passed directly to `control_player`, `get_queue`, `manage_queue`, or `play`; it is not wrapped in an application reference.
+A raw LMS player ID or exact unique player name returned by `get_player_status` can be passed directly to `control_player`, `get_queue`, `manage_queue`, or `play`; it is not wrapped in an application reference. IDs take precedence over names. Names are trimmed and compared exactly without regard to case. Unknown or duplicate names return an actionable tool error rather than guessing. Successful responses identify the selected player by its canonical raw LMS ID.
 
 ## `control_player`
 
-`control_player` accepts an explicit raw LMS player ID and one action: `resume`, `pause`, `stop`, `next`, `previous`, `power_on`, or `power_off`.
+`control_player` accepts an explicit raw LMS player ID or exact unique player name and one action: `resume`, `pause`, `stop`, `next`, `previous`, `power_on`, or `power_off`.
 
 The player is resolved before mutation. Playback actions map to LMS's explicit play, pause, stop, and adjacent queue-index commands. Power changes are confirmed before success is returned, and power-on does not automatically resume playback. The implementation refreshes the selected player's status after the command.
 
@@ -89,7 +89,7 @@ The result is the selected player's refreshed full status. Volume, mute, seek, g
 
 ## `get_queue`
 
-`get_queue` accepts one explicit raw LMS player ID and returns that player's complete current queue, up to LMS's 300-item queue limit.
+`get_queue` accepts one explicit raw LMS player ID or exact unique player name and returns that player's complete current queue, up to LMS's 300-item queue limit.
 
 The response contains the player ID, nullable current LMS queue index, and ordered items. Each item contains its LMS queue index, title, and optional artist, album, and duration. Array order and explicit indices both reflect LMS's queue order; the index identifies the current item and remains useful when LMS omits no entries.
 
@@ -97,7 +97,7 @@ The response does not contain pagination, a duplicated count, queue revisions, s
 
 ## `play`
 
-`play` accepts an explicit raw LMS player ID and a non-empty ordered list of opaque playable references returned by search or browse. It always replaces the current queue and starts playback.
+`play` accepts an explicit raw LMS player ID or exact unique player name and a non-empty ordered list of opaque playable references returned by search or browse. It always replaces the current queue and starts playback.
 
 The player and every reference are resolved before mutation. Lightweight filtered LMS queries verify that each referenced item still resolves to playable media without materialising whole collections in this server. After successful preflight, the server powers on the target when necessary. A power-on failure must not mutate the queue.
 
@@ -109,7 +109,7 @@ Invalid requests, missing players, and stale or unplayable references return MCP
 
 ## `manage_queue`
 
-`manage_queue` accepts an explicit raw LMS player ID, one action, and optional opaque playable references returned by search or browse. Its actions are `clear`, `append`, and `insert_next`.
+`manage_queue` accepts an explicit raw LMS player ID or exact unique player name, one action, and optional opaque playable references returned by search or browse. Its actions are `clear`, `append`, and `insert_next`.
 
 `clear` accepts no items and empties the selected player's queue. `append` and `insert_next` require a non-empty ordered item list. They accept the same track, artist, album, and playlist references as `play`; LMS expands collections and preserves their internal ordering. Multiple references preserve caller order, including when they are inserted together as the next media to play.
 

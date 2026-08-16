@@ -4,18 +4,19 @@ namespace LyrionVoiceMcp.Services;
 
 public sealed class PlayerControlService(
     ILmsPlayerClient lmsPlayerClient,
-    ILmsPlayerControlClient lmsPlayerControlClient) : IPlayerControlService
+    ILmsPlayerControlClient lmsPlayerControlClient,
+    IPlayerSelectorResolver playerSelectorResolver) : IPlayerControlService
 {
     public async Task<PlayerControlOutcome> ControlAsync(
-        string playerId,
+        string playerSelector,
         PlayerControlCommand command,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(playerId))
+        if (string.IsNullOrWhiteSpace(playerSelector))
         {
             return new PlayerControlRejected(
                 PlayerControlRejectionReason.InvalidPlayer,
-                "The player ID must not be empty.");
+                "The player must not be empty.");
         }
 
         if (!Enum.IsDefined(command))
@@ -26,13 +27,15 @@ public sealed class PlayerControlService(
         }
 
         var players = await lmsPlayerClient.GetPlayersAsync(cancellationToken);
-        var player = FindPlayer(players, playerId);
-        if (player is null)
+        var playerOutcome = playerSelectorResolver.Resolve(players, playerSelector);
+        if (playerOutcome is PlayerSelectorRejected rejectedPlayer)
         {
             return new PlayerControlRejected(
-                PlayerControlRejectionReason.PlayerNotFound,
-                $"LMS player '{playerId}' was not found.");
+                MapRejectionReason(rejectedPlayer.Reason),
+                rejectedPlayer.Message);
         }
+
+        var player = ((PlayerSelectorResolved)playerOutcome).Player;
 
         await lmsPlayerControlClient.ControlAsync(
             player.Id,
@@ -51,4 +54,13 @@ public sealed class PlayerControlService(
         string playerId) =>
         players.FirstOrDefault(player =>
             string.Equals(player.Id, playerId, StringComparison.OrdinalIgnoreCase));
+
+    private static PlayerControlRejectionReason MapRejectionReason(
+        PlayerSelectorRejectionReason reason) => reason switch
+        {
+            PlayerSelectorRejectionReason.InvalidSelector => PlayerControlRejectionReason.InvalidPlayer,
+            PlayerSelectorRejectionReason.PlayerNotFound => PlayerControlRejectionReason.PlayerNotFound,
+            PlayerSelectorRejectionReason.AmbiguousPlayer => PlayerControlRejectionReason.AmbiguousPlayer,
+            _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null)
+        };
 }

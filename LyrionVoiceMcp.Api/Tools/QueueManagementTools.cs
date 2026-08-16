@@ -23,7 +23,7 @@ public sealed class QueueManagementTools(
         OutputSchemaType = typeof(ManageQueueResponse))]
     [Description("Clear a player's queue, append media, or insert media to play next.")]
     public async Task<CallToolResult> ManageAsync(
-        [Description("The raw LMS player ID returned by get_player_status.")] string player,
+        [Description("A raw LMS player ID or exact unique player name returned by get_player_status.")] string player,
         [Description("Clear, append, or insert items to play next.")] ManageQueueAction action,
         [Description("Opaque playable references returned by search or browse; required for append and insert_next.")] IReadOnlyList<string>? items = null,
         CancellationToken cancellationToken = default)

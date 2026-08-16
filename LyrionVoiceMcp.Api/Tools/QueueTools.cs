@@ -22,7 +22,7 @@ public sealed class QueueTools(IQueueService queueService)
         OutputSchemaType = typeof(GetQueueResponse))]
     [Description("Get the complete current queue for an explicitly selected Lyrion player.")]
     public async Task<CallToolResult> GetQueueAsync(
-        [Description("The raw LMS player ID returned by get_player_status.")] string player,
+        [Description("A raw LMS player ID or exact unique player name returned by get_player_status.")] string player,
         CancellationToken cancellationToken = default)
     {
         try

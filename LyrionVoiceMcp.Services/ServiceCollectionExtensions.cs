@@ -33,6 +33,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ILmsConnectionStatusService, LmsConnectionStatusService>();
         services.AddTransient<IPlaybackService, PlaybackService>();
         services.AddTransient<IPlayerControlService, PlayerControlService>();
+        services.AddSingleton<IPlayerSelectorResolver, PlayerSelectorResolver>();
         services.AddTransient<IPlayerStatusService, PlayerStatusService>();
         services.AddTransient<IQueueService, QueueService>();
         services.AddTransient<IQueueManagementService, QueueManagementService>();

@@ -20,7 +20,8 @@ public sealed record LmsQueueItem(
 public enum QueueRejectionReason
 {
     InvalidPlayer,
-    PlayerNotFound
+    PlayerNotFound,
+    AmbiguousPlayer
 }
 
 public abstract record QueueOutcome;
@@ -41,6 +42,6 @@ public interface ILmsQueueClient
 public interface IQueueService
 {
     Task<QueueOutcome> GetQueueAsync(
-        string playerId,
+        string playerSelector,
         CancellationToken cancellationToken);
 }

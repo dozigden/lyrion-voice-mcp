@@ -35,3 +35,25 @@ public interface IPlayerStatusService
     Task<IReadOnlyList<LmsPlayerStatus>> GetPlayersAsync(
         CancellationToken cancellationToken);
 }
+
+public enum PlayerSelectorRejectionReason
+{
+    InvalidSelector,
+    PlayerNotFound,
+    AmbiguousPlayer
+}
+
+public abstract record PlayerSelectorOutcome;
+
+public sealed record PlayerSelectorResolved(LmsPlayerStatus Player) : PlayerSelectorOutcome;
+
+public sealed record PlayerSelectorRejected(
+    PlayerSelectorRejectionReason Reason,
+    string Message) : PlayerSelectorOutcome;
+
+public interface IPlayerSelectorResolver
+{
+    PlayerSelectorOutcome Resolve(
+        IReadOnlyList<LmsPlayerStatus> players,
+        string selector);
+}

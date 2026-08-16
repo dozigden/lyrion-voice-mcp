@@ -32,6 +32,26 @@ public sealed class QueueManagementServiceTests
     }
 
     [Fact]
+    public async Task UniquePlayerNameShouldUseTheCanonicalIdForQueueManagement()
+    {
+        // Arrange
+        var playbackClient = new StubPlaybackClient();
+        var service = CreateService(playbackClient);
+
+        // Act
+        var outcome = await service.ManageAsync(
+            " north ROOM ",
+            QueueManagementCommand.Clear,
+            null,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var succeeded = Assert.IsType<QueueManagementSucceeded>(outcome);
+        Assert.Equal(PlayerId, succeeded.PlayerId);
+        Assert.Equal(["clear"], playbackClient.Mutations);
+    }
+
+    [Fact]
     public async Task AppendShouldPreserveCallerOrderAndReturnTheUpdatedLength()
     {
         // Arrange
@@ -48,6 +68,7 @@ public sealed class QueueManagementServiceTests
         var service = new QueueManagementService(
             new StubPlayerClient(Player()),
             playbackClient,
+            new PlayerSelectorResolver(),
             codecs.Resolver,
             store,
             TimeProvider.System,
@@ -283,6 +304,7 @@ public sealed class QueueManagementServiceTests
         new(
             playerClient ?? new StubPlayerClient(Player()),
             playbackClient,
+            new PlayerSelectorResolver(),
             (codecs ?? new ReferenceCodecTestContext()).Resolver,
             NullSearchObservationStore.Instance,
             TimeProvider.System,

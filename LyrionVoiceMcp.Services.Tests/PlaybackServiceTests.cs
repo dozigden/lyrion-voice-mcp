@@ -122,6 +122,35 @@ public sealed class PlaybackServiceTests
     }
 
     [Fact]
+    public async Task UniquePlayerNameShouldUseTheCanonicalIdForPlayback()
+    {
+        // Arrange
+        var codecs = new ReferenceCodecTestContext();
+        var playbackClient = new StubPlaybackClient();
+        var service = CreateService(
+            new StubPlayerClient(
+                Player(true, PlayerPlaybackState.Stopped),
+                Player(true, PlayerPlaybackState.Playing)),
+            playbackClient,
+            codecs);
+        var reference = Reference(
+            codecs.Search,
+            new MediaIdentity(MediaEntityKind.Track, "43"),
+            0);
+
+        // Act
+        var outcome = await service.PlayAsync(
+            "  NORTH room ",
+            [reference],
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var succeeded = Assert.IsType<PlaybackSucceeded>(outcome);
+        Assert.Equal(PlayerId, succeeded.Player.Id);
+        Assert.Equal(["check:Track:43", "load:Track:43"], playbackClient.Operations);
+    }
+
+    [Fact]
     public async Task SuccessfulPlaybackShouldMarkItsSearchCorrelationSelected()
     {
         // Arrange
@@ -158,6 +187,7 @@ public sealed class PlaybackServiceTests
                 Player(true, PlayerPlaybackState.Stopped),
                 Player(true, PlayerPlaybackState.Playing)),
             playbackClient,
+            new PlayerSelectorResolver(),
             new PlayableReferenceResolver(searchCodec, browseCodec),
             store,
             TimeProvider.System,
@@ -191,6 +221,7 @@ public sealed class PlaybackServiceTests
                 Player(true, PlayerPlaybackState.Stopped),
                 Player(true, PlayerPlaybackState.Playing)),
             new StubPlaybackClient(),
+            new PlayerSelectorResolver(),
             new PlayableReferenceResolver(searchCodec, browseCodec),
             store,
             TimeProvider.System,
@@ -351,6 +382,7 @@ public sealed class PlaybackServiceTests
         return new PlaybackService(
             playerClient,
             playbackClient,
+            new PlayerSelectorResolver(),
             codecs.Resolver,
             observationStore ?? NullSearchObservationStore.Instance,
             TimeProvider.System,

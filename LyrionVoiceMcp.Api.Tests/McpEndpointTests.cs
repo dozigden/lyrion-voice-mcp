@@ -42,7 +42,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("Lyrion Voice MCP", body, StringComparison.Ordinal);
         Assert.Contains("\"tools\"", body, StringComparison.Ordinal);
         Assert.Contains(
-            "Resolve player names with get_player_status",
+            "Discover players with get_player_status",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -104,6 +104,11 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             StringComparison.Ordinal);
         Assert.Contains("\"name\":\"play\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"player\",\"items\"]", body, StringComparison.Ordinal);
+        Assert.Equal(
+            4,
+            body.Split(
+                "A raw LMS player ID or exact unique player name returned by get_player_status.",
+                StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain(
             "\"enum\":[\"replace\",\"append\"]",
             body,

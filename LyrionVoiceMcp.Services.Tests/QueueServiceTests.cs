@@ -18,7 +18,8 @@ public sealed class QueueServiceTests
         var queueClient = new StubQueueClient(queue);
         var service = new QueueService(
             new StubPlayerClient([Player()]),
-            queueClient);
+            queueClient,
+            new PlayerSelectorResolver());
 
         // Act
         var outcome = await service.GetQueueAsync(
@@ -31,6 +32,27 @@ public sealed class QueueServiceTests
         Assert.Equal(PlayerId, queueClient.PlayerId);
     }
 
+    [Fact]
+    public async Task UniquePlayerNameShouldUseTheCanonicalIdForQueueReading()
+    {
+        // Arrange
+        var queue = new LmsPlayerQueue(PlayerId, null, []);
+        var queueClient = new StubQueueClient(queue);
+        var service = new QueueService(
+            new StubPlayerClient([Player()]),
+            queueClient,
+            new PlayerSelectorResolver());
+
+        // Act
+        var outcome = await service.GetQueueAsync(
+            " north ROOM ",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.IsType<QueueSucceeded>(outcome);
+        Assert.Equal(PlayerId, queueClient.PlayerId);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -40,7 +62,10 @@ public sealed class QueueServiceTests
         // Arrange
         var playerClient = new StubPlayerClient([Player()]);
         var queueClient = new StubQueueClient(new(PlayerId, null, []));
-        var service = new QueueService(playerClient, queueClient);
+        var service = new QueueService(
+            playerClient,
+            queueClient,
+            new PlayerSelectorResolver());
 
         // Act
         var outcome = await service.GetQueueAsync(
@@ -61,7 +86,8 @@ public sealed class QueueServiceTests
         var queueClient = new StubQueueClient(new(PlayerId, null, []));
         var service = new QueueService(
             new StubPlayerClient([Player()]),
-            queueClient);
+            queueClient,
+            new PlayerSelectorResolver());
 
         // Act
         var outcome = await service.GetQueueAsync(
@@ -71,6 +97,38 @@ public sealed class QueueServiceTests
         // Assert
         var rejected = Assert.IsType<QueueRejected>(outcome);
         Assert.Equal(QueueRejectionReason.PlayerNotFound, rejected.Reason);
+        Assert.Null(queueClient.PlayerId);
+    }
+
+    [Fact]
+    public async Task DuplicatePlayerNameShouldBeRejectedAsAmbiguous()
+    {
+        // Arrange
+        var queueClient = new StubQueueClient(new(PlayerId, null, []));
+        var players = new[]
+        {
+            Player(),
+            new LmsPlayerStatus(
+                "66:77:88:99:aa:bb",
+                "north room",
+                true,
+                PlayerPlaybackState.Stopped)
+        };
+        var service = new QueueService(
+            new StubPlayerClient(players),
+            queueClient,
+            new PlayerSelectorResolver());
+
+        // Act
+        var outcome = await service.GetQueueAsync(
+            "North Room",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var rejected = Assert.IsType<QueueRejected>(outcome);
+        Assert.Equal(QueueRejectionReason.AmbiguousPlayer, rejected.Reason);
+        Assert.Contains(PlayerId, rejected.Message, StringComparison.Ordinal);
+        Assert.Contains("66:77:88:99:aa:bb", rejected.Message, StringComparison.Ordinal);
         Assert.Null(queueClient.PlayerId);
     }
 

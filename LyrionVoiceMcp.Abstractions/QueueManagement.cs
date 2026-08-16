@@ -15,6 +15,7 @@ public enum QueueManagementRejectionReason
     EmptyItems,
     InvalidReference,
     PlayerNotFound,
+    AmbiguousPlayer,
     MediaNotFound,
     QueueLimitExceeded
 }
@@ -32,7 +33,7 @@ public sealed record QueueManagementRejected(
 public interface IQueueManagementService
 {
     Task<QueueManagementOutcome> ManageAsync(
-        string playerId,
+        string playerSelector,
         QueueManagementCommand command,
         IReadOnlyList<string>? references,
         CancellationToken cancellationToken);

@@ -4,32 +4,43 @@ namespace LyrionVoiceMcp.Services;
 
 public sealed class QueueService(
     ILmsPlayerClient lmsPlayerClient,
-    ILmsQueueClient lmsQueueClient) : IQueueService
+    ILmsQueueClient lmsQueueClient,
+    IPlayerSelectorResolver playerSelectorResolver) : IQueueService
 {
     public async Task<QueueOutcome> GetQueueAsync(
-        string playerId,
+        string playerSelector,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(playerId))
+        if (string.IsNullOrWhiteSpace(playerSelector))
         {
             return new QueueRejected(
                 QueueRejectionReason.InvalidPlayer,
-                "The player ID must not be empty.");
+                "The player must not be empty.");
         }
 
         var players = await lmsPlayerClient.GetPlayersAsync(cancellationToken);
-        var player = players.FirstOrDefault(candidate =>
-            string.Equals(candidate.Id, playerId, StringComparison.OrdinalIgnoreCase));
-        if (player is null)
+        var playerOutcome = playerSelectorResolver.Resolve(players, playerSelector);
+        if (playerOutcome is PlayerSelectorRejected rejectedPlayer)
         {
             return new QueueRejected(
-                QueueRejectionReason.PlayerNotFound,
-                $"LMS player '{playerId}' was not found.");
+                MapRejectionReason(rejectedPlayer.Reason),
+                rejectedPlayer.Message);
         }
+
+        var player = ((PlayerSelectorResolved)playerOutcome).Player;
 
         var queue = await lmsQueueClient.GetQueueAsync(
             player.Id,
             cancellationToken);
         return new QueueSucceeded(queue);
     }
+
+    private static QueueRejectionReason MapRejectionReason(
+        PlayerSelectorRejectionReason reason) => reason switch
+        {
+            PlayerSelectorRejectionReason.InvalidSelector => QueueRejectionReason.InvalidPlayer,
+            PlayerSelectorRejectionReason.PlayerNotFound => QueueRejectionReason.PlayerNotFound,
+            PlayerSelectorRejectionReason.AmbiguousPlayer => QueueRejectionReason.AmbiguousPlayer,
+            _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null)
+        };
 }

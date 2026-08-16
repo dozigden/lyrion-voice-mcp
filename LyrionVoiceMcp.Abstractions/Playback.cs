@@ -6,6 +6,7 @@ public enum PlaybackRejectionReason
     EmptyItems,
     InvalidReference,
     PlayerNotFound,
+    AmbiguousPlayer,
     MediaNotFound
 }
 
@@ -63,7 +64,7 @@ public interface ILmsPlaybackClient
 public interface IPlaybackService
 {
     Task<PlaybackOutcome> PlayAsync(
-        string playerId,
+        string playerSelector,
         IReadOnlyList<string> references,
         CancellationToken cancellationToken);
 }

@@ -22,7 +22,7 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
         OutputSchemaType = typeof(PlayResponse))]
     [Description("Replace a Lyrion player's queue with one or more search or browse results and start playback.")]
     public async Task<CallToolResult> PlayAsync(
-        [Description("The raw LMS player ID returned by get_player_status.")] string player,
+        [Description("A raw LMS player ID or exact unique player name returned by get_player_status.")] string player,
         [Description("One or more opaque playable references returned by search or browse, in playback order.")] IReadOnlyList<string> items,
         CancellationToken cancellationToken = default)
     {

@@ -22,7 +22,7 @@ public sealed class PlayerControlTools(IPlayerControlService playerControlServic
         OutputSchemaType = typeof(ControlPlayerResponse))]
     [Description("Control playback or power state on an explicitly selected Lyrion player.")]
     public async Task<CallToolResult> ControlAsync(
-        [Description("The raw LMS player ID returned by get_player_status.")] string player,
+        [Description("A raw LMS player ID or exact unique player name returned by get_player_status.")] string player,
         [Description("The playback or power action to perform.")] PlayerControlAction action,
         CancellationToken cancellationToken = default)
     {

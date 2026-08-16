@@ -15,7 +15,8 @@ public enum PlayerControlRejectionReason
 {
     InvalidPlayer,
     InvalidAction,
-    PlayerNotFound
+    PlayerNotFound,
+    AmbiguousPlayer
 }
 
 public abstract record PlayerControlOutcome;
@@ -38,7 +39,7 @@ public interface ILmsPlayerControlClient
 public interface IPlayerControlService
 {
     Task<PlayerControlOutcome> ControlAsync(
-        string playerId,
+        string playerSelector,
         PlayerControlCommand command,
         CancellationToken cancellationToken);
 }
