@@ -16,7 +16,7 @@ The current public MCP surface contains `search`, `browse`, `get_player_status`,
 
 Structured results conform to their advertised output schemas. Properties that are required but nullable are emitted explicitly as JSON `null` when no value is available rather than being omitted.
 
-During MCP initialisation, the server supplies concise agent guidance connecting these tools: discover players rather than inventing IDs or names, use a returned raw ID or exact unique name, choose search for named media and browse for exploration, keep references opaque, route search and browse references according to their actual capabilities, distinguish replace-and-start playback from queue addition and clearing, and ask when player or media selection is genuinely ambiguous.
+During MCP initialisation, the server supplies concise agent guidance connecting these tools: discover players rather than inventing IDs or names, use a returned raw ID or exact unique name, choose search for named media and browse for exploration, keep references opaque, route search and browse references according to their actual capabilities, distinguish replace-and-start playback from queue addition and clearing, inspect partial batch results, and ask when player or media selection is genuinely ambiguous.
 
 ## Result references
 
@@ -99,11 +99,13 @@ The response does not contain pagination, a duplicated count, queue revisions, s
 
 `play` accepts an explicit raw LMS player ID or exact unique player name and a non-empty ordered list of opaque playable references returned by search or browse. It always replaces the current queue and starts playback.
 
-The player and every reference are resolved before mutation. Lightweight filtered LMS queries verify that each referenced item still resolves to playable media without materialising whole collections in this server. After successful preflight, the server powers on the target when necessary. A power-on failure must not mutate the queue.
+The player and every reference are inspected before mutation. Lightweight filtered LMS queries verify that each valid reference still resolves to playable media without materialising whole collections in this server. Invalid or unavailable references are skipped. If none remains, the tool returns an error without changing LMS. After successful preflight, the server powers on the target when necessary. A power-on failure must not mutate the queue.
 
-Tracks, artists, albums, and playlists are passed directly to LMS `playlistcontrol` by ID. LMS owns collection expansion and its internal track order. The first reference replaces the queue and starts playback; later references are added in caller order. Appending and play-next placement belong to `manage_queue` rather than `play`.
+Tracks, artists, albums, and playlists are passed directly to LMS `playlistcontrol` by ID. LMS owns collection expansion and its internal track order. The first usable reference replaces the queue and starts playback; later usable references are added in relative caller order. Appending and play-next placement belong to `manage_queue` rather than `play`.
 
-The result is the selected player's updated status.
+The result contains nullable refreshed player status, requested and completed reference counts, indexed skipped items, and a nullable state-refresh error. A normal successful refresh emits a player and an explicit `null` refresh error. Stable skipped-item reasons are `invalid_reference`, `media_unavailable`, `lms_error`, and `not_attempted`; queue-only `queue_capacity` is also part of the shared reason vocabulary.
+
+After mutation begins, the server stops on the first LMS failure rather than risking further changes against an unavailable player or server. If at least one item completed, the tool returns structured partial success and identifies the failed item and every unattempted remainder without repeating successful references. If none is confirmed complete, it returns `isError: true` with the same structured batch shape, zero completed items, and refreshed player state where available; this also covers a failed power-on confirmation because the power command may already have changed the player. Only completed references mark real originating search-result correlations selected; pure root-browse references carry no synthetic correlation.
 
 Invalid requests, missing players, and stale or unplayable references return MCP tool execution errors with `isError: true` and a concise corrective message. They are not reported as protocol errors and do not use validation exceptions as application control flow.
 
@@ -113,11 +115,13 @@ Invalid requests, missing players, and stale or unplayable references return MCP
 
 `clear` accepts no items and empties the selected player's queue. `append` and `insert_next` require a non-empty ordered item list. They accept the same track, artist, album, and playlist references as `play`; LMS expands collections and preserves their internal ordering. Multiple references preserve caller order, including when they are inserted together as the next media to play.
 
-The player and every supplied reference are resolved before mutation. Addition requests also resolve collection sizes and the current queue length before mutation, and reject the whole request if it would exceed the supported 300-item queue limit. Successful additions mark search-result correlations as selected when the references originated from search; browse references do not create search correlations.
+The player and every supplied reference are inspected before mutation. Addition requests also resolve collection sizes and the current queue length. Invalid and unavailable items are skipped. Capacity is assigned greedily in input order up to the supported 300-item limit: an item that does not fit is reported as `queue_capacity`, while a later smaller item may still fit. If nothing can be added, the tool returns an error without mutation.
 
-Queue append and insert-next do not power on a player or change its playback state. Clear uses LMS's native queue clear behaviour, which empties the queue and stops playback. Queue management returns only the selected player ID and resulting queue length; callers can use `get_queue` when they need the updated contents. Remove, move, and arbitrary positions are not part of this contract.
+Append submits retained items in input order. Insert-next submits them to LMS in reverse so their resulting queue order still matches the caller's relative order. Both stop on the first LMS mutation failure. Once one item completes, a failure returns structured partial success with requested and completed reference counts plus indexed `lms_error` and `not_attempted` entries. With no confirmed completion, the same structure and refreshed queue length are returned with `isError: true`, because an upstream failure does not prove that LMS left the queue unchanged. Only completed references mark originating search-result correlations selected.
 
-Invalid actions or item combinations, missing players, stale references, and requests over the queue limit return concise MCP tool errors with `isError: true`.
+Queue append and insert-next do not power on a player or change its playback state. Clear uses LMS's native queue clear behaviour, which empties the queue and stops playback. Queue management returns the canonical player ID, nullable refreshed queue length, requested and completed reference counts, skipped items, and nullable state-refresh error. Clear reports zero requested and completed media items with an empty skipped list. Callers can use `get_queue` when they need updated contents after a failed refresh. Remove, move, and arbitrary positions are not part of this contract.
+
+Invalid actions or item combinations, missing players, and batches with no usable additions return concise plain MCP tool errors. A mutation attempt with no confirmed completion returns the structured error described above. Both use `isError: true`.
 
 ## Further surface
 

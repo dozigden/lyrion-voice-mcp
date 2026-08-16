@@ -24,18 +24,9 @@ public sealed class QueueManagementService(
             return validation;
         }
 
-        var decodedReferences = references is null
-            ? new DecodedReferences([], null)
-            : DecodeReferences(references);
-        if (decodedReferences.Rejection is not null)
-        {
-            return decodedReferences.Rejection;
-        }
-
-        var playersTask = lmsPlayerClient.GetPlayersAsync(cancellationToken);
         if (command == QueueManagementCommand.Clear)
         {
-            var players = await playersTask;
+            var players = await lmsPlayerClient.GetPlayersAsync(cancellationToken);
             var playerOutcome = playerSelectorResolver.Resolve(players, playerSelector);
             if (playerOutcome is PlayerSelectorRejected rejectedPlayer)
             {
@@ -54,13 +45,25 @@ public sealed class QueueManagementService(
                     "LMS queue was not empty after the clear command.");
             }
 
-            return new QueueManagementSucceeded(player.Id, 0);
+            return new QueueManagementSucceeded(
+                player.Id,
+                0,
+                0,
+                0,
+                [],
+                null);
         }
 
-        var values = decodedReferences.Values;
-        var itemCountsTask = Task.WhenAll(values.Select(value =>
+        var preparedReferences = PrepareReferences(references!);
+        if (preparedReferences.Items.Count == 0)
+        {
+            return NoUsableItems(references!.Count, preparedReferences.SkippedItems);
+        }
+
+        var playersTask = lmsPlayerClient.GetPlayersAsync(cancellationToken);
+        var itemCountsTask = Task.WhenAll(preparedReferences.Items.Select(item =>
             lmsPlaybackClient.GetPlayableItemCountAsync(
-                value.Media,
+                item.Value.Media,
                 cancellationToken)));
         await Task.WhenAll(playersTask, itemCountsTask);
 
@@ -74,66 +77,140 @@ public sealed class QueueManagementService(
 
         var resolvedPlayer = ((PlayerSelectorResolved)playerResolution).Player;
 
+        var skippedItems = preparedReferences.SkippedItems.ToList();
         var itemCounts = await itemCountsTask;
-        var missingItemIndex = Array.FindIndex(itemCounts, count => count == 0);
-        if (missingItemIndex >= 0)
+        var availableItems = new List<PlayableItem>(preparedReferences.Items.Count);
+        for (var index = 0; index < preparedReferences.Items.Count; index++)
         {
-            return new QueueManagementRejected(
-                QueueManagementRejectionReason.MediaNotFound,
-                $"Media item {missingItemIndex + 1} no longer resolves to playable media.");
+            var item = preparedReferences.Items[index];
+            if (itemCounts[index] == 0)
+            {
+                skippedItems.Add(SkippedItem(
+                    item.Index,
+                    MediaItemSkipReason.MediaUnavailable,
+                    "The media is no longer available."));
+                continue;
+            }
+
+            availableItems.Add(new PlayableItem(
+                item.Index,
+                item.Value,
+                itemCounts[index]));
+        }
+
+        if (availableItems.Count == 0)
+        {
+            return NoUsableItems(references!.Count, skippedItems);
         }
 
         var queueCount = await lmsPlaybackClient.GetQueueCountAsync(
             resolvedPlayer.Id,
             cancellationToken);
-        var requestedCount = itemCounts.Aggregate(0L, (total, count) => total + count);
-        if (queueCount > QueueLimits.MaximumItems
-            || requestedCount > QueueLimits.MaximumItems - queueCount)
+        if (queueCount > QueueLimits.MaximumItems)
         {
             return new QueueManagementRejected(
                 QueueManagementRejectionReason.QueueLimitExceeded,
-                $"The requested items would exceed the supported {QueueLimits.MaximumItems}-item queue limit.");
+                $"The LMS queue already exceeds the supported {QueueLimits.MaximumItems}-item limit.");
         }
 
-        if (command == QueueManagementCommand.Append)
+        var remainingCapacity = QueueLimits.MaximumItems - queueCount;
+        var plannedItems = new List<PlayableItem>(availableItems.Count);
+        foreach (var item in availableItems)
         {
-            foreach (var value in values)
+            if (item.PlayableTrackCount > remainingCapacity)
             {
-                await lmsPlaybackClient.AddAsync(
-                    resolvedPlayer.Id,
-                    value.Media,
-                    cancellationToken);
+                skippedItems.Add(SkippedItem(
+                    item.Index,
+                    MediaItemSkipReason.QueueCapacity,
+                    $"The item needs {item.PlayableTrackCount} queue places but only {remainingCapacity} remain."));
+                continue;
             }
+
+            plannedItems.Add(item);
+            remainingCapacity -= item.PlayableTrackCount;
         }
-        else
+
+        if (plannedItems.Count == 0)
         {
-            foreach (var value in values.Reverse())
+            return NoUsableItems(references!.Count, skippedItems);
+        }
+
+        var submissionItems = (command == QueueManagementCommand.Append
+            ? plannedItems
+            : plannedItems.AsEnumerable().Reverse()).ToArray();
+        var completedItems = new List<PlayableItem>(plannedItems.Count);
+        for (var index = 0; index < submissionItems.Length; index++)
+        {
+            var item = submissionItems[index];
+            try
             {
-                await lmsPlaybackClient.InsertAsync(
-                    resolvedPlayer.Id,
-                    value.Media,
-                    cancellationToken);
+                if (command == QueueManagementCommand.Append)
+                {
+                    await lmsPlaybackClient.AddAsync(
+                        resolvedPlayer.Id,
+                        item.Value.Media,
+                        cancellationToken);
+                }
+                else
+                {
+                    await lmsPlaybackClient.InsertAsync(
+                        resolvedPlayer.Id,
+                        item.Value.Media,
+                        cancellationToken);
+                }
+
+                completedItems.Add(item);
+            }
+            catch (LmsRequestException exception)
+            {
+                skippedItems.Add(SkippedItem(
+                    item.Index,
+                    MediaItemSkipReason.LmsError,
+                    exception.Message));
+                foreach (var remainingItem in submissionItems.Skip(index + 1))
+                {
+                    skippedItems.Add(SkippedItem(
+                        remainingItem.Index,
+                        MediaItemSkipReason.NotAttempted,
+                        "Not attempted after an earlier LMS failure."));
+                }
+
+                break;
             }
         }
 
-        var updatedQueueCount = await lmsPlaybackClient.GetQueueCountAsync(
+        if (completedItems.Count == 0)
+        {
+            var failedRefresh = await TryRefreshQueueAsync(
+                resolvedPlayer.Id,
+                cancellationToken);
+            return new QueueManagementFailed(
+                resolvedPlayer.Id,
+                failedRefresh.QueueLength,
+                references!.Count,
+                skippedItems.OrderBy(item => item.Index).ToArray(),
+                failedRefresh.Error,
+                BuildFailureMessage(
+                    "Queue management failed before any media item completed.",
+                    skippedItems));
+        }
+
+        var refresh = await TryRefreshQueueAsync(
             resolvedPlayer.Id,
             cancellationToken);
-        if (updatedQueueCount > QueueLimits.MaximumItems)
-        {
-            throw new LmsRequestException(
-                $"LMS queue exceeds the supported {QueueLimits.MaximumItems}-item limit after queue management.");
-        }
-
         await TryMarkSelectedAsync(
-            values
-                .Select(value => value.SearchCorrelationId)
+            completedItems
+                .Select(item => item.Value.SearchCorrelationId)
                 .OfType<string>()
                 .ToArray(),
             cancellationToken);
         return new QueueManagementSucceeded(
             resolvedPlayer.Id,
-            updatedQueueCount);
+            refresh.QueueLength,
+            references!.Count,
+            completedItems.Count,
+            skippedItems.OrderBy(item => item.Index).ToArray(),
+            refresh.Error);
     }
 
     private static QueueManagementRejected? ValidateRequest(
@@ -171,25 +248,26 @@ public sealed class QueueManagementService(
             : null;
     }
 
-    private DecodedReferences DecodeReferences(IReadOnlyList<string> references)
+    private PreparedReferences PrepareReferences(IReadOnlyList<string> references)
     {
-        var values = new PlayableReferenceValue[references.Count];
+        var items = new List<PreparedItem>(references.Count);
+        var skippedItems = new List<SkippedMediaItem>();
         for (var index = 0; index < references.Count; index++)
         {
             var value = referenceResolver.Resolve(references[index]);
             if (value is null)
             {
-                return new DecodedReferences(
-                    [],
-                    new QueueManagementRejected(
-                        QueueManagementRejectionReason.InvalidReference,
-                        $"Media item {index + 1} has an invalid reference."));
+                skippedItems.Add(SkippedItem(
+                    index,
+                    MediaItemSkipReason.InvalidReference,
+                    "The reference is invalid or has expired."));
+                continue;
             }
 
-            values[index] = value;
+            items.Add(new PreparedItem(index, value));
         }
 
-        return new DecodedReferences(values, null);
+        return new PreparedReferences(items, skippedItems);
     }
 
     private async Task TryMarkSelectedAsync(
@@ -230,7 +308,67 @@ public sealed class QueueManagementService(
             },
             rejection.Message);
 
-    private sealed record DecodedReferences(
-        IReadOnlyList<PlayableReferenceValue> Values,
-        QueueManagementRejected? Rejection);
+    private async Task<QueueRefresh> TryRefreshQueueAsync(
+        string playerId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var queueLength = await lmsPlaybackClient.GetQueueCountAsync(
+                playerId,
+                cancellationToken);
+            return new QueueRefresh(queueLength, null);
+        }
+        catch (LmsRequestException exception)
+        {
+            return new QueueRefresh(null, exception.Message);
+        }
+    }
+
+    private static QueueManagementRejected NoUsableItems(
+        int requestedItemCount,
+        IReadOnlyCollection<SkippedMediaItem> skippedItems) =>
+        new(
+            QueueManagementRejectionReason.NoUsableItems,
+            BuildFailureMessage(
+                $"None of the {requestedItemCount} requested media items was usable.",
+                skippedItems));
+
+    private static SkippedMediaItem SkippedItem(
+        int zeroBasedIndex,
+        MediaItemSkipReason reason,
+        string message) =>
+        new(zeroBasedIndex + 1, reason, message);
+
+    private static string BuildFailureMessage(
+        string summary,
+        IEnumerable<SkippedMediaItem> skippedItems)
+    {
+        var details = string.Join(
+            " ",
+            skippedItems
+                .OrderBy(item => item.Index)
+                .Select(item =>
+                    $"Item {item.Index}: {item.Reason.ToStableName()} ({item.Message})"));
+        return string.IsNullOrEmpty(details)
+            ? summary
+            : $"{summary} {details}";
+    }
+
+    private sealed record PreparedReferences(
+        IReadOnlyList<PreparedItem> Items,
+        IReadOnlyList<SkippedMediaItem> SkippedItems);
+
+    private sealed record PreparedItem(
+        int Index,
+        PlayableReferenceValue Value);
+
+    private sealed record PlayableItem(
+        int Index,
+        PlayableReferenceValue Value,
+        int PlayableTrackCount);
+
+    private sealed record QueueRefresh(
+        int? QueueLength,
+        string? Error);
 }

@@ -31,25 +31,33 @@ public sealed class PlaybackService(
                 "At least one media reference is required.");
         }
 
-        var decodedReferences = new PlayableReferenceValue[references.Count];
+        var preparedItems = new List<PreparedItem>(references.Count);
+        var skippedItems = new List<SkippedMediaItem>();
         for (var index = 0; index < references.Count; index++)
         {
             var value = referenceResolver.Resolve(references[index]);
             if (value is null)
             {
-                return new PlaybackRejected(
-                    PlaybackRejectionReason.InvalidReference,
-                    $"Media item {index + 1} has an invalid reference.");
+                skippedItems.Add(SkippedItem(
+                    index,
+                    MediaItemSkipReason.InvalidReference,
+                    "The reference is invalid or has expired."));
+                continue;
             }
 
-            decodedReferences[index] = value;
+            preparedItems.Add(new PreparedItem(index, value));
         }
 
-        var media = decodedReferences.Select(value => value.Media).ToArray();
+        if (preparedItems.Count == 0)
+        {
+            return NoUsableItems(references.Count, skippedItems);
+        }
 
         var playersTask = lmsPlayerClient.GetPlayersAsync(cancellationToken);
-        var playableItemsTask = Task.WhenAll(media.Select(item =>
-            lmsPlaybackClient.GetPlayableItemCountAsync(item, cancellationToken)));
+        var playableItemsTask = Task.WhenAll(preparedItems.Select(item =>
+            lmsPlaybackClient.GetPlayableItemCountAsync(
+                item.Value.Media,
+                cancellationToken)));
         await Task.WhenAll(playersTask, playableItemsTask);
 
         var playerOutcome = playerSelectorResolver.Resolve(
@@ -64,40 +72,119 @@ public sealed class PlaybackService(
 
         var player = ((PlayerSelectorResolved)playerOutcome).Player;
 
-        var playableItems = await playableItemsTask;
-        var missingItemIndex = Array.FindIndex(playableItems, count => count == 0);
-        if (missingItemIndex >= 0)
+        var playableCounts = await playableItemsTask;
+        var playableItems = new List<PreparedItem>(preparedItems.Count);
+        for (var index = 0; index < preparedItems.Count; index++)
         {
-            return new PlaybackRejected(
-                PlaybackRejectionReason.MediaNotFound,
-                $"Media item {missingItemIndex + 1} no longer resolves to playable media.");
+            var item = preparedItems[index];
+            if (playableCounts[index] == 0)
+            {
+                skippedItems.Add(SkippedItem(
+                    item.Index,
+                    MediaItemSkipReason.MediaUnavailable,
+                    "The media is no longer available."));
+                continue;
+            }
+
+            playableItems.Add(item);
+        }
+
+        if (playableItems.Count == 0)
+        {
+            return NoUsableItems(references.Count, skippedItems);
         }
 
         if (!player.PoweredOn)
         {
-            await lmsPlaybackClient.PowerOnAsync(player.Id, cancellationToken);
+            try
+            {
+                await lmsPlaybackClient.PowerOnAsync(player.Id, cancellationToken);
+            }
+            catch (LmsRequestException exception)
+            {
+                foreach (var item in playableItems)
+                {
+                    skippedItems.Add(SkippedItem(
+                        item.Index,
+                        MediaItemSkipReason.NotAttempted,
+                        "Not attempted because the player could not be powered on."));
+                }
+
+                return await FailedOutcomeAsync(
+                    player.Id,
+                    references.Count,
+                    skippedItems,
+                    $"Playback did not start because LMS could not confirm that the player was powered on: {exception.Message}",
+                    cancellationToken);
+            }
         }
 
-        await lmsPlaybackClient.LoadAsync(
-            player.Id,
-            media[0],
-            cancellationToken);
-        foreach (var item in media.Skip(1))
+        var completedItems = new List<PreparedItem>(playableItems.Count);
+        for (var index = 0; index < playableItems.Count; index++)
         {
-            await lmsPlaybackClient.AddAsync(
+            var item = playableItems[index];
+            try
+            {
+                if (index == 0)
+                {
+                    await lmsPlaybackClient.LoadAsync(
+                        player.Id,
+                        item.Value.Media,
+                        cancellationToken);
+                }
+                else
+                {
+                    await lmsPlaybackClient.AddAsync(
+                        player.Id,
+                        item.Value.Media,
+                        cancellationToken);
+                }
+
+                completedItems.Add(item);
+            }
+            catch (LmsRequestException exception)
+            {
+                skippedItems.Add(SkippedItem(
+                    item.Index,
+                    MediaItemSkipReason.LmsError,
+                    exception.Message));
+                foreach (var remainingItem in playableItems.Skip(index + 1))
+                {
+                    skippedItems.Add(SkippedItem(
+                        remainingItem.Index,
+                        MediaItemSkipReason.NotAttempted,
+                        "Not attempted after an earlier LMS failure."));
+                }
+
+                break;
+            }
+        }
+
+        if (completedItems.Count == 0)
+        {
+            return await FailedOutcomeAsync(
                 player.Id,
-                item,
+                references.Count,
+                skippedItems,
+                BuildFailureMessage(
+                    "Playback failed before any media item completed.",
+                    skippedItems),
                 cancellationToken);
         }
 
-        var updatedPlayers = await lmsPlayerClient.GetPlayersAsync(cancellationToken);
+        var refresh = await TryRefreshPlayerAsync(player.Id, cancellationToken);
         await TryMarkSelectedAsync(
-            decodedReferences
-                .Select(value => value.SearchCorrelationId)
+            completedItems
+                .Select(item => item.Value.SearchCorrelationId)
                 .OfType<string>()
                 .ToArray(),
             cancellationToken);
-        return new PlaybackSucceeded(FindUpdatedPlayer(updatedPlayers, player.Id));
+        return new PlaybackSucceeded(
+            refresh.Player,
+            references.Count,
+            completedItems.Count,
+            skippedItems.OrderBy(item => item.Index).ToArray(),
+            refresh.Error);
     }
 
     private async Task TryMarkSelectedAsync(
@@ -133,11 +220,81 @@ public sealed class PlaybackService(
             _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null)
         };
 
-    private static LmsPlayerStatus FindUpdatedPlayer(
-        IReadOnlyList<LmsPlayerStatus> players,
-        string playerId) =>
-        players.FirstOrDefault(player =>
-            string.Equals(player.Id, playerId, StringComparison.OrdinalIgnoreCase))
-        ?? throw new LmsRequestException(
-            "The selected LMS player was no longer available after playback changed.");
+    private async Task<PlayerRefresh> TryRefreshPlayerAsync(
+        string playerId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var players = await lmsPlayerClient.GetPlayersAsync(cancellationToken);
+            var player = players.FirstOrDefault(candidate =>
+                string.Equals(
+                    candidate.Id,
+                    playerId,
+                    StringComparison.OrdinalIgnoreCase));
+            return player is null
+                ? new PlayerRefresh(
+                    null,
+                    "The selected LMS player was no longer available after playback changed.")
+                : new PlayerRefresh(player, null);
+        }
+        catch (LmsRequestException exception)
+        {
+            return new PlayerRefresh(null, exception.Message);
+        }
+    }
+
+    private async Task<PlaybackFailed> FailedOutcomeAsync(
+        string playerId,
+        int requestedItemCount,
+        IReadOnlyCollection<SkippedMediaItem> skippedItems,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var refresh = await TryRefreshPlayerAsync(playerId, cancellationToken);
+        return new PlaybackFailed(
+            refresh.Player,
+            requestedItemCount,
+            skippedItems.OrderBy(item => item.Index).ToArray(),
+            refresh.Error,
+            message);
+    }
+
+    private static PlaybackRejected NoUsableItems(
+        int requestedItemCount,
+        IReadOnlyCollection<SkippedMediaItem> skippedItems) =>
+        new(
+            PlaybackRejectionReason.NoUsableItems,
+            BuildFailureMessage(
+                $"None of the {requestedItemCount} requested media items was usable.",
+                skippedItems));
+
+    private static SkippedMediaItem SkippedItem(
+        int zeroBasedIndex,
+        MediaItemSkipReason reason,
+        string message) =>
+        new(zeroBasedIndex + 1, reason, message);
+
+    private static string BuildFailureMessage(
+        string summary,
+        IEnumerable<SkippedMediaItem> skippedItems)
+    {
+        var details = string.Join(
+            " ",
+            skippedItems
+                .OrderBy(item => item.Index)
+                .Select(item =>
+                    $"Item {item.Index}: {item.Reason.ToStableName()} ({item.Message})"));
+        return string.IsNullOrEmpty(details)
+            ? summary
+            : $"{summary} {details}";
+    }
+
+    private sealed record PreparedItem(
+        int Index,
+        PlayableReferenceValue Value);
+
+    private sealed record PlayerRefresh(
+        LmsPlayerStatus? Player,
+        string? Error);
 }

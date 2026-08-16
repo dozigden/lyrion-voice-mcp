@@ -110,18 +110,193 @@ public sealed class QueueManagementServiceTests
         var outcome = await service.ManageAsync(
             PlayerId,
             QueueManagementCommand.InsertNext,
-            [Reference(codec, first, 0), Reference(codec, second, 1)],
+            [
+                Reference(codec, first, 0),
+                "invalid-reference",
+                Reference(codec, second, 2)
+            ],
             TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.IsType<QueueManagementSucceeded>(outcome);
+        var succeeded = Assert.IsType<QueueManagementSucceeded>(outcome);
+        Assert.Equal(3, succeeded.RequestedItemCount);
+        Assert.Equal(2, succeeded.CompletedItemCount);
+        var skipped = Assert.Single(succeeded.SkippedItems);
+        Assert.Equal(2, skipped.Index);
+        Assert.Equal(MediaItemSkipReason.InvalidReference, skipped.Reason);
         Assert.Equal(
             ["insert:Playlist:32", "insert:Track:31"],
             playbackClient.Mutations);
     }
 
     [Fact]
-    public async Task QueueLimitShouldRejectTheWholeRequestBeforeMutation()
+    public async Task AppendShouldUseRemainingCapacityAndReportItemsThatDoNotFit()
+    {
+        // Arrange
+        var codecs = new ReferenceCodecTestContext();
+        var playbackClient = new StubPlaybackClient
+        {
+            PlayableCountById =
+            {
+                ["34"] = 2,
+                ["35"] = 2,
+                ["36"] = 1
+            },
+            QueueCounts = new Queue<int>([297, 300])
+        };
+        var service = CreateService(playbackClient, codecs);
+
+        // Act
+        var outcome = await service.ManageAsync(
+            PlayerId,
+            QueueManagementCommand.Append,
+            [
+                Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Album, "34"), 0),
+                Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Album, "35"), 1),
+                Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Track, "36"), 2)
+            ],
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var succeeded = Assert.IsType<QueueManagementSucceeded>(outcome);
+        Assert.Equal(3, succeeded.RequestedItemCount);
+        Assert.Equal(2, succeeded.CompletedItemCount);
+        Assert.Equal(300, succeeded.QueueLength);
+        var skipped = Assert.Single(succeeded.SkippedItems);
+        Assert.Equal(2, skipped.Index);
+        Assert.Equal(MediaItemSkipReason.QueueCapacity, skipped.Reason);
+        Assert.Equal(
+            ["add:Album:34", "add:Track:36"],
+            playbackClient.Mutations);
+    }
+
+    [Fact]
+    public async Task AppendFailureShouldStopAndSelectOnlyCompletedMedia()
+    {
+        // Arrange
+        var codecs = new ReferenceCodecTestContext();
+        var store = new RecordingSearchObservationStore();
+        var playbackClient = new StubPlaybackClient
+        {
+            QueueCounts = new Queue<int>([0, 1]),
+            MutationExceptionById =
+            {
+                ["38"] = new LmsRequestException("Synthetic queue failure.")
+            }
+        };
+        var service = new QueueManagementService(
+            new StubPlayerClient(Player()),
+            playbackClient,
+            new PlayerSelectorResolver(),
+            codecs.Resolver,
+            store,
+            TimeProvider.System,
+            NullLogger<QueueManagementService>.Instance);
+
+        // Act
+        var outcome = await service.ManageAsync(
+            PlayerId,
+            QueueManagementCommand.Append,
+            [
+                Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Track, "37"), 0),
+                Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Track, "38"), 1),
+                Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Track, "39"), 2)
+            ],
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var succeeded = Assert.IsType<QueueManagementSucceeded>(outcome);
+        Assert.Equal(1, succeeded.CompletedItemCount);
+        Assert.Equal(1, succeeded.QueueLength);
+        Assert.Collection(
+            succeeded.SkippedItems,
+            item =>
+            {
+                Assert.Equal(2, item.Index);
+                Assert.Equal(MediaItemSkipReason.LmsError, item.Reason);
+            },
+            item =>
+            {
+                Assert.Equal(3, item.Index);
+                Assert.Equal(MediaItemSkipReason.NotAttempted, item.Reason);
+            });
+        Assert.Equal(["add:Track:37", "add:Track:38"], playbackClient.Mutations);
+        Assert.Equal(
+            ["00000000000000000000000000000001"],
+            store.SelectedCorrelationIds);
+    }
+
+    [Fact]
+    public async Task FirstQueueMutationFailureShouldReturnStructuredCurrentStateAndStopTheBatch()
+    {
+        // Arrange
+        var codecs = new ReferenceCodecTestContext();
+        var playbackClient = new StubPlaybackClient
+        {
+            QueueCounts = new Queue<int>([0, 0]),
+            MutationExceptionById =
+            {
+                ["40"] = new LmsRequestException("Synthetic first-add failure.")
+            }
+        };
+        var service = CreateService(playbackClient, codecs);
+
+        // Act
+        var outcome = await service.ManageAsync(
+            PlayerId,
+            QueueManagementCommand.Append,
+            [
+                Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Track, "40"), 0),
+                Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Track, "41"), 1)
+            ],
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var failed = Assert.IsType<QueueManagementFailed>(outcome);
+        Assert.Equal(PlayerId, failed.PlayerId);
+        Assert.Equal(0, failed.QueueLength);
+        Assert.Equal(2, failed.RequestedItemCount);
+        Assert.Null(failed.StateRefreshError);
+        Assert.Contains("Item 1: lms_error", failed.Message, StringComparison.Ordinal);
+        Assert.Contains("Item 2: not_attempted", failed.Message, StringComparison.Ordinal);
+        Assert.Collection(
+            failed.SkippedItems,
+            item => Assert.Equal(MediaItemSkipReason.LmsError, item.Reason),
+            item => Assert.Equal(MediaItemSkipReason.NotAttempted, item.Reason));
+        Assert.Equal(["add:Track:40"], playbackClient.Mutations);
+    }
+
+    [Fact]
+    public async Task QueueRefreshFailureShouldNotHideCompletedAdditions()
+    {
+        // Arrange
+        var codecs = new ReferenceCodecTestContext();
+        var playbackClient = new StubPlaybackClient
+        {
+            QueueCounts = new Queue<int>([0]),
+            QueueCountExceptionAfterFirstCall =
+                new LmsRequestException("Synthetic queue refresh failure.")
+        };
+        var service = CreateService(playbackClient, codecs);
+
+        // Act
+        var outcome = await service.ManageAsync(
+            PlayerId,
+            QueueManagementCommand.Append,
+            [Reference(codecs.Search, new MediaIdentity(MediaEntityKind.Track, "42"), 0)],
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var succeeded = Assert.IsType<QueueManagementSucceeded>(outcome);
+        Assert.Equal(1, succeeded.CompletedItemCount);
+        Assert.Null(succeeded.QueueLength);
+        Assert.Equal(
+            "Synthetic queue refresh failure.",
+            succeeded.StateRefreshError);
+    }
+
+    [Fact]
+    public async Task ItemThatCannotFitShouldReturnNoUsableItemsWithoutMutation()
     {
         // Arrange
         var codecs = new ReferenceCodecTestContext();
@@ -143,13 +318,14 @@ public sealed class QueueManagementServiceTests
         // Assert
         var rejected = Assert.IsType<QueueManagementRejected>(outcome);
         Assert.Equal(
-            QueueManagementRejectionReason.QueueLimitExceeded,
+            QueueManagementRejectionReason.NoUsableItems,
             rejected.Reason);
+        Assert.Contains("queue_capacity", rejected.Message, StringComparison.Ordinal);
         Assert.Empty(playbackClient.Mutations);
     }
 
     [Fact]
-    public async Task MissingMediaShouldRejectAllItemsBeforeReadingOrMutatingTheQueue()
+    public async Task MissingMediaShouldBeSkippedWhileAvailableItemsAreAdded()
     {
         // Arrange
         var codecs = new ReferenceCodecTestContext();
@@ -171,11 +347,13 @@ public sealed class QueueManagementServiceTests
             TestContext.Current.CancellationToken);
 
         // Assert
-        var rejected = Assert.IsType<QueueManagementRejected>(outcome);
-        Assert.Equal(QueueManagementRejectionReason.MediaNotFound, rejected.Reason);
-        Assert.Contains("item 2", rejected.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(playbackClient.QueueCountRequests);
-        Assert.Empty(playbackClient.Mutations);
+        var succeeded = Assert.IsType<QueueManagementSucceeded>(outcome);
+        Assert.Equal(2, succeeded.RequestedItemCount);
+        Assert.Equal(1, succeeded.CompletedItemCount);
+        var skipped = Assert.Single(succeeded.SkippedItems);
+        Assert.Equal(2, skipped.Index);
+        Assert.Equal(MediaItemSkipReason.MediaUnavailable, skipped.Reason);
+        Assert.Equal(["add:Track:51"], playbackClient.Mutations);
     }
 
     [Fact]
@@ -195,7 +373,8 @@ public sealed class QueueManagementServiceTests
 
         // Assert
         var rejected = Assert.IsType<QueueManagementRejected>(outcome);
-        Assert.Equal(QueueManagementRejectionReason.InvalidReference, rejected.Reason);
+        Assert.Equal(QueueManagementRejectionReason.NoUsableItems, rejected.Reason);
+        Assert.Contains("invalid_reference", rejected.Message, StringComparison.Ordinal);
         Assert.Equal(0, playerClient.CallCount);
         Assert.Empty(playbackClient.CheckedItems);
         Assert.Empty(playbackClient.Mutations);
@@ -339,7 +518,11 @@ public sealed class QueueManagementServiceTests
     {
         public Dictionary<string, int> PlayableCountById { get; } = [];
 
+        public Dictionary<string, Exception> MutationExceptionById { get; } = [];
+
         public Queue<int> QueueCounts { get; init; } = new([0, 0]);
+
+        public Exception? QueueCountExceptionAfterFirstCall { get; init; }
 
         public List<string> CheckedItems { get; } = [];
 
@@ -369,6 +552,12 @@ public sealed class QueueManagementServiceTests
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
             QueueCountRequests.Add(playerId);
+            if (QueueCountRequests.Count > 1
+                && QueueCountExceptionAfterFirstCall is not null)
+            {
+                return Task.FromException<int>(QueueCountExceptionAfterFirstCall);
+            }
+
             return Task.FromResult(QueueCounts.Dequeue());
         }
 
@@ -386,7 +575,9 @@ public sealed class QueueManagementServiceTests
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
             Mutations.Add($"add:{media.Identity.Kind}:{media.Identity.Id}");
-            return Task.CompletedTask;
+            return MutationExceptionById.TryGetValue(media.Identity.Id, out var exception)
+                ? Task.FromException(exception)
+                : Task.CompletedTask;
         }
 
         public Task InsertAsync(
@@ -397,7 +588,9 @@ public sealed class QueueManagementServiceTests
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(PlayerId, playerId);
             Mutations.Add($"insert:{media.Identity.Kind}:{media.Identity.Id}");
-            return Task.CompletedTask;
+            return MutationExceptionById.TryGetValue(media.Identity.Id, out var exception)
+                ? Task.FromException(exception)
+                : Task.CompletedTask;
         }
 
         public Task ClearAsync(

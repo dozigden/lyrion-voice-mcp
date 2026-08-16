@@ -7,15 +7,28 @@ public enum PlaybackRejectionReason
     InvalidReference,
     PlayerNotFound,
     AmbiguousPlayer,
-    MediaNotFound
+    MediaNotFound,
+    NoUsableItems
 }
 
 public abstract record PlaybackOutcome;
 
-public sealed record PlaybackSucceeded(LmsPlayerStatus Player) : PlaybackOutcome;
+public sealed record PlaybackSucceeded(
+    LmsPlayerStatus? Player,
+    int RequestedItemCount,
+    int CompletedItemCount,
+    IReadOnlyList<SkippedMediaItem> SkippedItems,
+    string? StateRefreshError) : PlaybackOutcome;
 
 public sealed record PlaybackRejected(
     PlaybackRejectionReason Reason,
+    string Message) : PlaybackOutcome;
+
+public sealed record PlaybackFailed(
+    LmsPlayerStatus? Player,
+    int RequestedItemCount,
+    IReadOnlyList<SkippedMediaItem> SkippedItems,
+    string? StateRefreshError,
     string Message) : PlaybackOutcome;
 
 public enum ArtistSelectionScope

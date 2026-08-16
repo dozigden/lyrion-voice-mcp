@@ -424,7 +424,118 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"volume\":null", body, StringComparison.Ordinal);
         Assert.Contains("\"muted\":null", body, StringComparison.Ordinal);
         Assert.Contains("\"nowPlaying\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"requestedItemCount\":2", body, StringComparison.Ordinal);
+        Assert.Contains("\"completedItemCount\":2", body, StringComparison.Ordinal);
+        Assert.Contains("\"skippedItems\":[]", body, StringComparison.Ordinal);
+        Assert.Contains("\"stateRefreshError\":null", body, StringComparison.Ordinal);
         Assert.DoesNotContain("queue", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PlayShouldExposePartialBatchDetailsAndNullableRefreshState()
+    {
+        // Arrange
+        var outcome = new PlaybackSucceeded(
+            null,
+            3,
+            1,
+            [
+                new SkippedMediaItem(
+                    2,
+                    MediaItemSkipReason.MediaUnavailable,
+                    "The media is no longer available."),
+                new SkippedMediaItem(
+                    3,
+                    MediaItemSkipReason.NotAttempted,
+                    "Not attempted after an earlier LMS failure.")
+            ],
+            "Player status could not be refreshed.");
+        await using var playbackFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IPlaybackService>();
+                services.AddSingleton<IPlaybackService>(new StubPlaybackService(outcome));
+            }));
+        using var client = playbackFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            16,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"play","arguments":{"player":"00:11:22:33:44:55","items":["first-reference","second-reference","third-reference"]}}
+            """,
+            "play");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"player\":null", body, StringComparison.Ordinal);
+        Assert.Contains("\"requestedItemCount\":3", body, StringComparison.Ordinal);
+        Assert.Contains("\"completedItemCount\":1", body, StringComparison.Ordinal);
+        Assert.Contains("\"index\":2", body, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"media_unavailable\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"not_attempted\"", body, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"stateRefreshError\":\"Player status could not be refreshed.\"",
+            body,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("\"isError\":true", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PlayShouldReturnStructuredStateWithAZeroCompletionToolError()
+    {
+        // Arrange
+        var outcome = new PlaybackFailed(
+            new LmsPlayerStatus(
+                "00:11:22:33:44:55",
+                "North Room",
+                true,
+                PlayerPlaybackState.Stopped),
+            2,
+            [
+                new SkippedMediaItem(
+                    1,
+                    MediaItemSkipReason.LmsError,
+                    "LMS did not confirm the load."),
+                new SkippedMediaItem(
+                    2,
+                    MediaItemSkipReason.NotAttempted,
+                    "Not attempted after an earlier LMS failure.")
+            ],
+            null,
+            "Playback failed before any media item completed.");
+        await using var playbackFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IPlaybackService>();
+                services.AddSingleton<IPlaybackService>(new StubPlaybackService(outcome));
+            }));
+        using var client = playbackFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            18,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"play","arguments":{"player":"00:11:22:33:44:55","items":["first-reference","second-reference"]}}
+            """,
+            "play");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
+        Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"completedItemCount\":0", body, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"lms_error\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"not_attempted\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"poweredOn\":true", body, StringComparison.Ordinal);
+        Assert.Contains("\"stateRefreshError\":null", body, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -563,7 +674,102 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
         Assert.Contains("\"player\":\"00:11:22:33:44:55\"", body, StringComparison.Ordinal);
         Assert.Contains("\"queueLength\":9", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("items", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"requestedItemCount\":2", body, StringComparison.Ordinal);
+        Assert.Contains("\"completedItemCount\":2", body, StringComparison.Ordinal);
+        Assert.Contains("\"skippedItems\":[]", body, StringComparison.Ordinal);
+        Assert.Contains("\"stateRefreshError\":null", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ManageQueueShouldExposePartialCapacityResults()
+    {
+        // Arrange
+        var outcome = new QueueManagementSucceeded(
+            "00:11:22:33:44:55",
+            300,
+            2,
+            1,
+            [
+                new SkippedMediaItem(
+                    2,
+                    MediaItemSkipReason.QueueCapacity,
+                    "The item does not fit in the remaining queue capacity.")
+            ],
+            null);
+        await using var queueFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IQueueManagementService>();
+                services.AddSingleton<IQueueManagementService>(
+                    new StubQueueManagementService(outcome));
+            }));
+        using var client = queueFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            17,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"manage_queue","arguments":{"player":"00:11:22:33:44:55","action":"append","items":["first-reference","second-reference"]}}
+            """,
+            "manage_queue");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"queueLength\":300", body, StringComparison.Ordinal);
+        Assert.Contains("\"requestedItemCount\":2", body, StringComparison.Ordinal);
+        Assert.Contains("\"completedItemCount\":1", body, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"queue_capacity\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"stateRefreshError\":null", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"isError\":true", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ManageQueueShouldReturnStructuredStateWithAZeroCompletionToolError()
+    {
+        // Arrange
+        var outcome = new QueueManagementFailed(
+            "00:11:22:33:44:55",
+            4,
+            1,
+            [
+                new SkippedMediaItem(
+                    1,
+                    MediaItemSkipReason.LmsError,
+                    "LMS did not confirm the addition.")
+            ],
+            null,
+            "Queue management failed before any media item completed.");
+        await using var queueFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IQueueManagementService>();
+                services.AddSingleton<IQueueManagementService>(
+                    new StubQueueManagementService(outcome));
+            }));
+        using var client = queueFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            19,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"manage_queue","arguments":{"player":"00:11:22:33:44:55","action":"append","items":["first-reference"]}}
+            """,
+            "manage_queue");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
+        Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"queueLength\":4", body, StringComparison.Ordinal);
+        Assert.Contains("\"completedItemCount\":0", body, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"lms_error\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"stateRefreshError\":null", body, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -822,7 +1028,11 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     playerId,
                     "North Room",
                     true,
-                    PlayerPlaybackState.Playing)));
+                    PlayerPlaybackState.Playing),
+                references.Count,
+                references.Count,
+                [],
+                null));
         }
     }
 
@@ -889,7 +1099,8 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         }
     }
 
-    private sealed class StubQueueManagementService : IQueueManagementService
+    private sealed class StubQueueManagementService(
+        QueueManagementOutcome? outcome = null) : IQueueManagementService
     {
         public QueueManagementCommand? Command { get; private set; }
 
@@ -905,8 +1116,14 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             Assert.Equal("00:11:22:33:44:55", playerId);
             Command = command;
             References = references;
-            return Task.FromResult<QueueManagementOutcome>(
-                new QueueManagementSucceeded(playerId, 9));
+            return Task.FromResult<QueueManagementOutcome>(outcome
+                ?? new QueueManagementSucceeded(
+                    playerId,
+                    9,
+                    references?.Count ?? 0,
+                    references?.Count ?? 0,
+                    [],
+                    null));
         }
     }
 }

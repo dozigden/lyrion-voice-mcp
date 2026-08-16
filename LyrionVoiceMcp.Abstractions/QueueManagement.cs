@@ -17,17 +17,30 @@ public enum QueueManagementRejectionReason
     PlayerNotFound,
     AmbiguousPlayer,
     MediaNotFound,
-    QueueLimitExceeded
+    QueueLimitExceeded,
+    NoUsableItems
 }
 
 public abstract record QueueManagementOutcome;
 
 public sealed record QueueManagementSucceeded(
     string PlayerId,
-    int QueueLength) : QueueManagementOutcome;
+    int? QueueLength,
+    int RequestedItemCount,
+    int CompletedItemCount,
+    IReadOnlyList<SkippedMediaItem> SkippedItems,
+    string? StateRefreshError) : QueueManagementOutcome;
 
 public sealed record QueueManagementRejected(
     QueueManagementRejectionReason Reason,
+    string Message) : QueueManagementOutcome;
+
+public sealed record QueueManagementFailed(
+    string PlayerId,
+    int? QueueLength,
+    int RequestedItemCount,
+    IReadOnlyList<SkippedMediaItem> SkippedItems,
+    string? StateRefreshError,
     string Message) : QueueManagementOutcome;
 
 public interface IQueueManagementService

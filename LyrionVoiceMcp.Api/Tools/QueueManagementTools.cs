@@ -21,7 +21,7 @@ public sealed class QueueManagementTools(
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(ManageQueueResponse))]
-    [Description("Clear a player's queue, append media, or insert media to play next.")]
+    [Description("Clear a player's queue, or add the usable subset of a media batch and report skipped items.")]
     public async Task<CallToolResult> ManageAsync(
         [Description("A raw LMS player ID or exact unique player name returned by get_player_status.")] string player,
         [Description("Clear, append, or insert items to play next.")] ManageQueueAction action,
@@ -44,9 +44,23 @@ public sealed class QueueManagementTools(
             return outcome switch
             {
                 QueueManagementSucceeded succeeded =>
-                    SuccessResult(new ManageQueueResponse(
+                    SuccessResult(MapResponse(
                         succeeded.PlayerId,
-                        succeeded.QueueLength)),
+                        succeeded.QueueLength,
+                        succeeded.RequestedItemCount,
+                        succeeded.CompletedItemCount,
+                        succeeded.SkippedItems,
+                        succeeded.StateRefreshError)),
+                QueueManagementFailed failed =>
+                    ErrorResult(
+                        MapResponse(
+                            failed.PlayerId,
+                            failed.QueueLength,
+                            failed.RequestedItemCount,
+                            0,
+                            failed.SkippedItems,
+                            failed.StateRefreshError),
+                        failed.Message),
                 QueueManagementRejected rejected => ErrorResult(rejected.Message),
                 _ => throw new UnreachableException(
                     $"Unsupported queue-management outcome {outcome.GetType().Name}.")
@@ -57,6 +71,21 @@ public sealed class QueueManagementTools(
             return ErrorResult(exception.Message);
         }
     }
+
+    private static ManageQueueResponse MapResponse(
+        string playerId,
+        int? queueLength,
+        int requestedItemCount,
+        int completedItemCount,
+        IReadOnlyList<SkippedMediaItem> skippedItems,
+        string? stateRefreshError) =>
+        new(
+            playerId,
+            queueLength,
+            requestedItemCount,
+            completedItemCount,
+            SkippedItemMapper.Map(skippedItems),
+            stateRefreshError);
 
     private static QueueManagementCommand? MapAction(ManageQueueAction action) =>
         action switch
@@ -83,4 +112,17 @@ public sealed class QueueManagementTools(
             Content = [new TextContentBlock { Text = message }],
             IsError = true
         };
+
+    private static CallToolResult ErrorResult(
+        ManageQueueResponse response,
+        string message)
+    {
+        var structuredContent = McpToolJson.Serialize(response);
+        return new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = message }],
+            StructuredContent = structuredContent,
+            IsError = true
+        };
+    }
 }

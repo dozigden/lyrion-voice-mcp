@@ -30,9 +30,9 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Queue reading uses one `status 0 300 tags:aAld` request after player validation. Preserve each LMS `playlist index`, use top-level `current_title` for the current remote item, and reject responses that exceed 300 items or omit queued entries rather than silently truncating them.
 - Playback and queue-management preflight use one-item filtered `titles` or `playlists tracks` queries. Their result counts verify that each referenced LMS item remains playable and let queue additions enforce the application-level 300-item limit without materialising collection contents.
 - Submit tracks, artists, albums, and playlists directly to `playlistcontrol` using their LMS IDs. Album-artist selections also pass `role_id:ALBUMARTIST` during preflight and submission so playback matches the browsed role. LMS owns collection expansion and internal ordering.
-- Queue management uses `playlist clear`, `playlistcontrol cmd:add`, and `playlistcontrol cmd:insert`. Submit separate play-next references in reverse so LMS's repeated next-position inserts preserve caller order. Do not power on or start playback for queue management.
-- Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue.
-- Batched playback loads the first reference, replacing the queue and starting playback, then adds later references in caller order. Append and play-next placement are queue-management operations.
+- Queue management uses `playlist clear`, `playlistcontrol cmd:add`, and `playlistcontrol cmd:insert`. Preflight collection sizes and greedily retain input-order items that fit the remaining 300-item capacity, allowing later smaller items to fit after an oversized item is skipped. Submit retained play-next references in reverse so LMS's repeated next-position inserts preserve caller order. Stop after the first mutation failure; do not power on or start playback for queue management.
+- Power on with LMS's `noplay` flag, then confirm the state with `power ?` before changing the queue. If confirmation fails, refresh and report observable player state because the initial power command may already have changed it.
+- Batched playback loads the first usable reference, replacing the queue and starting playback, then adds later usable references in caller order. Stop after the first mutation failure. Append and play-next placement are queue-management operations.
 - Keep `/api/health` independent of LMS reachability.
 
 ## Environments

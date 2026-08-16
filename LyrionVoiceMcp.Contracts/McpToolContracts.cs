@@ -209,7 +209,16 @@ public sealed record ManageQueueRequest(
 
 public sealed record ManageQueueResponse(
     string Player,
-    int QueueLength);
+    int? QueueLength,
+    int RequestedItemCount,
+    int CompletedItemCount,
+    IReadOnlyList<SkippedItem> SkippedItems,
+    string? StateRefreshError);
+
+public sealed record SkippedItem(
+    int Index,
+    string Reason,
+    string Message);
 
 [JsonConverter(typeof(JsonStringEnumConverter<PlayerPlaybackMode>))]
 public enum PlayerPlaybackMode
@@ -240,4 +249,9 @@ public sealed record PlayRequest(
     string Player,
     IReadOnlyList<string> Items);
 
-public sealed record PlayResponse(PlayerStatus Player);
+public sealed record PlayResponse(
+    PlayerStatus? Player,
+    int RequestedItemCount,
+    int CompletedItemCount,
+    IReadOnlyList<SkippedItem> SkippedItems,
+    string? StateRefreshError);

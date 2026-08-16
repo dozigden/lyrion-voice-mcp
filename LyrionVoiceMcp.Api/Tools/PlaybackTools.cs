@@ -20,7 +20,7 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(PlayResponse))]
-    [Description("Replace a Lyrion player's queue with one or more search or browse results and start playback.")]
+    [Description("Replace a Lyrion player's queue with usable search or browse results, report skipped items, and start playback.")]
     public async Task<CallToolResult> PlayAsync(
         [Description("A raw LMS player ID or exact unique player name returned by get_player_status.")] string player,
         [Description("One or more opaque playable references returned by search or browse, in playback order.")] IReadOnlyList<string> items,
@@ -35,8 +35,21 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
             return outcome switch
             {
                 PlaybackSucceeded succeeded =>
-                    SuccessResult(new PlayResponse(
-                        PlayerStatusMapper.Map(succeeded.Player))),
+                    SuccessResult(MapResponse(
+                        succeeded.Player,
+                        succeeded.RequestedItemCount,
+                        succeeded.CompletedItemCount,
+                        succeeded.SkippedItems,
+                        succeeded.StateRefreshError)),
+                PlaybackFailed failed =>
+                    ErrorResult(
+                        MapResponse(
+                            failed.Player,
+                            failed.RequestedItemCount,
+                            0,
+                            failed.SkippedItems,
+                            failed.StateRefreshError),
+                        failed.Message),
                 PlaybackRejected rejected => ErrorResult(rejected.Message),
                 _ => throw new UnreachableException(
                     $"Unsupported playback outcome {outcome.GetType().Name}.")
@@ -47,6 +60,19 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
             return ErrorResult(exception.Message);
         }
     }
+
+    private static PlayResponse MapResponse(
+        LmsPlayerStatus? player,
+        int requestedItemCount,
+        int completedItemCount,
+        IReadOnlyList<SkippedMediaItem> skippedItems,
+        string? stateRefreshError) =>
+        new(
+            player is null ? null : PlayerStatusMapper.Map(player),
+            requestedItemCount,
+            completedItemCount,
+            SkippedItemMapper.Map(skippedItems),
+            stateRefreshError);
 
     private static CallToolResult SuccessResult(PlayResponse response)
     {
@@ -64,4 +90,17 @@ public sealed class PlaybackTools(IPlaybackService playbackService)
             Content = [new TextContentBlock { Text = message }],
             IsError = true
         };
+
+    private static CallToolResult ErrorResult(
+        PlayResponse response,
+        string message)
+    {
+        var structuredContent = McpToolJson.Serialize(response);
+        return new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = message }],
+            StructuredContent = structuredContent,
+            IsError = true
+        };
+    }
 }
