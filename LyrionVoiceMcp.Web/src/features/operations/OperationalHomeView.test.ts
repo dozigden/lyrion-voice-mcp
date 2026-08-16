@@ -12,6 +12,7 @@ describe('OperationalHomeView', () => {
       summary: null,
       latestRefresh: null
     });
+    vi.spyOn(api, 'getSearchIndexes').mockResolvedValue([]);
   });
 
   it('shows a healthy build', async () => {
@@ -97,7 +98,66 @@ describe('OperationalHomeView', () => {
     expect(api.rebuildCatalogue).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
+
+  it('shows published search indexes and starts an index rebuild', async () => {
+    // Arrange
+    vi.spyOn(api, 'getHealth').mockResolvedValue({ status: 'ok' });
+    vi.spyOn(api, 'getVersion').mockResolvedValue({
+      version: '0.1.0',
+      channel: 'test',
+      build: 'ui-test',
+      commit: 'abcdef0'
+    });
+    vi.spyOn(api, 'getLmsConnection').mockResolvedValue({
+      status: 'online',
+      serverId: 'development',
+      baseUrl: 'http://music.test:9000',
+      serverVersion: '9.0.1',
+      message: 'Connected.'
+    });
+    vi.mocked(api.getCatalogue).mockResolvedValue(catalogueStatus('succeeded'));
+    vi.mocked(api.getSearchIndexes).mockResolvedValue([searchIndexStatus('succeeded')]);
+    vi.spyOn(api, 'rebuildSearchIndex').mockResolvedValue(searchIndexStatus('pending'));
+    const wrapper = mount(OperationalHomeView, {
+      global: { plugins: [createPinia()] }
+    });
+    await flushPromises();
+
+    // Act
+    await wrapper.get('.index-rebuild').trigger('click');
+    await flushPromises();
+
+    // Assert
+    expect(wrapper.text()).toContain('phuzzy');
+    expect(wrapper.text()).toContain('1,234 candidates');
+    expect(wrapper.text()).toContain('Job 42 · pending');
+    expect(api.rebuildSearchIndex).toHaveBeenCalledWith('phuzzy', undefined);
+    wrapper.unmount();
+  });
 });
+
+function searchIndexStatus(
+  status: 'pending' | 'succeeded'
+): api.SearchIndexStatusResponse {
+  return {
+    resolver: 'phuzzy',
+    artifact: {
+      resolverVersion: '2',
+      catalogueRefreshId: 'refresh-1',
+      builtAt: '2026-08-15T12:03:00Z',
+      candidateCount: 1_234,
+      preparationDurationMilliseconds: 920,
+      indexSizeBytes: 65_536
+    },
+    latestJob: {
+      id: 42,
+      status,
+      startedAt: status === 'pending' ? null : '2026-08-15T12:02:40Z',
+      completedAt: status === 'pending' ? null : '2026-08-15T12:03:00Z',
+      errorMessage: null
+    }
+  };
+}
 
 function catalogueStatus(status: 'running' | 'succeeded'): api.CatalogueStatusResponse {
   return {

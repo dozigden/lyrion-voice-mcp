@@ -15,13 +15,13 @@ public sealed class LmsCatalogueReader(
     public async Task<CatalogueSourceReadResult> ReadAsync(
         string refreshId,
         ICatalogueImportWriter writer,
+        ICatalogueRefreshLogSink log,
         CancellationToken cancellationToken)
     {
         var initialStatus = await ReadStatusAsync(cancellationToken);
         EnsureReady(initialStatus);
 
-        await writer.AppendRefreshLogAsync(
-            refreshId,
+        await log.WriteAsync(
             CatalogueRefreshLogLevel.Information,
             "Started reading the LMS catalogue.",
             null,
@@ -35,7 +35,7 @@ public sealed class LmsCatalogueReader(
             MapAlbum,
             page => writer.WriteAlbumsAsync(refreshId, page, cancellationToken),
             cancellationToken);
-        await LogCompletedPhaseAsync(writer, refreshId, "albums", albumCount, cancellationToken);
+        await LogCompletedPhaseAsync(log, "albums", albumCount, cancellationToken);
 
         var genreCount = await ReadCountedPagesAsync(
             "genres",
@@ -44,7 +44,7 @@ public sealed class LmsCatalogueReader(
             MapGenre,
             page => writer.WriteGenresAsync(refreshId, page, cancellationToken),
             cancellationToken);
-        await LogCompletedPhaseAsync(writer, refreshId, "genres", genreCount, cancellationToken);
+        await LogCompletedPhaseAsync(log, "genres", genreCount, cancellationToken);
 
         var trackCount = await ReadCountedPagesAsync(
             "tracks",
@@ -53,7 +53,7 @@ public sealed class LmsCatalogueReader(
             MapTrack,
             page => writer.WriteTracksAsync(refreshId, page, cancellationToken),
             cancellationToken);
-        await LogCompletedPhaseAsync(writer, refreshId, "tracks", trackCount, cancellationToken);
+        await LogCompletedPhaseAsync(log, "tracks", trackCount, cancellationToken);
 
         var artistLookupCount = await ReadCountedPagesAsync(
             "artist lookup",
@@ -63,8 +63,7 @@ public sealed class LmsCatalogueReader(
             page => writer.WriteArtistsAsync(refreshId, page, cancellationToken),
             cancellationToken);
         await LogCompletedPhaseAsync(
-            writer,
-            refreshId,
+            log,
             "artist lookup rows",
             artistLookupCount,
             cancellationToken);
@@ -72,10 +71,10 @@ public sealed class LmsCatalogueReader(
         var virtualLibraryMemberships = await ReadVirtualLibrariesAsync(
             refreshId,
             writer,
+            log,
             cancellationToken);
         await LogCompletedPhaseAsync(
-            writer,
-            refreshId,
+            log,
             "virtual libraries",
             virtualLibraryMemberships.Count,
             cancellationToken);
@@ -92,8 +91,7 @@ public sealed class LmsCatalogueReader(
             trackCount);
         if (serverTotalMismatches > 0)
         {
-            await writer.AppendRefreshLogAsync(
-                refreshId,
+            await log.WriteAsync(
                 CatalogueRefreshLogLevel.Warning,
                 "Server-status totals differed from the corresponding catalogue query totals.",
                 serverTotalMismatches,
@@ -118,13 +116,11 @@ public sealed class LmsCatalogueReader(
     }
 
     private static Task LogCompletedPhaseAsync(
-        ICatalogueImportWriter writer,
-        string refreshId,
+        ICatalogueRefreshLogSink log,
         string phase,
         int count,
         CancellationToken cancellationToken) =>
-        writer.AppendRefreshLogAsync(
-            refreshId,
+        log.WriteAsync(
             CatalogueRefreshLogLevel.Information,
             $"Completed reading {phase}.",
             count,
@@ -211,6 +207,7 @@ public sealed class LmsCatalogueReader(
     private async Task<IReadOnlyList<CatalogueImportVirtualLibraryMembership>> ReadVirtualLibrariesAsync(
         string refreshId,
         ICatalogueImportWriter writer,
+        ICatalogueRefreshLogSink log,
         CancellationToken cancellationToken)
     {
         var result = await jsonRpcClient.SendAsync(
@@ -250,8 +247,7 @@ public sealed class LmsCatalogueReader(
             memberships.Add(new CatalogueImportVirtualLibraryMembership(
                 library.SourceId,
                 memberCount));
-            await writer.AppendRefreshLogAsync(
-                refreshId,
+            await log.WriteAsync(
                 CatalogueRefreshLogLevel.Information,
                 "Completed reading a virtual-library membership.",
                 memberCount,

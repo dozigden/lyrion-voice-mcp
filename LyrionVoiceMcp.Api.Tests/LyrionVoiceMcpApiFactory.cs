@@ -23,6 +23,9 @@ public sealed class LyrionVoiceMcpApiFactory : WebApplicationFactory<Program>
             "LyrionVoiceMcpCatalogue:DatabasePath",
             CataloguePath);
         builder.UseSetting(
+            "LyrionVoiceMcpOperations:DatabasePath",
+            Path.Combine(directory, "operations.db"));
+        builder.UseSetting(
             "LyrionVoiceMcpEvaluation:IndexDirectoryPath",
             EvaluationIndexDirectoryPath);
     }

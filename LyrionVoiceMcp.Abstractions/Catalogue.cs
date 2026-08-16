@@ -114,8 +114,11 @@ public interface ICatalogueImportWriter
         IReadOnlyList<string> trackSourceIds,
         CancellationToken cancellationToken);
 
-    Task AppendRefreshLogAsync(
-        string refreshId,
+}
+
+public interface ICatalogueRefreshLogSink
+{
+    Task WriteAsync(
         CatalogueRefreshLogLevel level,
         string message,
         int? processedCount,
@@ -128,6 +131,7 @@ public interface ICatalogueSourceReader
     Task<CatalogueSourceReadResult> ReadAsync(
         string refreshId,
         ICatalogueImportWriter writer,
+        ICatalogueRefreshLogSink log,
         CancellationToken cancellationToken);
 }
 
@@ -146,7 +150,7 @@ public sealed record CatalogueSummary(
     int VirtualLibraryCount,
     int WarningCount);
 
-public enum CatalogueRefreshRunStatus
+public enum CatalogueStateStatus
 {
     Running,
     Succeeded,
@@ -155,6 +159,13 @@ public enum CatalogueRefreshRunStatus
     Interrupted
 }
 
+public sealed record CatalogueState(
+    string RefreshId,
+    CatalogueStateStatus Status,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? CompletedAt,
+    CatalogueSummary? Summary);
+
 public enum CatalogueRefreshLogLevel
 {
     Information,
@@ -162,49 +173,39 @@ public enum CatalogueRefreshLogLevel
     Error
 }
 
-public sealed record CatalogueRefreshLog(
-    long Id,
-    DateTimeOffset OccurredAt,
+public sealed record CatalogueRefreshWarning(
     CatalogueRefreshLogLevel Level,
     string Message,
     int? ProcessedCount,
     int? TotalCount);
 
-public sealed record CatalogueRefreshRun(
-    string Id,
-    CatalogueRefreshRunStatus Status,
-    DateTimeOffset StartedAt,
-    DateTimeOffset? CompletedAt,
-    long? DurationMilliseconds,
-    string? FailureMessage,
-    IReadOnlyList<CatalogueRefreshLog> Logs);
+public sealed record CatalogueRefreshCompletion(
+    CatalogueSummary Summary,
+    IReadOnlyList<CatalogueRefreshWarning> Warnings);
 
 public interface IMediaCatalogueStore : ICatalogueImportWriter
 {
     Task InitialiseAsync(CancellationToken cancellationToken);
 
-    Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken);
+    Task<CatalogueState?> GetStateAsync(CancellationToken cancellationToken);
 
-    Task<CatalogueRefreshRun?> GetLatestRefreshRunAsync(
-        CancellationToken cancellationToken);
+    Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken);
 
     Task BeginRefreshAsync(
         string refreshId,
         DateTimeOffset startedAt,
         CancellationToken cancellationToken);
 
-    Task<CatalogueSummary> CompleteRefreshAsync(
+    Task<CatalogueRefreshCompletion> CompleteRefreshAsync(
         string refreshId,
         CatalogueSourceReadResult source,
         DateTimeOffset completedAt,
-        long durationMilliseconds,
+        int existingWarningCount,
         CancellationToken cancellationToken);
 
-    Task CompleteFailedRefreshAsync(
+    Task FinishRefreshAsync(
         string refreshId,
-        CatalogueRefreshRunStatus status,
+        CatalogueStateStatus status,
         DateTimeOffset completedAt,
-        long durationMilliseconds,
-        string failureMessage,
         CancellationToken cancellationToken);
 }

@@ -6,9 +6,10 @@ namespace LyrionVoiceMcp.Persistence;
 
 public sealed class SqliteMediaCatalogueStore(
     CatalogueSettings settings,
-    TimeProvider timeProvider) : IMediaCatalogueStore
+    TimeProvider? configuredTimeProvider = null) : IMediaCatalogueStore
 {
-    private const int SchemaVersion = 4;
+    private const int SchemaVersion = 6;
+    private readonly TimeProvider timeProvider = configuredTimeProvider ?? TimeProvider.System;
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
         DataSource = settings.DatabasePath,
@@ -40,26 +41,24 @@ public sealed class SqliteMediaCatalogueStore(
             throw new InvalidOperationException("The catalogue database schema could not be initialised.");
         }
 
-        var completedAt = timeProvider.GetUtcNow();
         await using var interrupted = connection.CreateCommand();
         interrupted.CommandText = """
-            UPDATE catalogue_refresh_runs
-            SET status = 'interrupted',
-                completed_at = $completedAt,
-                duration_ms = MAX(0, CAST((julianday($completedAt) - julianday(started_at)) * 86400000 AS INTEGER)),
-                failure_message = 'Catalogue refresh was interrupted before completion.'
-            WHERE status = 'running';
+            UPDATE catalogue_state
+            SET refresh_status = 'interrupted',
+                refresh_completed_at = $completedAt
+            WHERE refresh_status = 'running';
             """;
-        Add(interrupted, "$completedAt", FormatDate(completedAt));
+        Add(interrupted, "$completedAt", FormatDate(timeProvider.GetUtcNow()));
         await interrupted.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken)
+    public async Task<CatalogueState?> GetStateAsync(CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT source_id, source_provider, source_revision, source_version,
+            SELECT refresh_id, refresh_status, refresh_started_at, refresh_completed_at,
+                   source_id, source_provider, source_revision, source_version,
                    captured_at, source_last_scan_at, refreshed_at,
                    artist_count, album_count, genre_count, track_count,
                    virtual_library_count, warning_count
@@ -67,33 +66,25 @@ public sealed class SqliteMediaCatalogueStore(
             WHERE id = 1;
             """;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? ReadSummary(reader)
-            : null;
-    }
-
-    public async Task<CatalogueRefreshRun?> GetLatestRefreshRunAsync(
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id, status, started_at, completed_at, duration_ms, failure_message
-            FROM catalogue_refresh_runs
-            ORDER BY started_at DESC, id DESC
-            LIMIT 1;
-            """;
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
             return null;
         }
 
-        var refresh = ReadRefreshRun(reader, []);
-        await reader.DisposeAsync();
-        var logs = await ListRefreshLogsAsync(connection, refresh.Id, cancellationToken);
-        return refresh with { Logs = logs };
+        var status = ParseCatalogueStateStatus(reader.GetString(1));
+        var summary = status == CatalogueStateStatus.Succeeded
+            ? ReadSummary(reader, 4)
+            : null;
+        return new CatalogueState(
+            reader.GetString(0),
+            status,
+            ParseDate(reader.GetString(2)),
+            reader.IsDBNull(3) ? null : ParseDate(reader.GetString(3)),
+            summary);
     }
+
+    public async Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken) =>
+        (await GetStateAsync(cancellationToken))?.Summary;
 
     public async Task BeginRefreshAsync(
         string refreshId,
@@ -101,33 +92,42 @@ public sealed class SqliteMediaCatalogueStore(
         CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-        await using (var command = connection.CreateCommand())
-        {
-            command.Transaction = transaction;
-            command.CommandText = """
-            INSERT INTO catalogue_refresh_runs (id, status, started_at)
-            VALUES ($id, 'running', $startedAt);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO catalogue_state (
+                id, refresh_id, refresh_status, refresh_started_at, refresh_completed_at,
+                source_id, source_provider, source_version, source_revision,
+                captured_at, source_last_scan_at, refreshed_at,
+                artist_count, album_count, genre_count, track_count,
+                virtual_library_count, warning_count)
+            VALUES (
+                1, $refreshId, 'running', $startedAt, NULL,
+                NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL,
+                NULL, NULL, NULL, NULL,
+                NULL, NULL)
+            ON CONFLICT(id) DO UPDATE SET
+                refresh_id = excluded.refresh_id,
+                refresh_status = excluded.refresh_status,
+                refresh_started_at = excluded.refresh_started_at,
+                refresh_completed_at = NULL,
+                source_id = NULL,
+                source_provider = NULL,
+                source_version = NULL,
+                source_revision = NULL,
+                captured_at = NULL,
+                source_last_scan_at = NULL,
+                refreshed_at = NULL,
+                artist_count = NULL,
+                album_count = NULL,
+                genre_count = NULL,
+                track_count = NULL,
+                virtual_library_count = NULL,
+                warning_count = NULL;
             """;
-            Add(command, "$id", refreshId);
-            Add(command, "$startedAt", FormatDate(startedAt));
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        await using (var log = connection.CreateCommand())
-        {
-            log.Transaction = transaction;
-            log.CommandText = """
-                INSERT INTO catalogue_refresh_logs (
-                    refresh_id, occurred_at, level, message)
-                VALUES ($refreshId, $occurredAt, 'information', 'Catalogue refresh queued.');
-                """;
-            Add(log, "$refreshId", refreshId);
-            Add(log, "$occurredAt", FormatDate(startedAt));
-            await log.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        await transaction.CommitAsync(cancellationToken);
+        Add(command, "$refreshId", refreshId);
+        Add(command, "$startedAt", FormatDate(startedAt));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public Task WriteAlbumsAsync(
@@ -385,35 +385,11 @@ public sealed class SqliteMediaCatalogueStore(
             (command, trackId) => Set(command, "$trackId", trackId),
             cancellationToken);
 
-    public async Task AppendRefreshLogAsync(
-        string refreshId,
-        CatalogueRefreshLogLevel level,
-        string message,
-        int? processedCount,
-        int? totalCount,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO catalogue_refresh_logs (
-                refresh_id, occurred_at, level, message, processed_count, total_count)
-            VALUES ($refreshId, $occurredAt, $level, $message, $processedCount, $totalCount);
-            """;
-        Add(command, "$refreshId", refreshId);
-        Add(command, "$occurredAt", FormatDate(timeProvider.GetUtcNow()));
-        Add(command, "$level", ToText(level));
-        Add(command, "$message", message);
-        Add(command, "$processedCount", processedCount);
-        Add(command, "$totalCount", totalCount);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    public async Task<CatalogueSummary> CompleteRefreshAsync(
+    public async Task<CatalogueRefreshCompletion> CompleteRefreshAsync(
         string refreshId,
         CatalogueSourceReadResult source,
         DateTimeOffset completedAt,
-        long durationMilliseconds,
+        int existingWarningCount,
         CancellationToken cancellationToken)
     {
         await ValidateSeenCountAsync(
@@ -463,8 +439,8 @@ public sealed class SqliteMediaCatalogueStore(
         await DeleteNotSeenAsync("catalogue_artists", refreshId, cancellationToken);
         await DeleteNotSeenAsync("catalogue_artist_lookup", refreshId, cancellationToken);
 
-        await RecordReferentialWarningsAsync(refreshId, cancellationToken);
-        var warningCount = await CountRefreshWarningsAsync(refreshId, cancellationToken);
+        var referentialWarnings = await ReadReferentialWarningsAsync(cancellationToken);
+        var warningCount = existingWarningCount + referentialWarnings.Count;
         var summary = new CatalogueSummary(
             source.Source.Id,
             source.Source.Provider,
@@ -485,64 +461,8 @@ public sealed class SqliteMediaCatalogueStore(
             source,
             summary,
             completedAt,
-            durationMilliseconds,
             cancellationToken);
-        return summary;
-    }
-
-    public async Task CompleteFailedRefreshAsync(
-        string refreshId,
-        CatalogueRefreshRunStatus status,
-        DateTimeOffset completedAt,
-        long durationMilliseconds,
-        string failureMessage,
-        CancellationToken cancellationToken)
-    {
-        if (status is not (CatalogueRefreshRunStatus.Failed or CatalogueRefreshRunStatus.Cancelled))
-        {
-            throw new InvalidOperationException("A refresh failure has an invalid terminal status.");
-        }
-
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-        await using (var command = connection.CreateCommand())
-        {
-            command.Transaction = transaction;
-            command.CommandText = """
-                UPDATE catalogue_refresh_runs
-                SET status = $status,
-                    completed_at = $completedAt,
-                    duration_ms = $duration,
-                    failure_message = $failureMessage
-                WHERE id = $id AND status = 'running';
-                """;
-            Add(command, "$status", ToText(status));
-            Add(command, "$completedAt", FormatDate(completedAt));
-            Add(command, "$duration", durationMilliseconds);
-            Add(command, "$failureMessage", failureMessage);
-            Add(command, "$id", refreshId);
-            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
-            {
-                throw new InvalidOperationException("The catalogue refresh run was not active.");
-            }
-        }
-
-        await using (var log = connection.CreateCommand())
-        {
-            log.Transaction = transaction;
-            log.CommandText = """
-                INSERT INTO catalogue_refresh_logs (
-                    refresh_id, occurred_at, level, message)
-                VALUES ($refreshId, $occurredAt, $level, $message);
-                """;
-            Add(log, "$refreshId", refreshId);
-            Add(log, "$occurredAt", FormatDate(completedAt));
-            Add(log, "$level", status == CatalogueRefreshRunStatus.Cancelled ? "warning" : "error");
-            Add(log, "$message", failureMessage);
-            await log.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        await transaction.CommitAsync(cancellationToken);
+        return new CatalogueRefreshCompletion(summary, referentialWarnings);
     }
 
     private async Task StoreCompletedRefreshAsync(
@@ -550,7 +470,6 @@ public sealed class SqliteMediaCatalogueStore(
         CatalogueSourceReadResult source,
         CatalogueSummary summary,
         DateTimeOffset completedAt,
-        long durationMilliseconds,
         CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
@@ -559,30 +478,28 @@ public sealed class SqliteMediaCatalogueStore(
         {
             state.Transaction = transaction;
             state.CommandText = """
-                INSERT INTO catalogue_state (
-                    id, source_id, source_provider, source_version, source_revision,
-                    captured_at, source_last_scan_at, refreshed_at,
-                    artist_count, album_count, genre_count, track_count,
-                    virtual_library_count, warning_count)
-                VALUES (
-                    1, $sourceId, $provider, $version, $revision,
-                    $capturedAt, $lastScanAt, $refreshedAt,
-                    $artists, $albums, $genres, $tracks, $libraries, $warnings)
-                ON CONFLICT(id) DO UPDATE SET
-                    source_id = excluded.source_id,
-                    source_provider = excluded.source_provider,
-                    source_version = excluded.source_version,
-                    source_revision = excluded.source_revision,
-                    captured_at = excluded.captured_at,
-                    source_last_scan_at = excluded.source_last_scan_at,
-                    refreshed_at = excluded.refreshed_at,
-                    artist_count = excluded.artist_count,
-                    album_count = excluded.album_count,
-                    genre_count = excluded.genre_count,
-                    track_count = excluded.track_count,
-                    virtual_library_count = excluded.virtual_library_count,
-                    warning_count = excluded.warning_count;
+                UPDATE catalogue_state
+                SET refresh_status = 'succeeded',
+                    refresh_completed_at = $completedAt,
+                    source_id = $sourceId,
+                    source_provider = $provider,
+                    source_version = $version,
+                    source_revision = $revision,
+                    captured_at = $capturedAt,
+                    source_last_scan_at = $lastScanAt,
+                    refreshed_at = $refreshedAt,
+                    artist_count = $artists,
+                    album_count = $albums,
+                    genre_count = $genres,
+                    track_count = $tracks,
+                    virtual_library_count = $libraries,
+                    warning_count = $warnings
+                WHERE id = 1
+                  AND refresh_id = $refreshId
+                  AND refresh_status = 'running';
                 """;
+            Add(state, "$refreshId", refreshId);
+            Add(state, "$completedAt", FormatDate(completedAt));
             Add(state, "$sourceId", source.Source.Id);
             Add(state, "$provider", source.Source.Provider);
             Add(state, "$version", source.Source.Version);
@@ -596,49 +513,47 @@ public sealed class SqliteMediaCatalogueStore(
             Add(state, "$tracks", summary.TrackCount);
             Add(state, "$libraries", summary.VirtualLibraryCount);
             Add(state, "$warnings", summary.WarningCount);
-            await state.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        await using (var refresh = connection.CreateCommand())
-        {
-            refresh.Transaction = transaction;
-            refresh.CommandText = """
-                UPDATE catalogue_refresh_runs
-                SET status = 'succeeded',
-                    completed_at = $completedAt,
-                    duration_ms = $duration,
-                    failure_message = NULL
-                WHERE id = $refreshId AND status = 'running';
-                """;
-            Add(refresh, "$completedAt", FormatDate(completedAt));
-            Add(refresh, "$duration", durationMilliseconds);
-            Add(refresh, "$refreshId", refreshId);
-            if (await refresh.ExecuteNonQueryAsync(cancellationToken) != 1)
+            if (await state.ExecuteNonQueryAsync(cancellationToken) != 1)
             {
-                throw new InvalidOperationException("The catalogue refresh run was not active.");
+                throw new InvalidOperationException(
+                    "The catalogue refresh state was not running when completion was recorded.");
             }
-        }
-
-        await using (var log = connection.CreateCommand())
-        {
-            log.Transaction = transaction;
-            log.CommandText = """
-                INSERT INTO catalogue_refresh_logs (
-                    refresh_id, occurred_at, level, message, processed_count, total_count)
-                VALUES ($refreshId, $occurredAt, 'information',
-                        'Completed catalogue refresh.', $trackCount, $trackCount);
-                """;
-            Add(log, "$refreshId", refreshId);
-            Add(log, "$occurredAt", FormatDate(completedAt));
-            Add(log, "$trackCount", summary.TrackCount);
-            await log.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private async Task RecordReferentialWarningsAsync(
+    public async Task FinishRefreshAsync(
         string refreshId,
+        CatalogueStateStatus status,
+        DateTimeOffset completedAt,
+        CancellationToken cancellationToken)
+    {
+        if (status is CatalogueStateStatus.Running or CatalogueStateStatus.Succeeded)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(status),
+                status,
+                "A failed refresh must finish with a non-success terminal status.");
+        }
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE catalogue_state
+            SET refresh_status = $status,
+                refresh_completed_at = $completedAt
+            WHERE id = 1
+              AND refresh_id = $refreshId
+              AND refresh_status = 'running';
+            """;
+        Add(command, "$status", ToText(status));
+        Add(command, "$completedAt", FormatDate(completedAt));
+        Add(command, "$refreshId", refreshId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<CatalogueRefreshWarning>> ReadReferentialWarningsAsync(
         CancellationToken cancellationToken)
     {
         var warnings = new[]
@@ -682,6 +597,7 @@ public sealed class SqliteMediaCatalogueStore(
                 """)
         };
 
+        var results = new List<CatalogueRefreshWarning>();
         foreach (var warning in warnings)
         {
             await using var connection = await OpenAsync(cancellationToken);
@@ -694,31 +610,14 @@ public sealed class SqliteMediaCatalogueStore(
                 continue;
             }
 
-            await AppendRefreshLogAsync(
-                refreshId,
+            results.Add(new CatalogueRefreshWarning(
                 CatalogueRefreshLogLevel.Warning,
                 warning.Message,
                 occurrences,
-                null,
-                cancellationToken);
+                null));
         }
 
-    }
-
-    private async Task<int> CountRefreshWarningsAsync(
-        string refreshId,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT COUNT(*)
-            FROM catalogue_refresh_logs
-            WHERE refresh_id = $refreshId AND level = 'warning';
-            """;
-        Add(command, "$refreshId", refreshId);
-        var value = await command.ExecuteScalarAsync(cancellationToken);
-        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+        return results;
     }
 
     private async Task ValidateSeenCountAsync(
@@ -782,35 +681,6 @@ public sealed class SqliteMediaCatalogueStore(
         command.CommandText = $"SELECT COUNT(*) FROM {table};";
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
-    }
-
-    private async Task<IReadOnlyList<CatalogueRefreshLog>> ListRefreshLogsAsync(
-        SqliteConnection connection,
-        string refreshId,
-        CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id, occurred_at, level, message, processed_count, total_count
-            FROM catalogue_refresh_logs
-            WHERE refresh_id = $refreshId
-            ORDER BY id;
-            """;
-        Add(command, "$refreshId", refreshId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var logs = new List<CatalogueRefreshLog>();
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            logs.Add(new CatalogueRefreshLog(
-                reader.GetInt64(0),
-                ParseDate(reader.GetString(1)),
-                ParseLogLevel(reader.GetString(2)),
-                reader.GetString(3),
-                reader.IsDBNull(4) ? null : reader.GetInt32(4),
-                reader.IsDBNull(5) ? null : reader.GetInt32(5)));
-        }
-
-        return logs;
     }
 
     private async Task WriteBatchAsync<T>(
@@ -1032,66 +902,39 @@ public sealed class SqliteMediaCatalogueStore(
             : Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
 
-    private static CatalogueSummary ReadSummary(SqliteDataReader reader) => new(
-        reader.GetString(0),
-        reader.GetString(1),
-        reader.IsDBNull(2) ? null : reader.GetString(2),
-        reader.IsDBNull(3) ? null : reader.GetString(3),
-        ParseDate(reader.GetString(4)),
-        reader.IsDBNull(5) ? null : ParseDate(reader.GetString(5)),
-        ParseDate(reader.GetString(6)),
-        reader.GetInt32(7),
-        reader.GetInt32(8),
-        reader.GetInt32(9),
-        reader.GetInt32(10),
-        reader.GetInt32(11),
-        reader.GetInt32(12));
+    private static CatalogueSummary ReadSummary(SqliteDataReader reader, int offset = 0) => new(
+        reader.GetString(offset),
+        reader.GetString(offset + 1),
+        reader.IsDBNull(offset + 2) ? null : reader.GetString(offset + 2),
+        reader.IsDBNull(offset + 3) ? null : reader.GetString(offset + 3),
+        ParseDate(reader.GetString(offset + 4)),
+        reader.IsDBNull(offset + 5) ? null : ParseDate(reader.GetString(offset + 5)),
+        ParseDate(reader.GetString(offset + 6)),
+        reader.GetInt32(offset + 7),
+        reader.GetInt32(offset + 8),
+        reader.GetInt32(offset + 9),
+        reader.GetInt32(offset + 10),
+        reader.GetInt32(offset + 11),
+        reader.GetInt32(offset + 12));
 
-    private static CatalogueRefreshRun ReadRefreshRun(
-        SqliteDataReader reader,
-        IReadOnlyList<CatalogueRefreshLog> logs) => new(
-        reader.GetString(0),
-        ParseStatus(reader.GetString(1)),
-        ParseDate(reader.GetString(2)),
-        reader.IsDBNull(3) ? null : ParseDate(reader.GetString(3)),
-        reader.IsDBNull(4) ? null : reader.GetInt64(4),
-        reader.IsDBNull(5) ? null : reader.GetString(5),
-        logs);
-
-    private static CatalogueRefreshRunStatus ParseStatus(string value) => value switch
+    private static CatalogueStateStatus ParseCatalogueStateStatus(string value) => value switch
     {
-        "running" => CatalogueRefreshRunStatus.Running,
-        "succeeded" => CatalogueRefreshRunStatus.Succeeded,
-        "failed" => CatalogueRefreshRunStatus.Failed,
-        "cancelled" => CatalogueRefreshRunStatus.Cancelled,
-        "interrupted" => CatalogueRefreshRunStatus.Interrupted,
-        _ => throw new InvalidOperationException("Unknown stored catalogue refresh status.")
+        "running" => CatalogueStateStatus.Running,
+        "succeeded" => CatalogueStateStatus.Succeeded,
+        "failed" => CatalogueStateStatus.Failed,
+        "cancelled" => CatalogueStateStatus.Cancelled,
+        "interrupted" => CatalogueStateStatus.Interrupted,
+        _ => throw new InvalidOperationException($"Unsupported catalogue state '{value}'.")
     };
 
-    private static CatalogueRefreshLogLevel ParseLogLevel(string value) => value switch
+    private static string ToText(CatalogueStateStatus status) => status switch
     {
-        "information" => CatalogueRefreshLogLevel.Information,
-        "warning" => CatalogueRefreshLogLevel.Warning,
-        "error" => CatalogueRefreshLogLevel.Error,
-        _ => throw new InvalidOperationException("Unknown stored catalogue refresh log level.")
-    };
-
-    private static string ToText(CatalogueRefreshRunStatus value) => value switch
-    {
-        CatalogueRefreshRunStatus.Running => "running",
-        CatalogueRefreshRunStatus.Succeeded => "succeeded",
-        CatalogueRefreshRunStatus.Failed => "failed",
-        CatalogueRefreshRunStatus.Cancelled => "cancelled",
-        CatalogueRefreshRunStatus.Interrupted => "interrupted",
-        _ => throw new InvalidOperationException("Unknown catalogue refresh status.")
-    };
-
-    private static string ToText(CatalogueRefreshLogLevel value) => value switch
-    {
-        CatalogueRefreshLogLevel.Information => "information",
-        CatalogueRefreshLogLevel.Warning => "warning",
-        CatalogueRefreshLogLevel.Error => "error",
-        _ => throw new InvalidOperationException("Unknown catalogue refresh log level.")
+        CatalogueStateStatus.Running => "running",
+        CatalogueStateStatus.Succeeded => "succeeded",
+        CatalogueStateStatus.Failed => "failed",
+        CatalogueStateStatus.Cancelled => "cancelled",
+        CatalogueStateStatus.Interrupted => "interrupted",
+        _ => throw new InvalidOperationException("Unknown catalogue state status.")
     };
 
     private static SqliteParameter Add(SqliteCommand command, string name, object? value)
@@ -1136,49 +979,29 @@ public sealed class SqliteMediaCatalogueStore(
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS catalogue_schema (version INTEGER NOT NULL);
         INSERT INTO catalogue_schema (version)
-            SELECT 4 WHERE NOT EXISTS (SELECT 1 FROM catalogue_schema);
+            SELECT 6 WHERE NOT EXISTS (SELECT 1 FROM catalogue_schema);
 
         CREATE TABLE IF NOT EXISTS catalogue_state (
             id INTEGER PRIMARY KEY CHECK (id = 1),
-            source_id TEXT NOT NULL,
-            source_provider TEXT NOT NULL,
+            refresh_id TEXT NOT NULL,
+            refresh_status TEXT NOT NULL
+                CHECK (refresh_status IN ('running', 'succeeded', 'failed', 'cancelled', 'interrupted')),
+            refresh_started_at TEXT NOT NULL,
+            refresh_completed_at TEXT NULL,
+            source_id TEXT NULL,
+            source_provider TEXT NULL,
             source_version TEXT NULL,
             source_revision TEXT NULL,
-            captured_at TEXT NOT NULL,
+            captured_at TEXT NULL,
             source_last_scan_at TEXT NULL,
-            refreshed_at TEXT NOT NULL,
-            artist_count INTEGER NOT NULL,
-            album_count INTEGER NOT NULL,
-            genre_count INTEGER NOT NULL,
-            track_count INTEGER NOT NULL,
-            virtual_library_count INTEGER NOT NULL,
-            warning_count INTEGER NOT NULL
+            refreshed_at TEXT NULL,
+            artist_count INTEGER NULL,
+            album_count INTEGER NULL,
+            genre_count INTEGER NULL,
+            track_count INTEGER NULL,
+            virtual_library_count INTEGER NULL,
+            warning_count INTEGER NULL
         );
-        CREATE TABLE IF NOT EXISTS catalogue_refresh_runs (
-            id TEXT PRIMARY KEY,
-            status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'cancelled', 'interrupted')),
-            started_at TEXT NOT NULL,
-            completed_at TEXT NULL,
-            duration_ms INTEGER NULL,
-            failure_message TEXT NULL
-        );
-        CREATE INDEX IF NOT EXISTS ix_catalogue_refresh_runs_started_at
-            ON catalogue_refresh_runs(started_at DESC);
-        CREATE UNIQUE INDEX IF NOT EXISTS ux_catalogue_refresh_runs_running
-            ON catalogue_refresh_runs(status) WHERE status = 'running';
-        CREATE TABLE IF NOT EXISTS catalogue_refresh_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            refresh_id TEXT NOT NULL,
-            occurred_at TEXT NOT NULL,
-            level TEXT NOT NULL CHECK (level IN ('information', 'warning', 'error')),
-            message TEXT NOT NULL,
-            processed_count INTEGER NULL,
-            total_count INTEGER NULL,
-            FOREIGN KEY (refresh_id) REFERENCES catalogue_refresh_runs(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS ix_catalogue_refresh_logs_refresh_id
-            ON catalogue_refresh_logs(refresh_id, id);
-
         CREATE TABLE IF NOT EXISTS catalogue_artists (
             source_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,

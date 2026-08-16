@@ -1,6 +1,7 @@
 using LyrionVoiceMcp.Api.Configuration;
 using LyrionVoiceMcp.Api.Endpoints;
 using LyrionVoiceMcp.Api.Tools;
+using LyrionVoiceMcp.Api;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Evaluation;
 using LyrionVoiceMcp.Lms;
@@ -41,6 +42,23 @@ var observationSettings = SearchObservationSettings.FromValues(
 var catalogueSettings = CatalogueSettings.FromValues(
     builder.Environment.ContentRootPath,
     builder.Configuration["LyrionVoiceMcpCatalogue:DatabasePath"]);
+var operationalSettings = OperationalSettings.FromValues(
+    builder.Environment.ContentRootPath,
+    builder.Configuration["LyrionVoiceMcpOperations:DatabasePath"],
+    builder.Configuration["LyrionVoiceMcpOperations:JobRetentionDays"],
+    builder.Configuration["LyrionVoiceMcpOperations:ErrorRetentionDays"],
+    builder.Configuration["LyrionVoiceMcpOperations:ToolCallRetentionDays"],
+    builder.Configuration["LyrionVoiceMcpOperations:ToolCallJsonMaximumCharacters"],
+    builder.Configuration["LyrionVoiceMcpOperations:TimeZoneId"]);
+var operationalSchedules = OperationalSettings.CreateSchedulePolicy(
+    ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:CatalogueRefresh:Enabled"]),
+    builder.Configuration["LyrionVoiceMcpOperations:Schedules:CatalogueRefresh:Cron"],
+    ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:ErrorLogPurge:Enabled"], true),
+    builder.Configuration["LyrionVoiceMcpOperations:Schedules:ErrorLogPurge:Cron"],
+    ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:JobHistoryPurge:Enabled"], true),
+    builder.Configuration["LyrionVoiceMcpOperations:Schedules:JobHistoryPurge:Cron"],
+    ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:ToolCallHistoryPurge:Enabled"], true),
+    builder.Configuration["LyrionVoiceMcpOperations:Schedules:ToolCallHistoryPurge:Cron"]);
 var evaluationSettings = EvaluationDiagnosticSettings.FromValues(
     builder.Environment.ContentRootPath,
     catalogueSettings.DatabasePath,
@@ -50,7 +68,12 @@ builder.Services.AddSingleton(buildInfo);
 builder.Services.AddSingleton(lmsSettings);
 builder.Services.AddSearchObservationPersistence(observationSettings);
 builder.Services.AddCataloguePersistence(catalogueSettings);
-builder.Services.AddSingleton(_ => new EvaluationDiagnosticSearchService(evaluationSettings));
+builder.Services.AddOperationalPersistence(operationalSettings, operationalSchedules);
+builder.Services.AddSingleton(provider => new EvaluationDiagnosticSearchService(
+    evaluationSettings,
+    provider.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<ISearchIndexBuilder>(provider =>
+    provider.GetRequiredService<EvaluationDiagnosticSearchService>());
 builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
 {
     client.Timeout = lmsSettings.RequestTimeout;
@@ -77,6 +100,7 @@ builder.Services
             Resolve player names with get_player_status and use only the returned player IDs; never invent an ID. Use search for named media and browse for library exploration. Treat search and browse references as opaque. All search result references are playable; artist, album, and playlist search result references can also be passed to browse, but track search result references cannot. For browse results, use the browsable and playable flags; pass continuation references back to browse. The play tool replaces the queue, powers the player on when required, and starts playback. The manage_queue append and insert_next actions change the queue without changing power or playback state; its clear action empties the queue and stops playback. Ask the user when multiple players or media candidates are genuinely ambiguous.
             """;
     })
+    .WithRequestFilters(filters => filters.AddCallToolFilter(McpToolCallFilter.Create()))
     .WithHttpTransport()
     .WithTools<SearchTools>(McpToolJson.Options)
     .WithTools<BrowseTools>(McpToolJson.Options)
@@ -92,13 +116,18 @@ await app.Services.GetRequiredService<ISearchObservationStore>()
     .InitialiseAsync(CancellationToken.None);
 await app.Services.GetRequiredService<IMediaCatalogueStore>()
     .InitialiseAsync(CancellationToken.None);
+await app.Services.GetRequiredService<IOperationalStoreInitialiser>()
+    .InitialiseAsync(CancellationToken.None);
 
 app.Logger.LogWarning(
     "Lyrion Voice MCP is unauthenticated trusted-LAN software. Do not expose this service to untrusted networks.");
 
+app.UseMiddleware<LyrionVoiceMcp.Api.ApiExceptionLoggingMiddleware>();
 app.MapOperationalEndpoints();
+app.MapOperationalHistoryEndpoints();
 app.MapCatalogueEndpoints();
 app.MapEvaluationEndpoints();
+app.MapSearchIndexEndpoints();
 app.MapSearchObservationEndpoints();
 app.MapMcp("/mcp");
 
@@ -146,5 +175,12 @@ static void ApplySpaShellCacheHeaders(HttpResponse response)
     response.Headers.CacheControl = "no-cache, must-revalidate";
     response.Headers.Pragma = "no-cache";
 }
+
+static bool ReadBoolean(string? value, bool defaultValue = false) =>
+    string.IsNullOrWhiteSpace(value)
+        ? defaultValue
+        : bool.TryParse(value, out var parsed)
+            ? parsed
+            : throw new InvalidOperationException($"The configured boolean value '{value}' is invalid.");
 
 public partial class Program;

@@ -79,6 +79,8 @@ public sealed class EvaluationDiagnosticSearchServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult(new ResolvedDiagnosticResolver(resolver, false));
 
+        public ValueTask RemoveAsync(string name) => ValueTask.CompletedTask;
+
         public ValueTask DisposeAsync()
         {
             Disposed = true;

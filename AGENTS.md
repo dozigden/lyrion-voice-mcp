@@ -10,6 +10,7 @@ Read the relevant area guidance before changing that part of the system:
 - [AGENTS/Frontend.md](AGENTS/Frontend.md)
 - [AGENTS/Lyrion.md](AGENTS/Lyrion.md) - LMS transport and environment rules
 - [AGENTS/Mcp.md](AGENTS/Mcp.md) - public MCP transport and tool rules
+- [AGENTS/Operations.md](AGENTS/Operations.md) - durable jobs, schedules, errors, and MCP call history
 - [AGENTS/Search.md](AGENTS/Search.md) - search evolution and observation rules
 - [AGENTS/StoryBoardAndSourceControl.md](AGENTS/StoryBoardAndSourceControl.md)
 - [AGENTS/Testing.md](AGENTS/Testing.md)

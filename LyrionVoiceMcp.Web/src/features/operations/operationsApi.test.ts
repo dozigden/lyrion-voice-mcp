@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getCatalogue, getHealth, getLmsConnection, rebuildCatalogue } from './operationsApi';
+import {
+  getCatalogue,
+  getHealth,
+  getLmsConnection,
+  getSearchIndexes,
+  rebuildCatalogue,
+  rebuildSearchIndex
+} from './operationsApi';
 
 describe('operationsApi', () => {
   afterEach(() => {
@@ -102,7 +109,56 @@ describe('operationsApi', () => {
       headers: { Accept: 'application/json' }
     }));
   });
+
+  it('returns published search indexes', async () => {
+    // Arrange
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([searchIndexStatus('succeeded')], 200));
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Act
+    const result = await getSearchIndexes();
+
+    // Assert
+    expect(result[0]?.resolver).toBe('phuzzy');
+    expect(result[0]?.artifact?.candidateCount).toBe(1_234);
+  });
+
+  it('starts a search-index rebuild', async () => {
+    // Arrange
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(searchIndexStatus('pending'), 202));
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Act
+    const result = await rebuildSearchIndex('lucene-native');
+
+    // Assert
+    expect(result.latestJob?.status).toBe('pending');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/evaluation/indexes/lucene-native/rebuild',
+      expect.objectContaining({ method: 'POST' }));
+  });
 });
+
+function searchIndexStatus(status: 'pending' | 'succeeded'): Record<string, unknown> {
+  return {
+    resolver: 'phuzzy',
+    artifact: {
+      resolverVersion: '2',
+      catalogueRefreshId: 'refresh-1',
+      builtAt: '2026-08-15T12:03:00Z',
+      candidateCount: 1_234,
+      preparationDurationMilliseconds: 920,
+      indexSizeBytes: 65_536
+    },
+    latestJob: {
+      id: 42,
+      status,
+      startedAt: '2026-08-15T12:02:40Z',
+      completedAt: status === 'pending' ? null : '2026-08-15T12:03:00Z',
+      errorMessage: null
+    }
+  };
+}
 
 function catalogueStatus(status: 'running' | 'succeeded'): Record<string, unknown> {
   return {

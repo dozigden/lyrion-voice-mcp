@@ -1,6 +1,8 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Contracts;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -130,6 +132,13 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         // Act
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var history = await client.GetFromJsonAsync<ToolCallPageResponse>(
+            "/api/tool-calls?toolName=search",
+            TestContext.Current.CancellationToken);
+        var summary = Assert.Single(history!.Items, item => item.TraceIdentifier == "3");
+        var recorded = await client.GetFromJsonAsync<ToolCallResponse>(
+            $"/api/tool-calls/{summary.Id}",
+            TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(
@@ -141,6 +150,9 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"artist\":null", body, StringComparison.Ordinal);
         Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
         Assert.DoesNotContain("confidence", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("succeeded", recorded!.Status);
+        Assert.Contains("copper lines", recorded.ArgumentsJson, StringComparison.Ordinal);
+        Assert.Contains("The Copper Lines", recorded.ResultJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -175,6 +187,81 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains(rejection.Message, body, StringComparison.Ordinal);
         Assert.DoesNotContain("\"error\":", body, StringComparison.Ordinal);
         Assert.DoesNotContain("structuredContent", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UnexpectedToolExceptionShouldBeRecordedAndLinkedToTheToolCall()
+    {
+        // Arrange
+        await using var searchFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISearchService>();
+                services.AddSingleton<ISearchService>(new ThrowingSearchService());
+            }));
+        using var client = searchFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            15,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"query":"force unexpected failure"}}
+            """,
+            "search");
+
+        // Act
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var history = await client.GetFromJsonAsync<ToolCallPageResponse>(
+            "/api/tool-calls?toolName=search",
+            TestContext.Current.CancellationToken);
+        var summary = Assert.Single(history!.Items, item => item.TraceIdentifier == "15");
+        var recorded = await client.GetFromJsonAsync<ToolCallResponse>(
+            $"/api/tool-calls/{summary.Id}",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
+        Assert.Equal("failed", recorded!.Status);
+        Assert.Contains("force unexpected failure", recorded.ArgumentsJson, StringComparison.Ordinal);
+        Assert.NotNull(recorded.ErrorLogId);
+
+        var error = await client.GetFromJsonAsync<ErrorLogResponse>(
+            $"/api/error-logs/{recorded.ErrorLogId}",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(ErrorLogSources.Mcp, error!.Source);
+        Assert.Equal(ErrorLogAreas.McpToolCall, error.Area);
+        Assert.Contains("Deliberate unexpected search failure.", error.Message, StringComparison.Ordinal);
+        Assert.Contains(recorded.Id, error.ContextJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MissingRequiredArgumentShouldBeRecordedAsAToolErrorNotAnApplicationError()
+    {
+        using var client = factory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            16,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{}}
+            """,
+            "search");
+
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var history = await client.GetFromJsonAsync<ToolCallPageResponse>(
+            "/api/tool-calls?toolName=search",
+            TestContext.Current.CancellationToken);
+        var summary = Assert.Single(history!.Items, item => item.TraceIdentifier == "16");
+        var recorded = await client.GetFromJsonAsync<ToolCallResponse>(
+            $"/api/tool-calls/{summary.Id}",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
+        Assert.Equal("tool_error", recorded!.Status);
+        Assert.Equal("{}", recorded.ArgumentsJson);
+        Assert.Null(recorded.ErrorLogId);
     }
 
     [Fact]
@@ -630,6 +717,17 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     null,
                     null)
             ]));
+        }
+    }
+
+    private sealed class ThrowingSearchService : ISearchService
+    {
+        public Task<SearchOutcome> SearchAsync(
+            string query,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Deliberate unexpected search failure.");
         }
     }
 

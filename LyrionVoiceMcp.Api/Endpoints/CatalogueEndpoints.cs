@@ -55,20 +55,25 @@ public static class CatalogueEndpoints
         status.LatestRefresh is null
             ? null
             : new CatalogueRefreshRunResponse(
-                status.LatestRefresh.Id,
+                status.LatestRefresh.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ToText(status.LatestRefresh.Status),
-                status.LatestRefresh.StartedAt,
+                status.LatestRefresh.StartedAt ?? status.LatestRefresh.CreatedAt,
                 status.LatestRefresh.CompletedAt,
-                status.LatestRefresh.DurationMilliseconds,
-                status.LatestRefresh.FailureMessage,
-                status.LatestRefresh.Logs.Select(log => new CatalogueRefreshLogResponse(
-                    log.Id,
-                    log.OccurredAt,
-                    ToText(log.Level),
-                    log.Message,
-                    log.ProcessedCount,
-                    log.TotalCount)).ToArray()));
+                DurationMilliseconds(status.LatestRefresh),
+                status.LatestRefresh.ErrorMessage,
+                []));
 
-    private static string ToText(CatalogueRefreshRunStatus status) => status.ToString().ToLowerInvariant();
-    private static string ToText(CatalogueRefreshLogLevel level) => level.ToString().ToLowerInvariant();
+    private static string ToText(JobStatus status) => status switch
+    {
+        JobStatus.Pending or JobStatus.Running => "running",
+        JobStatus.Completed => "succeeded",
+        JobStatus.Failed => "failed",
+        JobStatus.Cancelled => "cancelled",
+        _ => throw new InvalidOperationException("Unknown catalogue job status.")
+    };
+
+    private static long? DurationMilliseconds(Job job) =>
+        job.StartedAt is { } startedAt && job.CompletedAt is { } completedAt
+            ? Math.Max(0, (long)(completedAt - startedAt).TotalMilliseconds)
+            : null;
 }

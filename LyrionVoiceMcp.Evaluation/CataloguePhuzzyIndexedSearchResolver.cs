@@ -30,6 +30,14 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
     public string Version => "2";
     public EvaluationResolverMetrics Metrics { get; }
 
+    public static CataloguePhuzzyIndexedSearchResolver Open(
+        string indexDatabasePath,
+        SearchIndexArtifact artifact) =>
+        new(
+            indexDatabasePath,
+            artifact.CandidateCount,
+            artifact.PreparationDurationMilliseconds);
+
     public static async Task<CataloguePhuzzyIndexedSearchResolver> CreateAsync(
         string catalogueDatabasePath,
         string indexDatabasePath,

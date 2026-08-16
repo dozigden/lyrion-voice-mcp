@@ -35,16 +35,9 @@ public static class EvaluationEndpoints
             var response = await service.SearchAsync(request, cancellationToken);
             return Results.Json(response, JsonOptions);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (SearchIndexUnavailableException exception)
         {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            return Results.Problem(
-                title: "Evaluation search failed",
-                detail: exception.Message,
-                statusCode: StatusCodes.Status500InternalServerError);
+            return Results.Conflict(new EvaluationEndpointError(exception.Message));
         }
     }
 

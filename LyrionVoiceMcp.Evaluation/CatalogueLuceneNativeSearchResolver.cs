@@ -46,6 +46,28 @@ public sealed class CatalogueLuceneNativeSearchResolver
     public string Version => "1";
     public EvaluationResolverMetrics Metrics { get; }
 
+    public static CatalogueLuceneNativeSearchResolver Open(
+        string indexDirectoryPath,
+        SearchIndexArtifact artifact)
+    {
+        var directory = FSDirectory.Open(new DirectoryInfo(indexDirectoryPath));
+        try
+        {
+            var reader = DirectoryReader.Open(directory);
+            return new CatalogueLuceneNativeSearchResolver(
+                directory,
+                reader,
+                artifact.CandidateCount,
+                artifact.PreparationDurationMilliseconds,
+                artifact.IndexSizeBytes);
+        }
+        catch
+        {
+            directory.Dispose();
+            throw;
+        }
+    }
+
     public static async Task<CatalogueLuceneNativeSearchResolver> CreateAsync(
         string catalogueDatabasePath,
         string indexDirectoryPath,

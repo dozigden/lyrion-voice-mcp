@@ -1,277 +1,166 @@
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Services;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LyrionVoiceMcp.Services.Tests;
 
 public sealed class CatalogueRefreshServiceTests
 {
     [Fact]
-    public async Task ConcurrentRefreshShouldBeRejectedWhileTheFirstRefreshContinues()
+    public async Task HandlerShouldWriteProgressAndReturnTheCompletedSummary()
     {
         // Arrange
-        var reader = new BlockingCatalogueReader(CreateReadResult());
-        var store = new RecordingCatalogueStore();
-        await using var provider = CreateProvider(reader);
-        var service = CreateService(provider, store);
-        await service.StartAsync(TestContext.Current.CancellationToken);
+        var summary = new CatalogueSummary(
+            "development", "lms", "revision-1", "9.1.2",
+            DateTimeOffset.Parse("2026-08-16T10:00:00Z"), null,
+            DateTimeOffset.Parse("2026-08-16T10:01:00Z"), 2, 1, 2, 3, 1, 1);
+        var store = new RecordingCatalogueStore(summary);
+        var logs = new RecordingJobLogWriter();
+        var searchIndexes = new RecordingSearchIndexService();
+        var handler = new CatalogueRefreshJobHandler(
+            new RecordingCatalogueReader(),
+            store,
+            searchIndexes,
+            logs,
+            new FixedTimeProvider(summary.RefreshedAt));
 
         // Act
-        var firstOutcome = await service.RefreshAsync(TestContext.Current.CancellationToken);
-        await reader.Started.Task.WaitAsync(TestContext.Current.CancellationToken);
-        var secondOutcome = await service.RefreshAsync(TestContext.Current.CancellationToken);
-        reader.Release.SetResult();
-        await store.Completed.Task.WaitAsync(TestContext.Current.CancellationToken);
-        await service.StopAsync(TestContext.Current.CancellationToken);
+        var result = await handler.HandleAsync(
+            new JobContext(42, JobTypes.CatalogueRefresh, "{}"),
+            TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.IsType<CatalogueRefreshAlreadyRunning>(secondOutcome);
-        Assert.IsType<CatalogueRefreshStarted>(firstOutcome);
-        Assert.Equal(1, reader.ReadCount);
-        Assert.Equal(CatalogueRefreshRunStatus.Succeeded, store.LatestRefresh?.Status);
+        Assert.True(result.Success);
+        Assert.Equal("job-42", store.RefreshId);
+        Assert.Equal("job-42", searchIndexes.CatalogueRefreshId);
+        Assert.Contains(logs.Entries, entry => entry.Message == "Catalogue refresh started.");
+        Assert.Contains(logs.Entries, entry => entry.Message == "Reading fictional catalogue.");
+        Assert.Contains(logs.Entries, entry => entry.Message == "Catalogue refresh completed.");
     }
 
     [Fact]
-    public async Task FailedRefreshShouldRetainTheLastSuccessfulSummaryAndSanitiseTheFailure()
+    public async Task HandlerShouldRecordFailedCatalogueStateWhenReadingFails()
     {
         // Arrange
-        var existing = CreateSummary();
-        var store = new RecordingCatalogueStore { Summary = existing };
-        await using var provider = CreateProvider(new FailingCatalogueReader());
-        var service = CreateService(provider, store);
-        await service.StartAsync(TestContext.Current.CancellationToken);
+        var summary = new CatalogueSummary(
+            "development", "lms", "revision-1", "9.1.2",
+            DateTimeOffset.Parse("2026-08-16T10:00:00Z"), null,
+            DateTimeOffset.Parse("2026-08-16T10:01:00Z"), 2, 1, 2, 3, 1, 0);
+        var store = new RecordingCatalogueStore(summary);
+        var handler = new CatalogueRefreshJobHandler(
+            new ThrowingCatalogueReader(),
+            store,
+            new RecordingSearchIndexService(),
+            new RecordingJobLogWriter(),
+            new FixedTimeProvider(summary.RefreshedAt));
 
         // Act
-        var outcome = await service.RefreshAsync(TestContext.Current.CancellationToken);
-        await store.Completed.Task.WaitAsync(TestContext.Current.CancellationToken);
-        var status = await service.GetStatusAsync(TestContext.Current.CancellationToken);
-        await service.StopAsync(TestContext.Current.CancellationToken);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            handler.HandleAsync(
+                new JobContext(43, JobTypes.CatalogueRefresh, "{}"),
+                TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.IsType<CatalogueRefreshStarted>(outcome);
-        Assert.Equal(existing, status.Summary);
-        Assert.Equal(CatalogueRefreshRunStatus.Failed, status.LatestRefresh?.Status);
-        Assert.Equal(
-            "Catalogue refresh failed. See the service logs for details.",
-            status.LatestRefresh?.FailureMessage);
-        Assert.DoesNotContain(
-            "private detail",
-            status.LatestRefresh?.FailureMessage,
-            StringComparison.Ordinal);
+        Assert.Equal("Fictional read failure.", exception.Message);
+        Assert.Equal("job-43", store.RefreshId);
+        Assert.Equal(CatalogueStateStatus.Failed, store.TerminalStatus);
     }
 
-    [Fact]
-    public async Task FailureRecordingErrorShouldNotFaultTheBackgroundService()
+    private sealed class RecordingCatalogueReader : ICatalogueSourceReader
     {
-        // Arrange
-        var store = new RecordingCatalogueStore { ThrowWhenCompletingFailure = true };
-        var logger = new RecordingLogger();
-        await using var provider = CreateProvider(new FailingCatalogueReader());
-        var service = CreateService(provider, store, logger);
-        await service.StartAsync(TestContext.Current.CancellationToken);
-
-        // Act
-        await service.RefreshAsync(TestContext.Current.CancellationToken);
-        await logger.TerminalRecordingFailure.Task.WaitAsync(TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.False(service.ExecuteTask?.IsCompleted ?? true);
-        await service.StopAsync(TestContext.Current.CancellationToken);
-    }
-
-    private static CatalogueRefreshService CreateService(
-        ServiceProvider provider,
-        IMediaCatalogueStore store,
-        ILogger<CatalogueRefreshService>? logger = null) => new(
-        provider.GetRequiredService<IServiceScopeFactory>(),
-        store,
-        new AdvancingTimeProvider(),
-        logger ?? NullLogger<CatalogueRefreshService>.Instance);
-
-    private static CatalogueSourceReadResult CreateReadResult() => new(
-        new CatalogueImportSource("development", "lms", "9.1.2", "revision-2"),
-        DateTimeOffset.UtcNow,
-        null,
-        0,
-        0,
-        0,
-        0,
-        0,
-        []);
-
-    private static CatalogueSummary CreateSummary() => new(
-        "development",
-        "lms",
-        "revision-1",
-        "9.1.2",
-        DateTimeOffset.UtcNow,
-        null,
-        DateTimeOffset.UtcNow,
-        1,
-        1,
-        1,
-        1,
-        1,
-        0);
-
-    private static ServiceProvider CreateProvider(ICatalogueSourceReader reader)
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton(reader);
-        return services.BuildServiceProvider();
-    }
-
-    private sealed class BlockingCatalogueReader(
-        CatalogueSourceReadResult result) : ICatalogueSourceReader
-    {
-        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int ReadCount { get; private set; }
-
         public async Task<CatalogueSourceReadResult> ReadAsync(
             string refreshId,
             ICatalogueImportWriter writer,
+            ICatalogueRefreshLogSink log,
             CancellationToken cancellationToken)
         {
-            ReadCount++;
-            Started.SetResult();
-            await Release.Task.WaitAsync(cancellationToken);
-            return result;
+            await log.WriteAsync(
+                CatalogueRefreshLogLevel.Information,
+                "Reading fictional catalogue.",
+                3,
+                3,
+                cancellationToken);
+            return new CatalogueSourceReadResult(
+                new CatalogueImportSource("development", "lms", "9.1.2", "revision-1"),
+                DateTimeOffset.Parse("2026-08-16T10:00:00Z"), null, 0, 0, 0, 0, 0, []);
         }
     }
 
-    private sealed class FailingCatalogueReader : ICatalogueSourceReader
+    private sealed class ThrowingCatalogueReader : ICatalogueSourceReader
     {
         public Task<CatalogueSourceReadResult> ReadAsync(
             string refreshId,
             ICatalogueImportWriter writer,
+            ICatalogueRefreshLogSink log,
             CancellationToken cancellationToken) =>
-            Task.FromException<CatalogueSourceReadResult>(
-                new InvalidOperationException("private detail from an upstream response"));
+            throw new InvalidOperationException("Fictional read failure.");
     }
 
-    private sealed class RecordingCatalogueStore : IMediaCatalogueStore
+    private sealed class RecordingCatalogueStore(CatalogueSummary summary) : IMediaCatalogueStore
     {
-        public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public CatalogueSummary? Summary { get; set; }
-        public CatalogueRefreshRun? LatestRefresh { get; private set; }
-        public bool ThrowWhenCompletingFailure { get; init; }
-
+        public string? RefreshId { get; private set; }
+        public CatalogueStateStatus? TerminalStatus { get; private set; }
         public Task InitialiseAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(Summary);
-        public Task<CatalogueRefreshRun?> GetLatestRefreshRunAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(LatestRefresh);
-
+        public Task<CatalogueState?> GetStateAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<CatalogueState?>(new CatalogueState(
+                RefreshId ?? "previous",
+                CatalogueStateStatus.Succeeded,
+                summary.CapturedAt,
+                summary.RefreshedAt,
+                summary));
+        public Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken) => Task.FromResult<CatalogueSummary?>(summary);
         public Task BeginRefreshAsync(string refreshId, DateTimeOffset startedAt, CancellationToken cancellationToken)
         {
-            LatestRefresh = new CatalogueRefreshRun(
-                refreshId,
-                CatalogueRefreshRunStatus.Running,
-                startedAt,
-                null,
-                null,
-                null,
-                []);
+            RefreshId = refreshId;
             return Task.CompletedTask;
         }
-
-        public Task<CatalogueSummary> CompleteRefreshAsync(
-            string refreshId,
-            CatalogueSourceReadResult source,
-            DateTimeOffset completedAt,
-            long durationMilliseconds,
-            CancellationToken cancellationToken)
+        public Task<CatalogueRefreshCompletion> CompleteRefreshAsync(string refreshId, CatalogueSourceReadResult source, DateTimeOffset completedAt, int existingWarningCount, CancellationToken cancellationToken)
         {
-            Summary = new CatalogueSummary(
-                source.Source.Id,
-                source.Source.Provider,
-                source.Source.Revision,
-                source.Source.Version,
-                source.CapturedAt,
-                source.SourceLastScanAt,
-                completedAt,
-                0,
-                source.AlbumCount,
-                source.GenreCount,
-                source.TrackCount,
-                source.VirtualLibraryCount,
-                0);
-            LatestRefresh = LatestRefresh! with
-            {
-                Status = CatalogueRefreshRunStatus.Succeeded,
-                CompletedAt = completedAt,
-                DurationMilliseconds = durationMilliseconds
-            };
-            Completed.TrySetResult();
-            return Task.FromResult(Summary);
+            RefreshId = refreshId;
+            return Task.FromResult(new CatalogueRefreshCompletion(summary, []));
         }
-
-        public Task CompleteFailedRefreshAsync(
-            string refreshId,
-            CatalogueRefreshRunStatus status,
-            DateTimeOffset completedAt,
-            long durationMilliseconds,
-            string failureMessage,
-            CancellationToken cancellationToken)
+        public Task FinishRefreshAsync(string refreshId, CatalogueStateStatus status, DateTimeOffset completedAt, CancellationToken cancellationToken)
         {
-            LatestRefresh = LatestRefresh! with
-            {
-                Status = status,
-                CompletedAt = completedAt,
-                DurationMilliseconds = durationMilliseconds,
-                FailureMessage = failureMessage
-            };
-            Completed.TrySetResult();
-            return ThrowWhenCompletingFailure
-                ? Task.FromException(new InvalidOperationException("Catalogue database unavailable."))
-                : Task.CompletedTask;
+            RefreshId = refreshId;
+            TerminalStatus = status;
+            return Task.CompletedTask;
         }
-
         public Task WriteAlbumsAsync(string refreshId, IReadOnlyList<CatalogueImportAlbum> albums, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task WriteGenresAsync(string refreshId, IReadOnlyList<CatalogueImportGenre> genres, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task WriteTracksAsync(string refreshId, IReadOnlyList<CatalogueImportTrack> tracks, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task WriteArtistsAsync(string refreshId, IReadOnlyList<CatalogueImportArtist> artists, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task WriteVirtualLibrariesAsync(string refreshId, IReadOnlyList<CatalogueImportVirtualLibrary> libraries, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task WriteVirtualLibraryTracksAsync(string refreshId, string librarySourceId, IReadOnlyList<string> trackSourceIds, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task AppendRefreshLogAsync(string refreshId, CatalogueRefreshLogLevel level, string message, int? processedCount, int? totalCount, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
-    private sealed class RecordingLogger : ILogger<CatalogueRefreshService>
+    private sealed class RecordingSearchIndexService : ISearchIndexService
     {
-        public TaskCompletionSource TerminalRecordingFailure { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string? CatalogueRefreshId { get; private set; }
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
+        public Task<IReadOnlyList<SearchIndexStatus>> ListAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SearchIndexStatus>>([]);
 
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public Task<SearchIndexRebuildOutcome> RebuildAsync(string resolver, CancellationToken cancellationToken) =>
+            Task.FromResult<SearchIndexRebuildOutcome>(new SearchIndexRebuildRejected("Not used."));
+
+        public Task<IReadOnlyList<long>> EnqueueForCatalogueAsync(string catalogueRefreshId, CancellationToken cancellationToken)
         {
-            if (formatter(state, exception).Contains(
-                    "could not record its terminal state",
-                    StringComparison.Ordinal))
-            {
-                TerminalRecordingFailure.TrySetResult();
-            }
+            CatalogueRefreshId = catalogueRefreshId;
+            return Task.FromResult<IReadOnlyList<long>>([101, 102, 103]);
         }
     }
 
-    private sealed class AdvancingTimeProvider : TimeProvider
+    private sealed class RecordingJobLogWriter : IJobLogWriter
     {
-        private DateTimeOffset current = DateTimeOffset.Parse("2026-08-15T10:00:00Z");
-
-        public override DateTimeOffset GetUtcNow()
+        public List<(JobLogLevel Level, string Message)> Entries { get; } = [];
+        public Task WriteAsync(long jobId, JobLogLevel level, string message, object? data, CancellationToken cancellationToken)
         {
-            var value = current;
-            current = current.AddSeconds(5);
-            return value;
+            Entries.Add((level, message));
+            return Task.CompletedTask;
         }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }

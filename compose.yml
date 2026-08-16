@@ -14,6 +14,10 @@ services:
       LyrionVoiceMcpLms__BaseUrl: "${LVM_LMS_BASE_URL:-}"
       LyrionVoiceMcpLms__RequestTimeoutSeconds: "${LVM_LMS_REQUEST_TIMEOUT_SECONDS:-5}"
       LyrionVoiceMcpObservations__RetentionDays: "${LVM_SEARCH_RETENTION_DAYS:-90}"
+      LyrionVoiceMcpOperations__JobRetentionDays: "${LVM_JOB_RETENTION_DAYS:-90}"
+      LyrionVoiceMcpOperations__ErrorRetentionDays: "${LVM_ERROR_RETENTION_DAYS:-90}"
+      LyrionVoiceMcpOperations__ToolCallRetentionDays: "${LVM_TOOL_CALL_RETENTION_DAYS:-30}"
+      LyrionVoiceMcpOperations__TimeZoneId: "${TZ:-UTC}"
     volumes:
       - search-observations:/data
     restart: unless-stopped

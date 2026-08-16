@@ -77,8 +77,7 @@ else
             httpClient = CreateHttpClient(settings);
             var jsonRpcClient = new LmsJsonRpcClient(settings, httpClient);
             var store = new SqliteMediaCatalogueStore(
-                new CatalogueSettings(cataloguePath),
-                TimeProvider.System);
+                new CatalogueSettings(cataloguePath));
             var sourceReader = new LmsCatalogueReader(
                 jsonRpcClient,
                 settings,

@@ -110,4 +110,44 @@ describe('operationsStore', () => {
     expect(store.catalogue).toEqual({ summary: null, latestRefresh: null });
     expect(store.catalogueErrorMessage).toBe('Catalogue unavailable.');
   });
+
+  it('loads search indexes and retains their artifact while a rebuild starts', async () => {
+    // Arrange
+    const published = searchIndexStatus('succeeded');
+    vi.spyOn(api, 'getSearchIndexes').mockResolvedValue([published]);
+    vi.spyOn(api, 'rebuildSearchIndex').mockResolvedValue(searchIndexStatus('pending'));
+    const store = useOperationsStore();
+
+    // Act
+    await store.loadSearchIndexes();
+    await store.rebuildIndex('phuzzy');
+
+    // Assert
+    expect(store.searchIndexes[0]?.artifact).toEqual(published.artifact);
+    expect(store.searchIndexesRebuilding).toBe(true);
+    expect(store.searchIndexesErrorMessage).toBeNull();
+  });
 });
+
+function searchIndexStatus(
+  status: 'pending' | 'succeeded'
+): api.SearchIndexStatusResponse {
+  return {
+    resolver: 'phuzzy',
+    artifact: {
+      resolverVersion: '2',
+      catalogueRefreshId: 'refresh-1',
+      builtAt: '2026-08-15T12:03:00Z',
+      candidateCount: 1_234,
+      preparationDurationMilliseconds: 920,
+      indexSizeBytes: 65_536
+    },
+    latestJob: {
+      id: 42,
+      status,
+      startedAt: status === 'pending' ? null : '2026-08-15T12:02:40Z',
+      completedAt: status === 'pending' ? null : '2026-08-15T12:03:00Z',
+      errorMessage: null
+    }
+  };
+}

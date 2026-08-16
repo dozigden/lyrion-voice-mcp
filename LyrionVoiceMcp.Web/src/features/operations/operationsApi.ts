@@ -57,6 +57,29 @@ export interface CatalogueStatusResponse {
   latestRefresh: CatalogueRefreshRunResponse | null;
 }
 
+export interface SearchIndexArtifactResponse {
+  resolverVersion: string;
+  catalogueRefreshId: string;
+  builtAt: string;
+  candidateCount: number;
+  preparationDurationMilliseconds: number;
+  indexSizeBytes: number;
+}
+
+export interface SearchIndexJobResponse {
+  id: number;
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  startedAt: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+}
+
+export interface SearchIndexStatusResponse {
+  resolver: string;
+  artifact: SearchIndexArtifactResponse | null;
+  latestJob: SearchIndexJobResponse | null;
+}
+
 export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
   const result = await getJson('/api/health', signal);
   if (!isRecord(result) || typeof result.status !== 'string') {
@@ -122,6 +145,43 @@ export async function rebuildCatalogue(signal?: AbortSignal): Promise<CatalogueS
   }
 
   return parseCatalogueStatus(await response.json() as unknown);
+}
+
+export async function getSearchIndexes(signal?: AbortSignal): Promise<SearchIndexStatusResponse[]> {
+  const value = await getJson('/api/evaluation/indexes', signal);
+  if (!Array.isArray(value) || !value.every(isSearchIndexStatus)) {
+    throw new Error('/api/evaluation/indexes returned an invalid response.');
+  }
+
+  return value;
+}
+
+export async function rebuildSearchIndex(
+  resolver: string,
+  signal?: AbortSignal
+): Promise<SearchIndexStatusResponse> {
+  const url = `/api/evaluation/indexes/${encodeURIComponent(resolver)}/rebuild`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json'
+    },
+    signal
+  });
+
+  const value = await response.json() as unknown;
+  if (response.status === 409) {
+    const message = isRecord(value) && typeof value.message === 'string'
+      ? value.message
+      : 'The search-index rebuild was rejected.';
+    throw new Error(message);
+  }
+
+  if (response.status !== 202 || !isSearchIndexStatus(value)) {
+    throw new Error(`${url} returned HTTP ${response.status}.`);
+  }
+
+  return value;
 }
 
 async function getJson(url: string, signal?: AbortSignal): Promise<unknown> {
@@ -221,6 +281,50 @@ function isCatalogueRefreshStatus(value: unknown): value is CatalogueRefreshRunR
 
 function isCatalogueLogLevel(value: unknown): value is CatalogueRefreshLogResponse['level'] {
   return value === 'information' || value === 'warning' || value === 'error';
+}
+
+function isSearchIndexStatus(value: unknown): value is SearchIndexStatusResponse {
+  return isRecord(value)
+    && typeof value.resolver === 'string'
+    && isNullableSearchIndexArtifact(value.artifact)
+    && isNullableSearchIndexJob(value.latestJob);
+}
+
+function isNullableSearchIndexArtifact(
+  value: unknown
+): value is SearchIndexArtifactResponse | null {
+  if (value === null) {
+    return true;
+  }
+
+  return isRecord(value)
+    && typeof value.resolverVersion === 'string'
+    && typeof value.catalogueRefreshId === 'string'
+    && typeof value.builtAt === 'string'
+    && isNumber(value.candidateCount)
+    && isNumber(value.preparationDurationMilliseconds)
+    && isNumber(value.indexSizeBytes);
+}
+
+function isNullableSearchIndexJob(value: unknown): value is SearchIndexJobResponse | null {
+  if (value === null) {
+    return true;
+  }
+
+  return isRecord(value)
+    && isNumber(value.id)
+    && isSearchIndexJobStatus(value.status)
+    && isNullableString(value.startedAt)
+    && isNullableString(value.completedAt)
+    && isNullableString(value.errorMessage);
+}
+
+function isSearchIndexJobStatus(value: unknown): value is SearchIndexJobResponse['status'] {
+  return value === 'pending'
+    || value === 'running'
+    || value === 'succeeded'
+    || value === 'failed'
+    || value === 'cancelled';
 }
 
 function isNullableNumber(value: unknown): value is number | null {

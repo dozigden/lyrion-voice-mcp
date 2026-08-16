@@ -10,7 +10,8 @@ internal sealed class CatalogueEvaluationIndex(
     IReadOnlyList<CatalogueEvaluationCandidate> candidates,
     long preparationDurationMilliseconds)
 {
-    private const int SupportedCatalogueSchemaVersion = 4;
+    private const int CurrentCatalogueSchemaVersion = 6;
+    private const int LegacyCatalogueSchemaVersion = 4;
 
     public IReadOnlyList<CatalogueEvaluationCandidate> Candidates { get; } = candidates;
     public long PreparationDurationMilliseconds { get; } = preparationDurationMilliseconds;
@@ -33,25 +34,31 @@ internal sealed class CatalogueEvaluationIndex(
         }.ToString();
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-        await EnsureSupportedSchemaAsync(connection, cancellationToken);
-        var refreshId = await ReadReadyRefreshIdAsync(connection, cancellationToken);
+        var schemaVersion = await ReadSupportedSchemaAsync(connection, cancellationToken);
+        var catalogueVersion = await ReadCatalogueVersionAsync(
+            connection,
+            schemaVersion,
+            cancellationToken);
 
         var loaded = new List<CatalogueEvaluationCandidate>();
         await ReadArtistsAsync(connection, loaded, cancellationToken);
         await ReadAlbumsAsync(connection, loaded, cancellationToken);
         await ReadTracksAsync(connection, loaded, cancellationToken);
-        var finalRefreshId = await ReadReadyRefreshIdAsync(connection, cancellationToken);
-        if (!string.Equals(refreshId, finalRefreshId, StringComparison.Ordinal))
+        var finalCatalogueVersion = await ReadCatalogueVersionAsync(
+            connection,
+            schemaVersion,
+            cancellationToken);
+        if (!string.Equals(catalogueVersion, finalCatalogueVersion, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
-                "Catalogue refresh state changed while evaluation candidates were being loaded.");
+                "Catalogue state changed while evaluation candidates were being loaded.");
         }
 
         stopwatch.Stop();
         return new CatalogueEvaluationIndex(loaded, stopwatch.ElapsedMilliseconds);
     }
 
-    private static async Task EnsureSupportedSchemaAsync(
+    private static async Task<int> ReadSupportedSchemaAsync(
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
@@ -59,34 +66,44 @@ internal sealed class CatalogueEvaluationIndex(
         command.CommandText = "SELECT version FROM catalogue_schema LIMIT 1;";
         var value = await command.ExecuteScalarAsync(cancellationToken);
         var version = Convert.ToInt32(value, CultureInfo.InvariantCulture);
-        if (version != SupportedCatalogueSchemaVersion)
+        if (version is not CurrentCatalogueSchemaVersion and not LegacyCatalogueSchemaVersion)
         {
             throw new InvalidOperationException(
                 $"Catalogue schema {version} is not supported by this benchmark resolver.");
         }
+
+        return version;
     }
 
-    private static async Task<string> ReadReadyRefreshIdAsync(
+    private static async Task<string> ReadCatalogueVersionAsync(
         SqliteConnection connection,
+        int schemaVersion,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT refresh.id, refresh.status
-            FROM catalogue_refresh_runs refresh
-            WHERE EXISTS (SELECT 1 FROM catalogue_state WHERE id = 1)
-            ORDER BY refresh.started_at DESC, refresh.id DESC
-            LIMIT 1;
-            """;
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)
-            || !string.Equals(reader.GetString(1), "succeeded", StringComparison.Ordinal))
+        command.CommandText = schemaVersion == LegacyCatalogueSchemaVersion
+            ? """
+                SELECT CASE WHEN refresh.status = 'succeeded' THEN refresh.id ELSE NULL END
+                FROM catalogue_refresh_runs refresh
+                WHERE EXISTS (SELECT 1 FROM catalogue_state WHERE id = 1)
+                ORDER BY refresh.started_at DESC, refresh.id DESC
+                LIMIT 1;
+                """
+            : """
+                SELECT refresh_id
+                FROM catalogue_state
+                WHERE id = 1 AND refresh_status = 'succeeded';
+                """;
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is not string version)
         {
             throw new InvalidOperationException(
-                "Catalogue database is not converged at a successful refresh.");
+                schemaVersion == LegacyCatalogueSchemaVersion
+                    ? "Catalogue database is not converged at a successful refresh."
+                    : "Catalogue database has not completed a successful refresh.");
         }
 
-        return reader.GetString(0);
+        return version;
     }
 
     private static async Task ReadArtistsAsync(

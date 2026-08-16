@@ -139,6 +139,66 @@
           {{ catalogueButtonLabel }}
         </button>
       </article>
+
+      <article class="status-card status-card--indexes">
+        <div class="status-card__heading">
+          <div>
+            <p class="status-card__label">Search evaluation</p>
+            <h2>Published indexes</h2>
+          </div>
+          <span class="status-pill" :class="indexStatusPillClass" role="status">
+            <span class="status-pill__dot" aria-hidden="true"></span>
+            {{ indexStatusLabel }}
+          </span>
+        </div>
+
+        <p v-if="operations.searchIndexesErrorMessage" class="error-message" role="alert">
+          {{ operations.searchIndexesErrorMessage }}
+        </p>
+        <p v-else-if="operations.searchIndexesLoading && operations.searchIndexes.length === 0" class="status-card__copy">
+          Reading search-index status…
+        </p>
+        <div v-else class="index-list">
+          <section
+            v-for="index in operations.searchIndexes"
+            :key="index.resolver"
+            class="index-row"
+          >
+            <div class="index-row__summary">
+              <h3>{{ index.resolver }}</h3>
+              <p v-if="index.artifact">
+                {{ formatCount(index.artifact.candidateCount) }} candidates ·
+                {{ formatBytes(index.artifact.indexSizeBytes) }} · built
+                <time :datetime="index.artifact.builtAt">{{ formatDate(index.artifact.builtAt) }}</time>
+              </p>
+              <p v-else>No published artifact.</p>
+              <p v-if="index.latestJob?.errorMessage" class="index-row__error">
+                {{ index.latestJob.errorMessage }}
+              </p>
+            </div>
+            <div class="index-row__actions">
+              <a
+                v-if="index.latestJob"
+                class="job-link"
+                :href="`/jobs/${index.latestJob.id}`"
+              >
+                Job {{ index.latestJob.id }} · {{ index.latestJob.status }}
+              </a>
+              <button
+                class="refresh-button index-rebuild"
+                type="button"
+                :disabled="indexButtonDisabled(index.latestJob?.status)"
+                @click="rebuildIndex(index.resolver)"
+              >
+                {{ indexButtonLabel(index.resolver, index.latestJob?.status) }}
+              </button>
+            </div>
+          </section>
+          <p v-if="operations.searchIndexes.length === 0" class="catalogue-empty">
+            No search-index resolvers are configured.
+          </p>
+        </div>
+      </article>
     </section>
 
     <aside class="trust-notice" aria-labelledby="trust-title">
@@ -164,8 +224,8 @@ import { computed, onMounted, onUnmounted } from 'vue';
 import { useOperationsStore } from './operationsStore';
 
 const operations = useOperationsStore();
-let cataloguePollTimer: ReturnType<typeof setTimeout> | undefined;
-let cataloguePollingActive = false;
+let operationPollTimer: ReturnType<typeof setTimeout> | undefined;
+let operationPollingActive = false;
 
 const statusLabel = computed(() => {
   if (operations.loading) {
@@ -253,18 +313,47 @@ const catalogueButtonLabel = computed(() => {
   return 'Rebuild catalogue';
 });
 
+const indexStatusLabel = computed(() => {
+  if (operations.searchIndexesLoading && operations.searchIndexes.length === 0) {
+    return 'Checking';
+  }
+
+  if (operations.searchIndexesRebuilding) {
+    return 'Rebuilding';
+  }
+
+  if (operations.searchIndexes.some(index => index.latestJob?.status === 'failed')) {
+    return 'Attention';
+  }
+
+  if (operations.searchIndexes.length > 0
+    && operations.searchIndexes.every(index => index.artifact !== null)) {
+    return 'Ready';
+  }
+
+  return 'Not built';
+});
+
+const indexStatusPillClass = computed(() => ({
+  'status-pill--online': indexStatusLabel.value === 'Ready',
+  'status-pill--working': operations.searchIndexesRebuilding,
+  'status-pill--error': operations.searchIndexesErrorMessage !== null
+    || indexStatusLabel.value === 'Attention'
+}));
+
 onMounted(async () => {
-  cataloguePollingActive = true;
+  operationPollingActive = true;
   await Promise.all([
     operations.load(),
-    operations.loadCatalogue()
+    operations.loadCatalogue(),
+    operations.loadSearchIndexes()
   ]);
-  scheduleCataloguePoll();
+  scheduleOperationPoll();
 });
 
 onUnmounted(() => {
-  cataloguePollingActive = false;
-  clearCataloguePoll();
+  operationPollingActive = false;
+  clearOperationPoll();
 });
 
 async function refresh(): Promise<void> {
@@ -273,26 +362,56 @@ async function refresh(): Promise<void> {
 
 async function rebuildCatalogue(): Promise<void> {
   await operations.rebuild();
-  scheduleCataloguePoll();
+  scheduleOperationPoll();
 }
 
-function scheduleCataloguePoll(): void {
-  clearCataloguePoll();
-  if (!cataloguePollingActive || !operations.catalogueRebuilding) {
+async function rebuildIndex(resolver: string): Promise<void> {
+  await operations.rebuildIndex(resolver);
+  scheduleOperationPoll();
+}
+
+function scheduleOperationPoll(): void {
+  clearOperationPoll();
+  if (!operationPollingActive
+    || (!operations.catalogueRebuilding && !operations.searchIndexesRebuilding)) {
     return;
   }
 
-  cataloguePollTimer = setTimeout(async () => {
-    await operations.loadCatalogue();
-    scheduleCataloguePoll();
+  operationPollTimer = setTimeout(async () => {
+    await Promise.all([
+      operations.loadCatalogue(),
+      operations.loadSearchIndexes()
+    ]);
+    scheduleOperationPoll();
   }, 2_000);
 }
 
-function clearCataloguePoll(): void {
-  if (cataloguePollTimer !== undefined) {
-    clearTimeout(cataloguePollTimer);
-    cataloguePollTimer = undefined;
+function clearOperationPoll(): void {
+  if (operationPollTimer !== undefined) {
+    clearTimeout(operationPollTimer);
+    operationPollTimer = undefined;
   }
+}
+
+function indexButtonDisabled(status: string | undefined): boolean {
+  return operations.searchIndexesLoading
+    || operations.searchIndexRebuildPending !== null
+    || status === 'pending'
+    || status === 'running'
+    || operations.catalogueRebuilding
+    || !operations.catalogue?.summary;
+}
+
+function indexButtonLabel(resolver: string, status: string | undefined): string {
+  if (operations.searchIndexRebuildPending === resolver) {
+    return 'Starting…';
+  }
+
+  if (status === 'pending' || status === 'running') {
+    return 'Rebuilding…';
+  }
+
+  return 'Rebuild';
 }
 
 function formatCount(value: number): string {
@@ -304,6 +423,18 @@ function formatDate(value: string): string {
     dateStyle: 'medium',
     timeStyle: 'short'
   });
+}
+
+function formatBytes(value: number): string {
+  if (value < 1_024) {
+    return `${value} B`;
+  }
+
+  if (value < 1_048_576) {
+    return `${(value / 1_024).toFixed(1)} KiB`;
+  }
+
+  return `${(value / 1_048_576).toFixed(1)} MiB`;
 }
 </script>
 
@@ -541,6 +672,61 @@ code {
   background: linear-gradient(145deg, rgba(38, 34, 27, 0.96), rgba(25, 23, 19, 0.98));
 }
 
+.status-card--indexes {
+  min-height: 190px;
+  grid-column: 1 / -1;
+}
+
+.index-list {
+  display: grid;
+  gap: 10px;
+}
+
+.index-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px 0;
+  border-top: 1px solid var(--border);
+}
+
+.index-row:first-child {
+  border-top: 0;
+}
+
+.index-row h3 {
+  margin: 0 0 5px;
+  font-size: 0.98rem;
+}
+
+.index-row p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.83rem;
+}
+
+.index-row .index-row__error {
+  margin-top: 5px;
+  color: var(--danger-text);
+}
+
+.index-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.job-link {
+  color: var(--accent-soft);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.index-rebuild {
+  min-width: 92px;
+}
+
 .catalogue-empty {
   min-height: 48px;
   color: var(--text-muted);
@@ -645,6 +831,11 @@ footer {
 
   .status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .index-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   footer {

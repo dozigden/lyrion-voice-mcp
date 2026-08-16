@@ -2,7 +2,7 @@ namespace LyrionVoiceMcp.Abstractions;
 
 public sealed record CatalogueStatus(
     CatalogueSummary? Summary,
-    CatalogueRefreshRun? LatestRefresh);
+    Job? LatestRefresh);
 
 public abstract record CatalogueRefreshOutcome;
 

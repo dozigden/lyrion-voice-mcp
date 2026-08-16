@@ -47,10 +47,19 @@ curl --fail --silent "$base_url/api/version" | jq --exit-status '.version and .c
 curl --fail --silent "$base_url/api/lms" | jq --exit-status '.status == "not_configured"' >/dev/null
 curl --fail --silent "$base_url/api/search-observations?limit=1" \
   | jq --exit-status '.items == [] and .retentionDays == 90' >/dev/null
+curl --fail --silent "$base_url/api/jobs?limit=1" \
+  | jq --exit-status '(.items | type) == "array" and .retentionDays == 90' >/dev/null
+curl --fail --silent "$base_url/api/scheduled-jobs" \
+  | jq --exit-status 'length == 4 and any(.name == "catalogue-refresh" and .enabled == false)' >/dev/null
+curl --fail --silent "$base_url/api/error-logs?limit=1" \
+  | jq --exit-status '(.items | type) == "array" and .retentionDays == 90' >/dev/null
+curl --fail --silent "$base_url/api/tool-calls?limit=1" \
+  | jq --exit-status '(.items | type) == "array" and .retentionDays == 30' >/dev/null
 curl --fail --silent "$base_url/api/evaluation" \
   | jq --exit-status '.schemaVersion == 1 and (.resolvers | index("catalogue-phuzzy-indexed")) and (.resolvers | index("catalogue-lucene")) and (.resolvers | index("catalogue-lucene-native"))' >/dev/null
 docker exec "$container_name" test -r /app/licenses/Apache-2.0.txt
 docker exec "$container_name" test -r /app/licenses/Lucene.Net-NOTICE.txt
+docker exec "$container_name" test -r /app/licenses/Cronos-LICENSE.txt
 curl --fail --silent "$base_url/" | grep --quiet 'Lyrion Voice MCP'
 
 mcp_status="$(curl --silent --output /tmp/lyrion-voice-mcp-smoke-mcp-$$.json --write-out '%{http_code}' \

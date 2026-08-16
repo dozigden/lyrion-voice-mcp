@@ -11,6 +11,11 @@ The production image includes the Apache License 2.0 text at
 `/app/licenses/Apache-2.0.txt` and the Lucene.Net notice at
 `/app/licenses/Lucene.Net-NOTICE.txt`.
 
+The production job scheduler includes Cronos 0.13.0 under the MIT licence.
+The production image includes its licence at `/app/licenses/Cronos-LICENSE.txt`.
+
+> Copyright (c) 2017 Hangfire OÜ
+
 ## Lucene.Net notice
 
 > Apache Lucene.Net  

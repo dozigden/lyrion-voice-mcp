@@ -38,6 +38,28 @@ public sealed class CatalogueLuceneSearchResolver : IEvaluationDiagnosticSearchR
     public string Version => "1";
     public EvaluationResolverMetrics Metrics { get; }
 
+    public static CatalogueLuceneSearchResolver Open(
+        string indexDirectoryPath,
+        SearchIndexArtifact artifact)
+    {
+        var directory = FSDirectory.Open(new DirectoryInfo(indexDirectoryPath));
+        try
+        {
+            var reader = DirectoryReader.Open(directory);
+            return new CatalogueLuceneSearchResolver(
+                directory,
+                reader,
+                artifact.CandidateCount,
+                artifact.PreparationDurationMilliseconds,
+                artifact.IndexSizeBytes);
+        }
+        catch
+        {
+            directory.Dispose();
+            throw;
+        }
+    }
+
     public static async Task<CatalogueLuceneSearchResolver> CreateAsync(
         string catalogueDatabasePath,
         string indexDirectoryPath,

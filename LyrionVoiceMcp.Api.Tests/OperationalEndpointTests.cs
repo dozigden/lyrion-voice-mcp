@@ -113,10 +113,76 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
     }
 
     [Fact]
-    public async Task CatalogueShouldExposeSummaryAndLatestRefreshLogs()
+    public async Task ScheduledJobsShouldExposeDisabledCatalogueAndEnabledMaintenanceDefinitions()
+    {
+        using var client = factory.CreateClient();
+
+        var schedules = await client.GetFromJsonAsync<ScheduledJobResponse[]>(
+            "/api/scheduled-jobs",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, schedules?.Length);
+        Assert.False(Assert.Single(schedules!, item => item.Name == "catalogue-refresh").Enabled);
+        Assert.True(Assert.Single(schedules!, item => item.Name == "error-log-purge").Enabled);
+    }
+
+    [Fact]
+    public async Task RunNowShouldCreateAnInspectableDurableJobEvenWhenScheduleIsDisabled()
+    {
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync(
+            "/api/scheduled-jobs/catalogue-refresh/run",
+            null,
+            TestContext.Current.CancellationToken);
+        var result = await response.Content.ReadFromJsonAsync<ScheduledJobRunNowResponse>(
+            TestContext.Current.CancellationToken);
+        var details = await client.GetFromJsonAsync<JobDetailsResponse>(
+            $"/api/jobs/{Assert.Single(result!.JobIds)}",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(JobTypes.CatalogueRefresh, details?.Job.Type);
+        Assert.NotEmpty(details!.Logs);
+    }
+
+    [Fact]
+    public async Task UnexpectedApiFailureShouldReturnAResolvableDurableErrorReference()
+    {
+        await using var failingFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IJobService>();
+                services.AddSingleton<IJobService>(new ThrowingJobService());
+            }));
+        using var client = failingFactory.CreateClient();
+
+        var response = await client.GetAsync(
+            "/api/jobs?type=force-middleware-failure",
+            TestContext.Current.CancellationToken);
+        var responseBody = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(
+            TestContext.Current.CancellationToken);
+        var errors = await client.GetFromJsonAsync<ErrorLogPageResponse>(
+            $"/api/error-logs?source={ErrorLogSources.Backend}&area={ErrorLogAreas.ApiRequest}",
+            TestContext.Current.CancellationToken);
+        var summary = Assert.Single(errors!.Items, item =>
+            item.Message.Contains("Deliberate API failure.", StringComparison.Ordinal));
+        var error = await client.GetFromJsonAsync<ErrorLogResponse>(
+            $"/api/error-logs/{summary.Id}",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Contains(error!.Id.ToString(), responseBody!.Message, StringComparison.Ordinal);
+        Assert.Equal("GET", error.RequestMethod);
+        Assert.Equal("/api/jobs", error.RequestPath);
+        Assert.NotNull(error.TraceIdentifier);
+    }
+
+    [Fact]
+    public async Task CatalogueShouldExposeSummaryAndLatestRefreshJob()
     {
         // Arrange
-        var status = CreateCatalogueStatus(CatalogueRefreshRunStatus.Succeeded);
+        var status = CreateCatalogueStatus(JobStatus.Completed);
         using var configuredFactory = factory.WithWebHostBuilder(builder =>
             builder.ConfigureServices(services =>
             {
@@ -135,14 +201,14 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
         Assert.Equal(6_530, response?.Summary?.ArtistCount);
         Assert.Equal(33_687, response?.Summary?.TrackCount);
         Assert.Equal("succeeded", response?.LatestRefresh?.Status);
-        Assert.Equal("information", Assert.Single(response!.LatestRefresh!.Logs).Level);
+        Assert.Empty(response!.LatestRefresh!.Logs);
     }
 
     [Fact]
     public async Task CatalogueRefreshShouldReportConflictWhenARefreshIsAlreadyRunning()
     {
         // Arrange
-        var status = CreateCatalogueStatus(CatalogueRefreshRunStatus.Running);
+        var status = CreateCatalogueStatus(JobStatus.Running);
         using var configuredFactory = factory.WithWebHostBuilder(builder =>
             builder.ConfigureServices(services =>
             {
@@ -171,7 +237,7 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
     public async Task CatalogueRefreshShouldQueueBackgroundWorkAndReturnStatusLocation()
     {
         // Arrange
-        var status = CreateCatalogueStatus(CatalogueRefreshRunStatus.Running);
+        var status = CreateCatalogueStatus(JobStatus.Running);
         using var configuredFactory = factory.WithWebHostBuilder(builder =>
             builder.ConfigureServices(services =>
             {
@@ -194,7 +260,7 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
         Assert.Equal("/api/catalogue", response.Headers.Location?.OriginalString);
     }
 
-    private static CatalogueStatus CreateCatalogueStatus(CatalogueRefreshRunStatus status)
+    private static CatalogueStatus CreateCatalogueStatus(JobStatus status)
     {
         var summary = new CatalogueSummary(
             "development",
@@ -212,24 +278,21 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
             0);
         return new CatalogueStatus(
             summary,
-            new CatalogueRefreshRun(
-                "refresh-1",
+            new Job(
+                1,
+                JobTypes.CatalogueRefresh,
                 status,
                 DateTimeOffset.Parse("2026-08-15T10:00:00Z"),
-                status == CatalogueRefreshRunStatus.Running
+                "{}",
+                "{}",
+                null,
+                DateTimeOffset.Parse("2026-08-15T10:00:00Z"),
+                status == JobStatus.Running
                     ? null
                     : DateTimeOffset.Parse("2026-08-15T10:00:12Z"),
-                status == CatalogueRefreshRunStatus.Running ? null : 12_000,
-                null,
-                [
-                    new CatalogueRefreshLog(
-                        1,
-                        DateTimeOffset.Parse("2026-08-15T10:00:12Z"),
-                        CatalogueRefreshLogLevel.Information,
-                        "Completed catalogue refresh.",
-                        33_687,
-                        33_687)
-                ]));
+                "manual:catalogue.refresh:test",
+                DateTimeOffset.Parse("2026-08-15T10:00:00Z"),
+                DateTimeOffset.Parse("2026-08-15T10:00:12Z")));
     }
 
     private sealed class StubCatalogueRefreshService(
@@ -241,5 +304,26 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
 
         public Task<CatalogueRefreshOutcome> RefreshAsync(CancellationToken cancellationToken) =>
             Task.FromResult(outcome ?? new CatalogueRefreshStarted(status));
+    }
+
+    private sealed class ThrowingJobService : IJobService
+    {
+        public int RetentionDays => 90;
+
+        public Task<JobPage> BrowseAsync(JobQuery query, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Deliberate API failure.");
+
+        public Task<JobDetails?> GetAsync(long id, CancellationToken cancellationToken) =>
+            Task.FromResult<JobDetails?>(null);
+
+        public Task<JobEnqueueOutcome> EnqueueAsync(
+            CreateJob request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<JobEnqueueOutcome>(new JobEnqueueRejected("Not used."));
+
+        public Task<JobCancellationOutcome> RequestCancellationAsync(
+            long id,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<JobCancellationOutcome>(new JobCancellationRejected("Not used."));
     }
 }

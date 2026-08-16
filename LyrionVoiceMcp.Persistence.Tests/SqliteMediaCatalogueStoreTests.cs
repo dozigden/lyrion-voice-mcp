@@ -18,9 +18,7 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
     public SqliteMediaCatalogueStoreTests()
     {
         databasePath = Path.Combine(directory, "catalogue.db");
-        store = new SqliteMediaCatalogueStore(
-            new CatalogueSettings(databasePath),
-            new FixedTimeProvider(CompletedAt));
+        store = new SqliteMediaCatalogueStore(new CatalogueSettings(databasePath));
         store.InitialiseAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
@@ -28,7 +26,6 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
     public async Task CompleteRefreshShouldPersistBatchesAndOnlyReferencedArtists()
     {
         // Arrange
-        await store.BeginRefreshAsync("refresh-1", StartedAt, TestContext.Current.CancellationToken);
         await WriteCatalogueAsync("refresh-1", [CreateTrack("31", "First Tide")]);
 
         // Act
@@ -36,15 +33,12 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
             "refresh-1",
             CreateReadResult(trackCount: 1),
             CompletedAt,
-            12_000,
+            0,
             TestContext.Current.CancellationToken);
-        var run = await store.GetLatestRefreshRunAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(2, summary.ArtistCount);
-        Assert.Equal(1, summary.TrackCount);
-        Assert.Equal(CatalogueRefreshRunStatus.Succeeded, run?.Status);
-        Assert.Contains(run!.Logs, log => log.Message == "Completed catalogue refresh.");
+        Assert.Equal(2, summary.Summary.ArtistCount);
+        Assert.Equal(1, summary.Summary.TrackCount);
         Assert.Equal(2, await CountAsync("catalogue_artists"));
         Assert.Equal(0, await ScalarIntAsync(
             "SELECT COUNT(*) FROM catalogue_artists WHERE source_id = '99';"));
@@ -52,13 +46,17 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
         Assert.Equal(2, await CountAsync("catalogue_track_genres"));
         Assert.Equal(1, await CountAsync("catalogue_track_statistics"));
         Assert.Equal(1, await CountAsync("catalogue_virtual_library_tracks"));
+        var state = await store.GetStateAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("refresh-1", state?.RefreshId);
+        Assert.Equal(CatalogueStateStatus.Succeeded, state?.Status);
+        Assert.Equal(CompletedAt, state?.CompletedAt);
+        Assert.Equal(1, state?.Summary?.TrackCount);
     }
 
     [Fact]
     public async Task CompleteRefreshShouldRejectDuplicateArtistLookupRowsAcrossBatches()
     {
         // Arrange
-        await store.BeginRefreshAsync("refresh-1", StartedAt, TestContext.Current.CancellationToken);
         await WriteCatalogueAsync("refresh-1", [CreateTrack("31", "First Tide")]);
         await store.WriteArtistsAsync(
             "refresh-1",
@@ -72,7 +70,7 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
                 "refresh-1",
                 result,
                 CompletedAt,
-                12_000,
+                0,
                 TestContext.Current.CancellationToken));
 
         // Assert
@@ -83,7 +81,6 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
     public async Task CompleteRefreshShouldRejectDuplicateVirtualLibraryMembersAcrossBatches()
     {
         // Arrange
-        await store.BeginRefreshAsync("refresh-1", StartedAt, TestContext.Current.CancellationToken);
         await WriteCatalogueAsync("refresh-1", [CreateTrack("31", "First Tide")]);
         await store.WriteVirtualLibraryTracksAsync(
             "refresh-1",
@@ -104,7 +101,7 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
                 "refresh-1",
                 result,
                 CompletedAt,
-                12_000,
+                0,
                 TestContext.Current.CancellationToken));
 
         // Assert
@@ -115,13 +112,12 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
     public async Task FailedRefreshShouldKeepCompletedBatchesWithoutRemovingOlderRows()
     {
         // Arrange
-        await store.BeginRefreshAsync("refresh-1", StartedAt, TestContext.Current.CancellationToken);
         await WriteCatalogueAsync("refresh-1", [CreateTrack("31", "First Tide")]);
-        var previousSummary = await store.CompleteRefreshAsync(
+        await store.CompleteRefreshAsync(
             "refresh-1",
             CreateReadResult(trackCount: 1),
             CompletedAt,
-            12_000,
+            0,
             TestContext.Current.CancellationToken);
         await store.BeginRefreshAsync(
             "refresh-2",
@@ -133,17 +129,13 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
             TestContext.Current.CancellationToken);
 
         // Act
-        await store.CompleteFailedRefreshAsync(
-            "refresh-2",
-            CatalogueRefreshRunStatus.Failed,
-            CompletedAt.AddMinutes(1).AddSeconds(3),
-            3_000,
-            "Catalogue refresh failed. See the service logs for details.",
-            TestContext.Current.CancellationToken);
         var summary = await store.GetSummaryAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(previousSummary, summary);
+        Assert.Null(summary);
+        Assert.Equal(
+            CatalogueStateStatus.Running,
+            (await store.GetStateAsync(TestContext.Current.CancellationToken))?.Status);
         Assert.Equal(2, await CountAsync("catalogue_tracks"));
         Assert.Equal(1, await ScalarIntAsync(
             "SELECT COUNT(*) FROM catalogue_tracks WHERE title = 'First Tide';"));
@@ -152,10 +144,66 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task FailedRefreshShouldRecordTerminalStateWithoutRetainingThePreviousSummary()
+    {
+        // Arrange
+        await WriteCatalogueAsync("refresh-1", [CreateTrack("31", "First Tide")]);
+        await store.CompleteRefreshAsync(
+            "refresh-1",
+            CreateReadResult(trackCount: 1),
+            CompletedAt,
+            0,
+            TestContext.Current.CancellationToken);
+        var failedAt = CompletedAt.AddMinutes(2);
+        await store.BeginRefreshAsync(
+            "refresh-2",
+            CompletedAt.AddMinutes(1),
+            TestContext.Current.CancellationToken);
+
+        // Act
+        await store.FinishRefreshAsync(
+            "refresh-2",
+            CatalogueStateStatus.Failed,
+            failedAt,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var state = await store.GetStateAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("refresh-2", state?.RefreshId);
+        Assert.Equal(CatalogueStateStatus.Failed, state?.Status);
+        Assert.Equal(failedAt, state?.CompletedAt);
+        Assert.Null(state?.Summary);
+        Assert.Null(await store.GetSummaryAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task InitialiseShouldMarkAnAbandonedRefreshInterrupted()
+    {
+        // Arrange
+        var interruptedAt = CompletedAt.AddHours(1);
+        await store.BeginRefreshAsync(
+            "refresh-running",
+            StartedAt,
+            TestContext.Current.CancellationToken);
+        var restarted = new SqliteMediaCatalogueStore(
+            new CatalogueSettings(databasePath),
+            new FixedTimeProvider(interruptedAt));
+
+        // Act
+        await restarted.InitialiseAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        var state = await restarted.GetStateAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("refresh-running", state?.RefreshId);
+        Assert.Equal(CatalogueStateStatus.Interrupted, state?.Status);
+        Assert.Equal(interruptedAt, state?.CompletedAt);
+        Assert.Null(state?.Summary);
+    }
+
+    [Fact]
     public async Task LaterSuccessfulRefreshShouldRemoveRowsNotSeenInThatRefresh()
     {
         // Arrange
-        await store.BeginRefreshAsync("refresh-1", StartedAt, TestContext.Current.CancellationToken);
         await WriteCatalogueAsync(
             "refresh-1",
             [CreateTrack("31", "First Tide"), CreateTrack("32", "Second Tide")]);
@@ -163,11 +211,7 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
             "refresh-1",
             CreateReadResult(trackCount: 2),
             CompletedAt,
-            12_000,
-            TestContext.Current.CancellationToken);
-        await store.BeginRefreshAsync(
-            "refresh-2",
-            CompletedAt.AddMinutes(1),
+            0,
             TestContext.Current.CancellationToken);
         await WriteCatalogueAsync("refresh-2", [CreateTrack("32", "Second Tide revised")]);
 
@@ -176,7 +220,7 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
             "refresh-2",
             CreateReadResult(trackCount: 1),
             CompletedAt.AddMinutes(1).AddSeconds(10),
-            10_000,
+            0,
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -189,7 +233,6 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
     public async Task InitialiseShouldRebuildAnOlderCatalogueSchemaWithoutMigratingData()
     {
         // Arrange
-        await store.BeginRefreshAsync("refresh-1", StartedAt, TestContext.Current.CancellationToken);
         await WriteCatalogueAsync("refresh-1", [CreateTrack("31", "Disposable Tide")]);
         await using (var connection = await OpenAsync())
         {
@@ -198,36 +241,15 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
             await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
         }
 
-        var restarted = new SqliteMediaCatalogueStore(
-            new CatalogueSettings(databasePath),
-            new FixedTimeProvider(CompletedAt));
+        var restarted = new SqliteMediaCatalogueStore(new CatalogueSettings(databasePath));
 
         // Act
         await restarted.InitialiseAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(4, await ScalarIntAsync("SELECT version FROM catalogue_schema;"));
+        Assert.Equal(6, await ScalarIntAsync("SELECT version FROM catalogue_schema;"));
         Assert.Equal(0, await CountAsync("catalogue_tracks"));
         Assert.Null(await restarted.GetSummaryAsync(TestContext.Current.CancellationToken));
-        Assert.Null(await restarted.GetLatestRefreshRunAsync(TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task InitialiseShouldMarkAnAbandonedRefreshAsInterrupted()
-    {
-        // Arrange
-        await store.BeginRefreshAsync("refresh-1", StartedAt, TestContext.Current.CancellationToken);
-        var restarted = new SqliteMediaCatalogueStore(
-            new CatalogueSettings(databasePath),
-            new FixedTimeProvider(StartedAt.AddMinutes(2)));
-
-        // Act
-        await restarted.InitialiseAsync(TestContext.Current.CancellationToken);
-        var run = await restarted.GetLatestRefreshRunAsync(TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.Equal(CatalogueRefreshRunStatus.Interrupted, run?.Status);
-        Assert.Equal(120_000, run?.DurationMilliseconds);
     }
 
     private async Task WriteCatalogueAsync(
@@ -235,6 +257,7 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
         IReadOnlyList<CatalogueImportTrack> tracks)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
+        await store.BeginRefreshAsync(refreshId, StartedAt, cancellationToken);
         await store.WriteAlbumsAsync(
             refreshId,
             [new CatalogueImportAlbum("21", "Compass Weather", "12", 2025, 1, false, "ALBUM", "31", null)],
@@ -349,8 +372,9 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => value;
+        public override DateTimeOffset GetUtcNow() => now;
     }
+
 }

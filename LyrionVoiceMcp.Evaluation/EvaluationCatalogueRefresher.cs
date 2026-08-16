@@ -11,65 +11,59 @@ public sealed class EvaluationCatalogueRefresher(
     {
         await store.InitialiseAsync(cancellationToken);
         var refreshId = Guid.NewGuid().ToString("N");
-        var startedAt = timeProvider.GetUtcNow();
-        await store.BeginRefreshAsync(refreshId, startedAt, cancellationToken);
-
+        var log = new EvaluationLogSink();
+        await store.BeginRefreshAsync(
+            refreshId,
+            timeProvider.GetUtcNow(),
+            cancellationToken);
         try
         {
-            var source = await sourceReader.ReadAsync(refreshId, store, cancellationToken);
-            var completedAt = timeProvider.GetUtcNow();
-            return await store.CompleteRefreshAsync(
+            var source = await sourceReader.ReadAsync(refreshId, store, log, cancellationToken);
+            var completion = await store.CompleteRefreshAsync(
                 refreshId,
                 source,
-                completedAt,
-                DurationMilliseconds(startedAt, completedAt),
+                timeProvider.GetUtcNow(),
+                log.WarningCount,
                 cancellationToken);
+            return completion.Summary;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await TryRecordFailureAsync(
+            await store.FinishRefreshAsync(
                 refreshId,
-                CatalogueRefreshRunStatus.Cancelled,
-                startedAt,
-                "Evaluation catalogue refresh was cancelled.");
-            throw;
-        }
-        catch
-        {
-            await TryRecordFailureAsync(
-                refreshId,
-                CatalogueRefreshRunStatus.Failed,
-                startedAt,
-                "Evaluation catalogue refresh failed.");
-            throw;
-        }
-    }
-
-    private async Task TryRecordFailureAsync(
-        string refreshId,
-        CatalogueRefreshRunStatus status,
-        DateTimeOffset startedAt,
-        string message)
-    {
-        try
-        {
-            var completedAt = timeProvider.GetUtcNow();
-            await store.CompleteFailedRefreshAsync(
-                refreshId,
-                status,
-                completedAt,
-                DurationMilliseconds(startedAt, completedAt),
-                message,
+                CatalogueStateStatus.Cancelled,
+                timeProvider.GetUtcNow(),
                 CancellationToken.None);
+            throw;
         }
         catch
         {
-            // Preserve the source failure. A later initialisation marks an abandoned run interrupted.
+            await store.FinishRefreshAsync(
+                refreshId,
+                CatalogueStateStatus.Failed,
+                timeProvider.GetUtcNow(),
+                CancellationToken.None);
+            throw;
         }
     }
 
-    private static long DurationMilliseconds(
-        DateTimeOffset startedAt,
-        DateTimeOffset completedAt) =>
-        Math.Max(0, (long)(completedAt - startedAt).TotalMilliseconds);
+    private sealed class EvaluationLogSink : ICatalogueRefreshLogSink
+    {
+        public int WarningCount { get; private set; }
+
+        public Task WriteAsync(
+            CatalogueRefreshLogLevel level,
+            string message,
+            int? processedCount,
+            int? totalCount,
+            CancellationToken cancellationToken)
+        {
+            if (level == CatalogueRefreshLogLevel.Warning)
+            {
+                WarningCount++;
+            }
+
+            return Task.CompletedTask;
+        }
+    }
 }

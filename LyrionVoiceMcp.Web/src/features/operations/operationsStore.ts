@@ -4,10 +4,13 @@ import {
   getCatalogue,
   getHealth,
   getLmsConnection,
+  getSearchIndexes,
   getVersion,
   rebuildCatalogue,
+  rebuildSearchIndex,
   type CatalogueStatusResponse,
   type LmsConnectionResponse,
+  type SearchIndexStatusResponse,
   type VersionResponse
 } from './operationsApi';
 
@@ -21,10 +24,16 @@ export const useOperationsStore = defineStore('operations', () => {
   const catalogueLoading = ref(false);
   const catalogueRebuildPending = ref(false);
   const catalogueErrorMessage = ref<string | null>(null);
+  const searchIndexes = ref<SearchIndexStatusResponse[]>([]);
+  const searchIndexesLoading = ref(false);
+  const searchIndexRebuildPending = ref<string | null>(null);
+  const searchIndexesErrorMessage = ref<string | null>(null);
 
   const isHealthy = computed(() => status.value === 'ok' && errorMessage.value === null);
   const catalogueRebuilding = computed(
     () => catalogue.value?.latestRefresh?.status === 'running');
+  const searchIndexesRebuilding = computed(() => searchIndexes.value.some(
+    index => index.latestJob?.status === 'pending' || index.latestJob?.status === 'running'));
 
   async function load(signal?: AbortSignal): Promise<void> {
     loading.value = true;
@@ -75,6 +84,38 @@ export const useOperationsStore = defineStore('operations', () => {
     }
   }
 
+  async function loadSearchIndexes(signal?: AbortSignal): Promise<void> {
+    searchIndexesLoading.value = true;
+    searchIndexesErrorMessage.value = null;
+
+    try {
+      searchIndexes.value = await getSearchIndexes(signal);
+    } catch (error) {
+      searchIndexesErrorMessage.value = describeSearchIndexError(error);
+    } finally {
+      searchIndexesLoading.value = false;
+    }
+  }
+
+  async function rebuildIndex(resolver: string, signal?: AbortSignal): Promise<void> {
+    searchIndexRebuildPending.value = resolver;
+    searchIndexesErrorMessage.value = null;
+
+    try {
+      const status = await rebuildSearchIndex(resolver, signal);
+      const existingIndex = searchIndexes.value.findIndex(index => index.resolver === resolver);
+      if (existingIndex < 0) {
+        searchIndexes.value.push(status);
+      } else {
+        searchIndexes.value.splice(existingIndex, 1, status);
+      }
+    } catch (error) {
+      searchIndexesErrorMessage.value = describeSearchIndexError(error);
+    } finally {
+      searchIndexRebuildPending.value = null;
+    }
+  }
+
   return {
     loading,
     status,
@@ -85,11 +126,18 @@ export const useOperationsStore = defineStore('operations', () => {
     catalogueLoading,
     catalogueRebuildPending,
     catalogueErrorMessage,
+    searchIndexes,
+    searchIndexesLoading,
+    searchIndexRebuildPending,
+    searchIndexesErrorMessage,
     isHealthy,
     catalogueRebuilding,
+    searchIndexesRebuilding,
     load,
     loadCatalogue,
-    rebuild
+    rebuild,
+    loadSearchIndexes,
+    rebuildIndex
   };
 });
 
@@ -107,4 +155,12 @@ function describeCatalogueError(error: unknown): string {
   }
 
   return 'The catalogue API could not be reached.';
+}
+
+function describeSearchIndexError(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return 'The search-index API could not be reached.';
 }

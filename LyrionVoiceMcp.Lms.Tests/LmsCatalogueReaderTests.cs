@@ -69,6 +69,7 @@ public sealed class LmsCatalogueReaderTests
         var result = await reader.ReadAsync(
             "refresh-1",
             writer,
+            new RecordingCatalogueLogSink(),
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -113,6 +114,7 @@ public sealed class LmsCatalogueReaderTests
         await CreateReader(httpClient).ReadAsync(
             "refresh-1",
             writer,
+            new RecordingCatalogueLogSink(),
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -137,6 +139,7 @@ public sealed class LmsCatalogueReaderTests
             CreateReader(httpClient).ReadAsync(
                 "refresh-1",
                 new RecordingWriter(),
+                new RecordingCatalogueLogSink(),
                 TestContext.Current.CancellationToken));
 
         // Assert
@@ -169,6 +172,7 @@ public sealed class LmsCatalogueReaderTests
             CreateReader(httpClient).ReadAsync(
                 "refresh-1",
                 new RecordingWriter(),
+                new RecordingCatalogueLogSink(),
                 TestContext.Current.CancellationToken));
 
         // Assert
@@ -267,7 +271,11 @@ public sealed class LmsCatalogueReaderTests
             return Task.CompletedTask;
         }
 
-        public Task AppendRefreshLogAsync(string refreshId, CatalogueRefreshLogLevel level, string message, int? processedCount, int? totalCount, CancellationToken cancellationToken) =>
+    }
+
+    private sealed class RecordingCatalogueLogSink : ICatalogueRefreshLogSink
+    {
+        public Task WriteAsync(CatalogueRefreshLogLevel level, string message, int? processedCount, int? totalCount, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 
