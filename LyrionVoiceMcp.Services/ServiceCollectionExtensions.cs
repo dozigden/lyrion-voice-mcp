@@ -38,9 +38,14 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IQueueManagementService, QueueManagementService>();
         services.AddTransient<ISearchService, SearchService>();
         services.AddTransient<ISearchObservationReviewService, SearchObservationReviewService>();
-        services.AddSingleton<IBrowseReferenceCodec, BrowseReferenceCodec>();
+        services.AddSingleton<ReferenceHandleRegistry>();
+        services.AddSingleton<IBrowseReferenceCodec>(provider =>
+            new BrowseReferenceCodec(
+                provider.GetRequiredService<ReferenceHandleRegistry>()));
         services.AddSingleton<IPlayableReferenceResolver, PlayableReferenceResolver>();
-        services.AddSingleton<ISearchResultReferenceCodec, SearchResultReferenceCodec>();
+        services.AddSingleton<ISearchResultReferenceCodec>(provider =>
+            new SearchResultReferenceCodec(
+                provider.GetRequiredService<ReferenceHandleRegistry>()));
         services.AddSingleton(TimeProvider.System);
         return services;
     }

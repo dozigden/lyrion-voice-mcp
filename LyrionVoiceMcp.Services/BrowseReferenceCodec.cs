@@ -1,4 +1,3 @@
-using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Services;
@@ -6,7 +5,13 @@ namespace LyrionVoiceMcp.Services;
 public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
 {
     private const string Prefix = "browse_";
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly ReferenceHandleRegistry registry;
+
+    internal BrowseReferenceCodec(ReferenceHandleRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        this.registry = registry;
+    }
 
     public string Encode(BrowseReferenceValue value)
     {
@@ -17,63 +22,12 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             throw new ArgumentException("The browse reference value is invalid.", nameof(value));
         }
 
-        var payload = new ReferencePayload(
-            value.Target?.Kind,
-            value.Target?.FilterId,
-            value.Target?.Offset,
-            value.Media?.Identity.Kind,
-            value.Media?.Identity.Id,
-            value.Media?.ArtistScope,
-            value.SearchCorrelationId);
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
-        return Prefix + EncodeBase64Url(bytes);
+        return registry.Issue(Prefix, value);
     }
 
     public BrowseReferenceValue? TryDecode(string reference)
     {
-        if (string.IsNullOrWhiteSpace(reference)
-            || !reference.StartsWith(Prefix, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        try
-        {
-            var bytes = DecodeBase64Url(reference[Prefix.Length..]);
-            var payload = JsonSerializer.Deserialize<ReferencePayload>(bytes, JsonOptions);
-            if (payload is null)
-            {
-                return null;
-            }
-
-            var target = payload.TargetKind is { } targetKind
-                ? new BrowseTarget(targetKind, payload.FilterId, payload.Offset ?? -1)
-                : null;
-            var media = payload.MediaKind is { } mediaKind
-                ? new PlayableMedia(
-                    new MediaIdentity(mediaKind, payload.MediaId ?? string.Empty),
-                    payload.ArtistScope)
-                : null;
-            if (media is null
-                && (payload.MediaId is not null || payload.ArtistScope is not null))
-            {
-                return null;
-            }
-
-            var value = new BrowseReferenceValue(
-                target,
-                media,
-                payload.SearchCorrelationId);
-            return IsValid(value) ? value : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-        catch (FormatException)
-        {
-            return null;
-        }
+        return registry.Resolve<BrowseReferenceValue>(Prefix, reference);
     }
 
     private static bool IsValid(BrowseReferenceValue value)
@@ -128,33 +82,4 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             ? !string.IsNullOrWhiteSpace(target.FilterId)
             : target.FilterId is null;
     }
-
-    private static string EncodeBase64Url(byte[] bytes) =>
-        Convert.ToBase64String(bytes)
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
-
-    private static byte[] DecodeBase64Url(string value)
-    {
-        var base64 = value
-            .Replace('-', '+')
-            .Replace('_', '/');
-        var padding = base64.Length % 4;
-        if (padding != 0)
-        {
-            base64 = base64.PadRight(base64.Length + (4 - padding), '=');
-        }
-
-        return Convert.FromBase64String(base64);
-    }
-
-    private sealed record ReferencePayload(
-        LmsBrowseQueryKind? TargetKind,
-        string? FilterId,
-        int? Offset,
-        MediaEntityKind? MediaKind,
-        string? MediaId,
-        ArtistSelectionScope? ArtistScope,
-        string? SearchCorrelationId);
 }

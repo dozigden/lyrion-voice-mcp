@@ -10,11 +10,11 @@ public sealed class BrowseServiceTests
     {
         // Arrange
         var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage([], 0));
-        var codec = new BrowseReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
             codec,
-            new SearchResultReferenceCodec());
+            new ReferenceCodecTestContext().Search);
 
         // Act
         var outcome = await service.BrowseAsync(
@@ -65,11 +65,11 @@ public sealed class BrowseServiceTests
                 null)
         ],
         3));
-        var codec = new BrowseReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
             codec,
-            new SearchResultReferenceCodec());
+            new ReferenceCodecTestContext().Search);
         var reference = codec.Encode(new BrowseReferenceValue(
             new BrowseTarget(LmsBrowseQueryKind.Albums, null, 0),
             null));
@@ -109,11 +109,11 @@ public sealed class BrowseServiceTests
                 null)
         ],
         1));
-        var codec = new BrowseReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
             codec,
-            new SearchResultReferenceCodec());
+            new ReferenceCodecTestContext().Search);
         var reference = codec.Encode(new BrowseReferenceValue(
             new BrowseTarget(LmsBrowseQueryKind.AlbumArtists, null, 0),
             null));
@@ -152,11 +152,11 @@ public sealed class BrowseServiceTests
                 "Fictional Frequencies")
         ],
         1));
-        var codec = new BrowseReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
             codec,
-            new SearchResultReferenceCodec());
+            new ReferenceCodecTestContext().Search);
         var reference = codec.Encode(new BrowseReferenceValue(
             new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "201", 0),
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "201"))));
@@ -182,11 +182,11 @@ public sealed class BrowseServiceTests
     {
         // Arrange
         var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage([], 0));
-        var codec = new BrowseReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
             codec,
-            new SearchResultReferenceCodec());
+            new ReferenceCodecTestContext().Search);
         var reference = codec.Encode(new BrowseReferenceValue(
             null,
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Track, "301"))));
@@ -216,8 +216,8 @@ public sealed class BrowseServiceTests
                 null)
         ],
         2));
-        var browseCodec = new BrowseReferenceCodec();
-        var searchCodec = new SearchResultReferenceCodec();
+        var browseCodec = new ReferenceCodecTestContext().Browse;
+        var searchCodec = new ReferenceCodecTestContext().Search;
         var service = new BrowseService(lmsClient, browseCodec, searchCodec);
         var correlationId = "123456781234123412341234567890ab";
         var searchReference = searchCodec.Encode(
@@ -247,10 +247,10 @@ public sealed class BrowseServiceTests
     {
         // Arrange
         var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage([], 0));
-        var searchCodec = new SearchResultReferenceCodec();
+        var searchCodec = new ReferenceCodecTestContext().Search;
         var service = new BrowseService(
             lmsClient,
-            new BrowseReferenceCodec(),
+            new ReferenceCodecTestContext().Browse,
             searchCodec);
         var searchReference = searchCodec.Encode(new SearchResultReferenceValue(
             "123456781234123412341234567890ab",
@@ -277,10 +277,10 @@ public sealed class BrowseServiceTests
     {
         // Arrange
         var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage([], 0));
-        var searchCodec = new SearchResultReferenceCodec();
+        var searchCodec = new ReferenceCodecTestContext().Search;
         var service = new BrowseService(
             lmsClient,
-            new BrowseReferenceCodec(),
+            new ReferenceCodecTestContext().Browse,
             searchCodec);
         var searchReference = searchCodec.Encode(new SearchResultReferenceValue(
             "123456781234123412341234567890ab",
@@ -318,7 +318,7 @@ public sealed class BrowseReferenceCodecTests
     public void CodecShouldRoundTripNavigationAndPlaybackWithoutServerOrVersion()
     {
         // Arrange
-        var codec = new BrowseReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Browse;
         var expected = new BrowseReferenceValue(
             new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "204", 50),
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "204")),
@@ -330,8 +330,7 @@ public sealed class BrowseReferenceCodecTests
 
         // Assert
         Assert.StartsWith("browse_", reference, StringComparison.Ordinal);
-        Assert.DoesNotContain("server", reference, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("version", reference, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(23, reference.Length);
         Assert.Equal(expected, decoded);
     }
 
@@ -339,7 +338,7 @@ public sealed class BrowseReferenceCodecTests
     public void TryDecodeShouldRejectMissingRequiredRouteFilter()
     {
         // Arrange
-        var codec = new BrowseReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Browse;
 
         // Act
         var exception = Assert.Throws<ArgumentException>(() => codec.Encode(
@@ -355,7 +354,7 @@ public sealed class BrowseReferenceCodecTests
     public void CodecShouldRoundTripAnAlbumArtistPlaybackConstraint()
     {
         // Arrange
-        var codec = new BrowseReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Browse;
         var expected = new BrowseReferenceValue(
             new BrowseTarget(LmsBrowseQueryKind.AlbumArtistAlbums, "204", 0),
             new PlayableMedia(
@@ -376,8 +375,8 @@ public sealed class PlayableReferenceResolverTests
     public void ResolverShouldPreserveRealSearchProvenanceAndNotInventItForPureBrowse()
     {
         // Arrange
-        var searchCodec = new SearchResultReferenceCodec();
-        var browseCodec = new BrowseReferenceCodec();
+        var searchCodec = new ReferenceCodecTestContext().Search;
+        var browseCodec = new ReferenceCodecTestContext().Browse;
         var resolver = new PlayableReferenceResolver(searchCodec, browseCodec);
         var identity = new MediaIdentity(MediaEntityKind.Album, "204");
         var correlationId = "123456781234123412341234567890ab";
@@ -411,9 +410,9 @@ public sealed class PlayableReferenceResolverTests
     public void ResolverShouldPreserveAnAlbumArtistSelectionConstraint()
     {
         // Arrange
-        var browseCodec = new BrowseReferenceCodec();
+        var browseCodec = new ReferenceCodecTestContext().Browse;
         var resolver = new PlayableReferenceResolver(
-            new SearchResultReferenceCodec(),
+            new ReferenceCodecTestContext().Search,
             browseCodec);
         var expected = new PlayableMedia(
             new MediaIdentity(MediaEntityKind.Artist, "204"),

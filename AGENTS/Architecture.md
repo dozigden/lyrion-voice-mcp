@@ -36,6 +36,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - Durable jobs, schedules, application errors, and MCP tool-call history share the operational SQLite database through separate abstraction interfaces. Services owns job execution and scheduling policy; Api owns their REST/UI and MCP filter integration. Do not move background workflows back into bespoke in-memory queues.
 - Jobs are the standard boundary for inspectable or scheduled background work. Handlers are typed, cancellation-aware application services; the runner alone owns lifecycle transitions and unexpected-exception logging.
 - Deployed diagnostic search-index builds are typed durable jobs. Services owns enqueue policy and job/catalogue validation through `ISearchIndexService`; Evaluation implements the replaceable artifact builder and opener. HTTP search reads only published artifacts, while the offline evaluator remains synchronous.
+- MCP media and browse references use a bounded singleton in-memory handle registry in Services. The registry deliberately remains process-local because the runtime is one application server and handle invalidation on restart is part of the contract; do not move these ephemeral hand-off values into operational persistence.
 
 ## Planned boundaries
 

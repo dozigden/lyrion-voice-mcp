@@ -16,7 +16,7 @@ public sealed class SearchServiceTests
                 new LmsSearchCandidate(identity, "Silver Static", "The Copper Lines", "Night Signals"),
                 new LmsSearchCandidate(identity, "Silver Static", "The Copper Lines", "Night Signals")
             ]);
-        var codec = new SearchResultReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Search;
         var service = new SearchService(
             lmsClient,
             codec,
@@ -43,7 +43,7 @@ public sealed class SearchServiceTests
         var lmsClient = new StubLmsSearchClient([]);
         var service = new SearchService(
             lmsClient,
-            new SearchResultReferenceCodec(),
+            new ReferenceCodecTestContext().Search,
             NullLogger<SearchService>.Instance);
 
         // Act
@@ -68,7 +68,7 @@ public sealed class SearchServiceTests
         ]);
         var service = new SearchService(
             client,
-            new SearchResultReferenceCodec(),
+            new ReferenceCodecTestContext().Search,
             store,
             TimeProvider.System,
             NullLogger<SearchService>.Instance);
@@ -99,7 +99,7 @@ public sealed class SearchServiceTests
             8);
         var service = new SearchService(
             new FailingLmsSearchClient(response),
-            new SearchResultReferenceCodec(),
+            new ReferenceCodecTestContext().Search,
             store,
             TimeProvider.System,
             NullLogger<SearchService>.Instance);
@@ -145,7 +145,7 @@ public sealed class SearchResultReferenceCodecTests
     public void CodecShouldRoundTripCorrelationAndMediaIdentityWithoutServerOrVersion()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Search;
         var expected = new SearchResultReferenceValue(
             "123456781234123412341234567890ab",
             new MediaIdentity(MediaEntityKind.Album, "204"));
@@ -156,8 +156,7 @@ public sealed class SearchResultReferenceCodecTests
 
         // Assert
         Assert.StartsWith("result_", reference, StringComparison.Ordinal);
-        Assert.DoesNotContain("server", reference, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("version", reference, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(23, reference.Length);
         Assert.Equal(expected, decoded);
     }
 
@@ -165,7 +164,7 @@ public sealed class SearchResultReferenceCodecTests
     public void TryDecodeShouldReturnNullForMalformedReference()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codec = new ReferenceCodecTestContext().Search;
 
         // Act
         var decoded = codec.TryDecode("result_not-base64");

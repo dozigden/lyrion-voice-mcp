@@ -11,7 +11,7 @@
 
 - Api tests prove routes, serialisation, middleware, DI, MCP negotiation, and SPA hosting. MCP endpoint coverage must include required nullable output fields with null values so structured content remains valid against advertised schemas.
 - Api tests must override catalogue and operational persistence with isolated temporary databases; they must never read or write the developer's `.data` databases.
-- Services tests own application behaviour, validation matrices, durable catalogue-to-index enqueue policy, index-job catalogue validation, and edge cases.
+- Services tests own application behaviour, validation matrices, opaque-handle expiry/eviction and routing, shared-registry composition across service scopes, durable catalogue-to-index enqueue policy, index-job catalogue validation, and edge cases.
 - LMS tests own configuration validation, JSON-RPC request/response plumbing, and upstream failure mapping.
 - Persistence tests own schema initialisation/rebuild, singleton catalogue readiness transitions, bounded catalogue batch durability, source-identity count validation, convergence, durable job/log lifecycle, scheduler state, error/tool-call retention and correlation, filtering, selection correlation, review round-trips, and export privacy.
 - Dev tests own command construction, process state, recognised listener detection, and bounded log handling.

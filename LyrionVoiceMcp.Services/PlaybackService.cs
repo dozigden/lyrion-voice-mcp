@@ -1,6 +1,5 @@
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LyrionVoiceMcp.Services;
 
@@ -12,20 +11,6 @@ public sealed class PlaybackService(
     TimeProvider timeProvider,
     ILogger<PlaybackService> logger) : IPlaybackService
 {
-    internal PlaybackService(
-        ILmsPlayerClient lmsPlayerClient,
-        ILmsPlaybackClient lmsPlaybackClient,
-        ISearchResultReferenceCodec referenceCodec)
-        : this(
-            lmsPlayerClient,
-            lmsPlaybackClient,
-            new PlayableReferenceResolver(referenceCodec, new BrowseReferenceCodec()),
-            NullSearchObservationStore.Instance,
-            TimeProvider.System,
-            NullLogger<PlaybackService>.Instance)
-    {
-    }
-
     public async Task<PlaybackOutcome> PlayAsync(
         string playerId,
         IReadOnlyList<string> references,

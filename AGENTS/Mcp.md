@@ -32,7 +32,9 @@ The first three-tool delivery slice was not a permanent limit. Add cohesive user
 - Structured tool results must validate against their advertised output schemas. Emit required nullable properties explicitly as JSON `null`; do not omit them through serializer defaults.
 - Propagate cancellation and map expected validation/upstream failures to useful tool errors without leaking stack traces.
 - A result reference carries both the candidate correlation and underlying LMS playback identity. These remain separate internal concepts but require no separate public `searchId`.
-- Result references are short-lived hand-off values. Do not add a format version or LMS server identity.
+- Result and browse references are server-issued handles backed by one singleton in-memory registry shared by both codecs. Keep the `result_` and `browse_` prefixes followed by 16 lowercase hexadecimal characters; never return encoded application data in the handle.
+- Handles expire absolutely 24 hours after issue, are all invalidated by application restart, and share a 10,000-entry bound. Remove expired entries first and evict the oldest issued handle when capacity is reached. Resolution is exact and case-sensitive; never guess, repair, decode, or fall back when a handle is unknown, altered, expired, or evicted.
+- A handle is a short-lived hand-off value even though its maximum lifetime is 24 hours. Do not add a format version or LMS server identity, persist the registry, or promise that a handle survives restart or capacity pressure.
 - `browse` takes one optional opaque search or browse reference. Omit it for the fixed local-library roots: album artists, artists, albums, genres, playlists, recently added, and years. Do not expose tracks at the root.
 - Browse pages use a fixed internal size of 50. Return an opaque nullable continuation rather than caller-controlled offset, limit, filtering, or sorting.
 - Browse items contain only reference, kind, title, optional artist and album, browsable, and playable. A single item reference must work with `browse` when browsable and with `play` or `manage_queue` when playable.

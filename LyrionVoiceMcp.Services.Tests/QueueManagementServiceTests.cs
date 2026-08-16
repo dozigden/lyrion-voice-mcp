@@ -35,7 +35,8 @@ public sealed class QueueManagementServiceTests
     public async Task AppendShouldPreserveCallerOrderAndReturnTheUpdatedLength()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var store = new RecordingSearchObservationStore();
         var first = new MediaIdentity(MediaEntityKind.Album, "21");
         var second = new MediaIdentity(MediaEntityKind.Track, "22");
@@ -47,7 +48,7 @@ public sealed class QueueManagementServiceTests
         var service = new QueueManagementService(
             new StubPlayerClient(Player()),
             playbackClient,
-            new PlayableReferenceResolver(codec, new BrowseReferenceCodec()),
+            codecs.Resolver,
             store,
             TimeProvider.System,
             NullLogger<QueueManagementService>.Instance);
@@ -74,14 +75,15 @@ public sealed class QueueManagementServiceTests
     public async Task InsertNextShouldReverseSubmissionsToPreserveCallerOrderInLms()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var first = new MediaIdentity(MediaEntityKind.Track, "31");
         var second = new MediaIdentity(MediaEntityKind.Playlist, "32");
         var playbackClient = new StubPlaybackClient
         {
             QueueCounts = new Queue<int>([5, 7])
         };
-        var service = CreateService(playbackClient, codec);
+        var service = CreateService(playbackClient, codecs);
 
         // Act
         var outcome = await service.ManageAsync(
@@ -101,13 +103,14 @@ public sealed class QueueManagementServiceTests
     public async Task QueueLimitShouldRejectTheWholeRequestBeforeMutation()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var playbackClient = new StubPlaybackClient
         {
             PlayableCountById = { ["41"] = 2 },
             QueueCounts = new Queue<int>([299])
         };
-        var service = CreateService(playbackClient, codec);
+        var service = CreateService(playbackClient, codecs);
 
         // Act
         var outcome = await service.ManageAsync(
@@ -128,12 +131,13 @@ public sealed class QueueManagementServiceTests
     public async Task MissingMediaShouldRejectAllItemsBeforeReadingOrMutatingTheQueue()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var playbackClient = new StubPlaybackClient
         {
             PlayableCountById = { ["52"] = 0 }
         };
-        var service = CreateService(playbackClient, codec);
+        var service = CreateService(playbackClient, codecs);
 
         // Act
         var outcome = await service.ManageAsync(
@@ -159,10 +163,7 @@ public sealed class QueueManagementServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player());
         var playbackClient = new StubPlaybackClient();
-        var service = new QueueManagementService(
-            playerClient,
-            playbackClient,
-            new SearchResultReferenceCodec());
+        var service = CreateService(playbackClient, playerClient: playerClient);
 
         // Act
         var outcome = await service.ManageAsync(
@@ -183,12 +184,13 @@ public sealed class QueueManagementServiceTests
     public async Task MissingPlayerShouldRejectBeforeReadingOrMutatingTheQueue()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var playbackClient = new StubPlaybackClient();
-        var service = new QueueManagementService(
-            new StubPlayerClient(),
+        var service = CreateService(
             playbackClient,
-            codec);
+            codecs,
+            new StubPlayerClient());
 
         // Act
         var outcome = await service.ManageAsync(
@@ -210,10 +212,7 @@ public sealed class QueueManagementServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player());
         var playbackClient = new StubPlaybackClient();
-        var service = new QueueManagementService(
-            playerClient,
-            playbackClient,
-            new SearchResultReferenceCodec());
+        var service = CreateService(playbackClient, playerClient: playerClient);
 
         // Act
         var outcome = await service.ManageAsync(
@@ -239,10 +238,7 @@ public sealed class QueueManagementServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player());
         var playbackClient = new StubPlaybackClient();
-        var service = new QueueManagementService(
-            playerClient,
-            playbackClient,
-            new SearchResultReferenceCodec());
+        var service = CreateService(playbackClient, playerClient: playerClient);
 
         // Act
         var outcome = await service.ManageAsync(
@@ -264,10 +260,7 @@ public sealed class QueueManagementServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player());
         var playbackClient = new StubPlaybackClient();
-        var service = new QueueManagementService(
-            playerClient,
-            playbackClient,
-            new SearchResultReferenceCodec());
+        var service = CreateService(playbackClient, playerClient: playerClient);
 
         // Act
         var outcome = await service.ManageAsync(
@@ -285,11 +278,15 @@ public sealed class QueueManagementServiceTests
 
     private static QueueManagementService CreateService(
         StubPlaybackClient playbackClient,
-        ISearchResultReferenceCodec? codec = null) =>
+        ReferenceCodecTestContext? codecs = null,
+        StubPlayerClient? playerClient = null) =>
         new(
-            new StubPlayerClient(Player()),
+            playerClient ?? new StubPlayerClient(Player()),
             playbackClient,
-            codec ?? new SearchResultReferenceCodec());
+            (codecs ?? new ReferenceCodecTestContext()).Resolver,
+            NullSearchObservationStore.Instance,
+            TimeProvider.System,
+            NullLogger<QueueManagementService>.Instance);
 
     private static LmsPlayerStatus Player() =>
         new(PlayerId, "North Room", true, PlayerPlaybackState.Stopped);

@@ -29,11 +29,11 @@ That single reference combines:
 
 There is no separate public `searchId`. The same LMS item returned by two searches receives two distinct references, one for each candidate occurrence.
 
-The reference contains enough LMS identity for `play` without requiring a transient search-log lookup. It is a short-lived hand-off value with no format version or LMS server identity. A deployment targets one configured LMS server, and carrying references between deployments is unsupported.
+The reference is a short server-issued handle whose in-memory registry entry retains the candidate correlation and LMS identity needed by `play`; it does not depend on a search-log lookup. Search and browse handles expire 24 hours after issue, share a 10,000-entry oldest-first bound, and are invalidated by application restart. Unknown, altered, expired, or evicted handles are rejected exactly rather than decoded or repaired. A handle has no format version or LMS server identity. A deployment targets one configured LMS server, and carrying references between deployments is unsupported.
 
 Its exact encoding is a private implementation detail.
 
-Every item returned by `browse` also has one opaque reference. That reference can carry browse navigation, playback identity, or both. The caller passes the same reference to `browse` when `browsable` is true and to `play` or `manage_queue` when `playable` is true. Pure browse references have no search correlation. When browse starts from a search result, descendants preserve that real candidate correlation so eventual playback or queue addition marks the originating search result selected; browsing alone does not.
+Every item returned by `browse` also has one opaque server-issued handle. Its registry entry can retain browse navigation, playback identity, or both. The caller passes the same handle to `browse` when `browsable` is true and to `play` or `manage_queue` when `playable` is true. Pure browse handles have no search correlation. When browse starts from a search result, descendants preserve that real candidate correlation so eventual playback or queue addition marks the originating search result selected; browsing alone does not.
 
 ## `search`
 

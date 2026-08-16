@@ -1,6 +1,5 @@
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LyrionVoiceMcp.Services;
 
@@ -12,20 +11,6 @@ public sealed class QueueManagementService(
     TimeProvider timeProvider,
     ILogger<QueueManagementService> logger) : IQueueManagementService
 {
-    internal QueueManagementService(
-        ILmsPlayerClient lmsPlayerClient,
-        ILmsPlaybackClient lmsPlaybackClient,
-        ISearchResultReferenceCodec referenceCodec)
-        : this(
-            lmsPlayerClient,
-            lmsPlaybackClient,
-            new PlayableReferenceResolver(referenceCodec, new BrowseReferenceCodec()),
-            NullSearchObservationStore.Instance,
-            TimeProvider.System,
-            NullLogger<QueueManagementService>.Instance)
-    {
-    }
-
     public async Task<QueueManagementOutcome> ManageAsync(
         string playerId,
         QueueManagementCommand command,

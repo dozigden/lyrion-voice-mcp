@@ -12,7 +12,8 @@ public sealed class PlaybackServiceTests
     public async Task ReplaceShouldLoadFirstReferenceAndAddLaterReferencesInOrder()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var identities = new[]
         {
             new MediaIdentity(MediaEntityKind.Track, "31"),
@@ -23,7 +24,7 @@ public sealed class PlaybackServiceTests
             Player(true, PlayerPlaybackState.Playing),
             Player(true, PlayerPlaybackState.Playing));
         var playbackClient = new StubPlaybackClient();
-        var service = new PlaybackService(playerClient, playbackClient, codec);
+        var service = CreateService(playerClient, playbackClient, codecs);
 
         // Act
         var outcome = await service.PlayAsync(
@@ -47,10 +48,48 @@ public sealed class PlaybackServiceTests
     }
 
     [Fact]
+    public async Task TenShortHandlesShouldRemainResolvableInOnePlaybackRequest()
+    {
+        // Arrange
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
+        var references = Enumerable.Range(1, 10)
+            .Select(index => Reference(
+                codec,
+                new MediaIdentity(MediaEntityKind.Track, index.ToString()),
+                index))
+            .ToArray();
+        var playbackClient = new StubPlaybackClient();
+        var service = CreateService(
+            new StubPlayerClient(
+                Player(true, PlayerPlaybackState.Stopped),
+                Player(true, PlayerPlaybackState.Playing)),
+            playbackClient,
+            codecs);
+
+        // Act
+        var outcome = await service.PlayAsync(
+            PlayerId,
+            references,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.IsType<PlaybackSucceeded>(outcome);
+        Assert.All(references, reference => Assert.Equal(23, reference.Length));
+        Assert.Equal(10, playbackClient.Operations.Count(operation =>
+            operation.StartsWith("check:", StringComparison.Ordinal)));
+        Assert.Equal(1, playbackClient.Operations.Count(operation =>
+            operation.StartsWith("load:", StringComparison.Ordinal)));
+        Assert.Equal(9, playbackClient.Operations.Count(operation =>
+            operation.StartsWith("add:", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task OffPlayerShouldPowerOnBeforeReplacingTheQueue()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var identities = new[]
         {
             new MediaIdentity(MediaEntityKind.Artist, "41"),
@@ -60,7 +99,7 @@ public sealed class PlaybackServiceTests
             Player(false, PlayerPlaybackState.Stopped),
             Player(true, PlayerPlaybackState.Playing));
         var playbackClient = new StubPlaybackClient();
-        var service = new PlaybackService(playerClient, playbackClient, codec);
+        var service = CreateService(playerClient, playbackClient, codecs);
 
         // Act
         var outcome = await service.PlayAsync(
@@ -86,15 +125,14 @@ public sealed class PlaybackServiceTests
     public async Task SuccessfulPlaybackShouldMarkItsSearchCorrelationSelected()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var store = new RecordingSearchObservationStore();
-        var service = new PlaybackService(
+        var service = CreateService(
             new StubPlayerClient(Player(true, PlayerPlaybackState.Playing), Player(true, PlayerPlaybackState.Playing)),
             new StubPlaybackClient(),
-            new PlayableReferenceResolver(codec, new BrowseReferenceCodec()),
-            store,
-            TimeProvider.System,
-            NullLogger<PlaybackService>.Instance);
+            codecs,
+            store);
 
         // Act
         await service.PlayAsync(
@@ -110,8 +148,9 @@ public sealed class PlaybackServiceTests
     public async Task BrowseReferenceShouldPlayWithoutInventingASearchSelection()
     {
         // Arrange
-        var searchCodec = new SearchResultReferenceCodec();
-        var browseCodec = new BrowseReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var searchCodec = codecs.Search;
+        var browseCodec = codecs.Browse;
         var store = new RecordingSearchObservationStore();
         var playbackClient = new StubPlaybackClient();
         var service = new PlaybackService(
@@ -143,8 +182,9 @@ public sealed class PlaybackServiceTests
     public async Task SearchDerivedBrowseReferenceShouldMarkTheOriginalSearchSelection()
     {
         // Arrange
-        var searchCodec = new SearchResultReferenceCodec();
-        var browseCodec = new BrowseReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var searchCodec = codecs.Search;
+        var browseCodec = codecs.Browse;
         var store = new RecordingSearchObservationStore();
         var service = new PlaybackService(
             new StubPlayerClient(
@@ -178,10 +218,7 @@ public sealed class PlaybackServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player(true, PlayerPlaybackState.Playing));
         var playbackClient = new StubPlaybackClient();
-        var service = new PlaybackService(
-            playerClient,
-            playbackClient,
-            new SearchResultReferenceCodec());
+        var service = CreateService(playerClient, playbackClient);
 
         // Act
         var outcome = await service.PlayAsync(
@@ -202,10 +239,7 @@ public sealed class PlaybackServiceTests
         // Arrange
         var playerClient = new StubPlayerClient(Player(true, PlayerPlaybackState.Playing));
         var playbackClient = new StubPlaybackClient();
-        var service = new PlaybackService(
-            playerClient,
-            playbackClient,
-            new SearchResultReferenceCodec());
+        var service = CreateService(playerClient, playbackClient);
 
         // Act
         var outcome = await service.PlayAsync(
@@ -224,7 +258,8 @@ public sealed class PlaybackServiceTests
     public async Task MissingMediaShouldFailAfterAllChecksWithoutMutation()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var first = new MediaIdentity(MediaEntityKind.Track, "61");
         var second = new MediaIdentity(MediaEntityKind.Album, "62");
         var playerClient = new StubPlayerClient(Player(false, PlayerPlaybackState.Stopped));
@@ -232,7 +267,7 @@ public sealed class PlaybackServiceTests
         {
             PlayableCountById = { ["62"] = 0 }
         };
-        var service = new PlaybackService(playerClient, playbackClient, codec);
+        var service = CreateService(playerClient, playbackClient, codecs);
 
         // Act
         var outcome = await service.PlayAsync(
@@ -251,7 +286,8 @@ public sealed class PlaybackServiceTests
     public async Task MissingPlayerShouldFailBeforePowerOrQueueMutation()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var identity = new MediaIdentity(MediaEntityKind.Track, "63");
         var playerClient = new StubPlayerClient(new LmsPlayerStatus(
             "66:77:88:99:aa:bb",
@@ -259,7 +295,7 @@ public sealed class PlaybackServiceTests
             false,
             PlayerPlaybackState.Stopped));
         var playbackClient = new StubPlaybackClient();
-        var service = new PlaybackService(playerClient, playbackClient, codec);
+        var service = CreateService(playerClient, playbackClient, codecs);
 
         // Act
         var outcome = await service.PlayAsync(
@@ -277,14 +313,15 @@ public sealed class PlaybackServiceTests
     public async Task PowerFailureShouldNotMutateQueue()
     {
         // Arrange
-        var codec = new SearchResultReferenceCodec();
+        var codecs = new ReferenceCodecTestContext();
+        var codec = codecs.Search;
         var identity = new MediaIdentity(MediaEntityKind.Track, "71");
         var playerClient = new StubPlayerClient(Player(false, PlayerPlaybackState.Stopped));
         var playbackClient = new StubPlaybackClient
         {
             PowerOnException = new LmsRequestException("Synthetic power failure.")
         };
-        var service = new PlaybackService(playerClient, playbackClient, codec);
+        var service = CreateService(playerClient, playbackClient, codecs);
 
         // Act
         var exception = await Assert.ThrowsAsync<LmsRequestException>(() => service.PlayAsync(
@@ -303,6 +340,22 @@ public sealed class PlaybackServiceTests
         bool poweredOn,
         PlayerPlaybackState playbackState) =>
         new(PlayerId, "North Room", poweredOn, playbackState);
+
+    private static PlaybackService CreateService(
+        ILmsPlayerClient playerClient,
+        ILmsPlaybackClient playbackClient,
+        ReferenceCodecTestContext? codecs = null,
+        ISearchObservationStore? observationStore = null)
+    {
+        codecs ??= new ReferenceCodecTestContext();
+        return new PlaybackService(
+            playerClient,
+            playbackClient,
+            codecs.Resolver,
+            observationStore ?? NullSearchObservationStore.Instance,
+            TimeProvider.System,
+            NullLogger<PlaybackService>.Instance);
+    }
 
     private static string Reference(
         ISearchResultReferenceCodec codec,
