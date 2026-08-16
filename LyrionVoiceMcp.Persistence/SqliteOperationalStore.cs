@@ -158,8 +158,8 @@ public sealed class SqliteOperationalStore(
         GetSingleJobAsync(
             """
             WHERE status IN ('pending', 'running')
-              AND (correlation_id LIKE $firstPrefix ESCAPE '\\'
-                   OR correlation_id LIKE $secondPrefix ESCAPE '\\')
+              AND (correlation_id LIKE $firstPrefix ESCAPE '\'
+                   OR correlation_id LIKE $secondPrefix ESCAPE '\')
             ORDER BY created_at DESC, id DESC
             LIMIT 1
             """,
@@ -173,8 +173,8 @@ public sealed class SqliteOperationalStore(
         GetSingleJobAsync(
             """
             WHERE started_at IS NOT NULL
-              AND (correlation_id LIKE $firstPrefix ESCAPE '\\'
-                   OR correlation_id LIKE $secondPrefix ESCAPE '\\')
+              AND (correlation_id LIKE $firstPrefix ESCAPE '\'
+                   OR correlation_id LIKE $secondPrefix ESCAPE '\')
             ORDER BY started_at DESC, id DESC
             LIMIT 1
             """,

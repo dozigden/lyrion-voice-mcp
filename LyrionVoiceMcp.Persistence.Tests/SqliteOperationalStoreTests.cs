@@ -93,6 +93,32 @@ public sealed class SqliteOperationalStoreTests : IDisposable
         Assert.Equal(state, await store.GetScheduledJobStateAsync("schedule:test", TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task CorrelationPrefixQueriesShouldUseASingleCharacterLikeEscape()
+    {
+        // Arrange
+        const string prefix = "scheduled:fictional_%\\:";
+        var target = await store.CreateAsync(
+            new CreateJob("fictional.work", "{}", Now, prefix + "occurrence-1"),
+            Now,
+            TestContext.Current.CancellationToken);
+        await store.TryStartNextDueAsync(Now, TestContext.Current.CancellationToken);
+
+        // Act
+        var active = await store.GetLatestActiveByCorrelationPrefixesAsync(
+            prefix,
+            "adhoc:fictional:",
+            TestContext.Current.CancellationToken);
+        var started = await store.GetLatestStartedByCorrelationPrefixesAsync(
+            prefix,
+            "adhoc:fictional:",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(target.Id, active?.Id);
+        Assert.Equal(target.Id, started?.Id);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
