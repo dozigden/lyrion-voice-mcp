@@ -15,12 +15,6 @@ public sealed class SearchIndexRebuildJobHandler(
         SearchIndexRebuildPayload payload,
         CancellationToken cancellationToken)
     {
-        if (!builder.Resolvers.Contains(payload.Resolver, StringComparer.Ordinal))
-        {
-            return JobHandlerResult.Failed(
-                $"Search-index resolver '{payload.Resolver}' is not supported.");
-        }
-
         var catalogue = await catalogueStore.GetStateAsync(cancellationToken);
         if (catalogue is null
             || catalogue.Status != CatalogueStateStatus.Succeeded
@@ -43,10 +37,9 @@ public sealed class SearchIndexRebuildJobHandler(
             context.JobId,
             JobLogLevel.Information,
             "Search-index rebuild started.",
-            new { payload.Resolver, payload.CatalogueRefreshId },
+            new { payload.CatalogueRefreshId },
             cancellationToken);
         var result = await builder.RebuildAsync(
-            payload.Resolver,
             payload.CatalogueRefreshId,
             context.JobId,
             new JobProgress(context.JobId, logs),

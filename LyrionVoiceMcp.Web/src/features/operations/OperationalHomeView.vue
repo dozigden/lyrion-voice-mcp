@@ -143,8 +143,8 @@
       <article class="status-card status-card--indexes">
         <div class="status-card__heading">
           <div>
-            <p class="status-card__label">Search evaluation</p>
-            <h2>Published indexes</h2>
+            <p class="status-card__label">Production search</p>
+            <h2>Catalogue resolver</h2>
           </div>
           <span class="status-pill" :class="indexStatusPillClass" role="status">
             <span class="status-pill__dot" aria-hidden="true"></span>
@@ -155,49 +155,43 @@
         <p v-if="operations.searchIndexesErrorMessage" class="error-message" role="alert">
           {{ operations.searchIndexesErrorMessage }}
         </p>
-        <p v-else-if="operations.searchIndexesLoading && operations.searchIndexes.length === 0" class="status-card__copy">
+        <p v-else-if="operations.searchIndexesLoading && !operations.searchIndex" class="status-card__copy">
           Reading search-index status…
         </p>
-        <div v-else class="index-list">
-          <section
-            v-for="index in operations.searchIndexes"
-            :key="index.resolver"
-            class="index-row"
-          >
+        <div v-else-if="operations.searchIndex" class="index-list">
+          <section class="index-row">
             <div class="index-row__summary">
-              <h3>{{ index.resolver }}</h3>
-              <p v-if="index.artifact">
-                {{ formatCount(index.artifact.candidateCount) }} candidates ·
-                {{ formatBytes(index.artifact.indexSizeBytes) }} · built
-                <time :datetime="index.artifact.builtAt">{{ formatDate(index.artifact.builtAt) }}</time>
+              <h3>{{ operations.searchIndex.resolver }}</h3>
+              <p v-if="operations.searchIndex.artifact">
+                {{ formatCount(operations.searchIndex.artifact.candidateCount) }} candidates ·
+                {{ formatBytes(operations.searchIndex.artifact.indexSizeBytes) }} · built
+                <time :datetime="operations.searchIndex.artifact.builtAt">{{ formatDate(operations.searchIndex.artifact.builtAt) }}</time>
               </p>
               <p v-else>No published artifact.</p>
-              <p v-if="index.latestJob?.errorMessage" class="index-row__error">
-                {{ index.latestJob.errorMessage }}
+              <p v-if="operations.searchIndex.latestJob?.errorMessage" class="index-row__error">
+                {{ operations.searchIndex.latestJob.errorMessage }}
               </p>
             </div>
             <div class="index-row__actions">
               <a
-                v-if="index.latestJob"
+                v-if="operations.searchIndex.latestJob"
                 class="job-link"
-                :href="`/jobs/${index.latestJob.id}`"
+                :href="`/jobs/${operations.searchIndex.latestJob.id}`"
               >
-                Job {{ index.latestJob.id }} · {{ index.latestJob.status }}
+                Job {{ operations.searchIndex.latestJob.id }} · {{ operations.searchIndex.latestJob.status }}
               </a>
               <button
                 class="refresh-button index-rebuild"
                 type="button"
-                :disabled="indexButtonDisabled(index.latestJob?.status)"
-                @click="rebuildIndex(index.resolver)"
+                :disabled="indexButtonDisabled(operations.searchIndex.latestJob?.status)"
+                @click="rebuildIndex()"
               >
-                {{ indexButtonLabel(index.resolver, index.latestJob?.status) }}
+                {{ indexButtonLabel(operations.searchIndex.latestJob?.status) }}
               </button>
             </div>
           </section>
-          <p v-if="operations.searchIndexes.length === 0" class="catalogue-empty">
-            No search-index resolvers are configured.
-          </p>
         </div>
+        <p v-else class="catalogue-empty">The production search index has not been built.</p>
       </article>
     </section>
 
@@ -314,7 +308,7 @@ const catalogueButtonLabel = computed(() => {
 });
 
 const indexStatusLabel = computed(() => {
-  if (operations.searchIndexesLoading && operations.searchIndexes.length === 0) {
+  if (operations.searchIndexesLoading && !operations.searchIndex) {
     return 'Checking';
   }
 
@@ -322,12 +316,11 @@ const indexStatusLabel = computed(() => {
     return 'Rebuilding';
   }
 
-  if (operations.searchIndexes.some(index => index.latestJob?.status === 'failed')) {
+  if (operations.searchIndex?.latestJob?.status === 'failed') {
     return 'Attention';
   }
 
-  if (operations.searchIndexes.length > 0
-    && operations.searchIndexes.every(index => index.artifact !== null)) {
+  if (operations.searchIndex?.artifact) {
     return 'Ready';
   }
 
@@ -365,8 +358,8 @@ async function rebuildCatalogue(): Promise<void> {
   scheduleOperationPoll();
 }
 
-async function rebuildIndex(resolver: string): Promise<void> {
-  await operations.rebuildIndex(resolver);
+async function rebuildIndex(): Promise<void> {
+  await operations.rebuildIndex();
   scheduleOperationPoll();
 }
 
@@ -395,15 +388,15 @@ function clearOperationPoll(): void {
 
 function indexButtonDisabled(status: string | undefined): boolean {
   return operations.searchIndexesLoading
-    || operations.searchIndexRebuildPending !== null
+    || operations.searchIndexRebuildPending
     || status === 'pending'
     || status === 'running'
     || operations.catalogueRebuilding
     || !operations.catalogue?.summary;
 }
 
-function indexButtonLabel(resolver: string, status: string | undefined): string {
-  if (operations.searchIndexRebuildPending === resolver) {
+function indexButtonLabel(status: string | undefined): string {
+  if (operations.searchIndexRebuildPending) {
     return 'Starting…';
   }
 

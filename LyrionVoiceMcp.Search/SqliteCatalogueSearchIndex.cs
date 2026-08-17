@@ -3,14 +3,14 @@ using System.Globalization;
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Data.Sqlite;
 
-namespace LyrionVoiceMcp.Evaluation;
+namespace LyrionVoiceMcp.Search;
 
-public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnosticSearchResolver
+public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchResolver
 {
     private const int LaneCandidateLimit = 80;
     private readonly string connectionString;
 
-    private CataloguePhuzzyIndexedSearchResolver(
+    private SqliteCatalogueSearchIndex(
         string databasePath,
         int candidateCount,
         long preparationDurationMilliseconds)
@@ -26,11 +26,11 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
             new FileInfo(databasePath).Length);
     }
 
-    public string Name => "catalogue-phuzzy-indexed";
-    public string Version => "2";
+    public string Name => "catalogue-phuzzy-sqlite";
+    public string Version => "1";
     public EvaluationResolverMetrics Metrics { get; }
 
-    public static CataloguePhuzzyIndexedSearchResolver Open(
+    public static SqliteCatalogueSearchIndex Open(
         string indexDatabasePath,
         SearchIndexArtifact artifact) =>
         new(
@@ -38,20 +38,24 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
             artifact.CandidateCount,
             artifact.PreparationDurationMilliseconds);
 
-    public static async Task<CataloguePhuzzyIndexedSearchResolver> CreateAsync(
-        string catalogueDatabasePath,
+    public static async Task<SqliteCatalogueSearchIndex> CreateAsync(
+        ICatalogueSearchDocumentSource source,
+        string catalogueRefreshId,
         string indexDatabasePath,
+        ISearchIndexProgress progress,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        var catalogue = await CatalogueEvaluationIndex.LoadAsync(
-            catalogueDatabasePath,
-            cancellationToken);
-        await BuildIndexAsync(indexDatabasePath, catalogue.Candidates, cancellationToken);
-        stopwatch.Stop();
-        return new CataloguePhuzzyIndexedSearchResolver(
+        var candidateCount = await BuildIndexAsync(
+            source,
+            catalogueRefreshId,
             indexDatabasePath,
-            catalogue.Candidates.Count,
+            progress,
+            cancellationToken);
+        stopwatch.Stop();
+        return new SqliteCatalogueSearchIndex(
+            indexDatabasePath,
+            candidateCount,
             stopwatch.ElapsedMilliseconds);
     }
 
@@ -65,6 +69,38 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
             .Select(result => result.Candidate.Source.Value)
             .ToArray();
         return new EvaluationSearchResponse(candidates, null);
+    }
+
+    public async Task<CatalogueSearchResponse> SearchCatalogueAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var execution = await SearchCoreAsync(query, captureDiagnostics: false, cancellationToken);
+        var candidates = execution.Ranked
+            .Take(20)
+            .Select(result =>
+            {
+                var value = result.Candidate.Source.Value;
+                var separator = result.Candidate.Source.StableKey.IndexOf(':');
+                if (separator < 0 || separator == result.Candidate.Source.StableKey.Length - 1)
+                {
+                    throw new InvalidDataException("A search index document has an invalid stable key.");
+                }
+
+                return new CatalogueSearchCandidate(
+                    new MediaIdentity(
+                        value.Kind,
+                        result.Candidate.Source.StableKey[(separator + 1)..]),
+                    value.Title,
+                    value.Artist,
+                    value.Album,
+                    result.Score);
+            })
+            .ToArray();
+        return new CatalogueSearchResponse(
+            candidates,
+            (long)Math.Round(execution.RetrievalDurationMilliseconds),
+            (long)Math.Round(execution.RerankDurationMilliseconds));
     }
 
     public async Task<EvaluationDiagnosticSearchResponse> SearchDetailedAsync(
@@ -149,7 +185,7 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
         retrievalStopwatch.Stop();
 
         var rerankStopwatch = Stopwatch.StartNew();
-        var ranked = CataloguePhuzzySearchResolver.RankCandidates(
+        var ranked = CatalogueSearchRanker.RankCandidates(
             query,
             read.Candidates,
             includeUnmatched: captureDiagnostics,
@@ -166,9 +202,11 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
             read.RetrievalLanes);
     }
 
-    private static async Task BuildIndexAsync(
+    private static async Task<int> BuildIndexAsync(
+        ICatalogueSearchDocumentSource source,
+        string catalogueRefreshId,
         string databasePath,
-        IReadOnlyList<CatalogueEvaluationCandidate> candidates,
+        ISearchIndexProgress progress,
         CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(databasePath);
@@ -225,9 +263,52 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
             await schema.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var documentId = 0L;
+        await foreach (var batch in source.ReadBatchesAsync(
+            catalogueRefreshId,
+            500,
+            cancellationToken))
+        {
+            if (!string.Equals(
+                batch.CatalogueRefreshId,
+                catalogueRefreshId,
+                StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The catalogue search document source returned a different refresh.");
+            }
+
+            documentId = await InsertBatchAsync(
+                connection,
+                batch.Documents,
+                documentId,
+                cancellationToken);
+
+            await progress.ReportAsync(
+                "Indexed catalogue search documents.",
+                new { documentCount = documentId, batchSize = batch.Documents.Count },
+                cancellationToken);
+        }
+
+        await using var optimise = connection.CreateCommand();
+        optimise.CommandText = """
+            INSERT INTO document_fts(document_fts) VALUES('optimize');
+            INSERT INTO document_trigram_fts(document_trigram_fts) VALUES('optimize');
+            """;
+        await optimise.ExecuteNonQueryAsync(cancellationToken);
+        return checked((int)documentId);
+    }
+
+    private static async Task<long> InsertBatchAsync(
+        SqliteConnection connection,
+        IReadOnlyList<CatalogueSearchDocument> documents,
+        long previousDocumentId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(
+            cancellationToken);
         await using var insertDocument = connection.CreateCommand();
-        insertDocument.Transaction = (SqliteTransaction)transaction;
+        insertDocument.Transaction = transaction;
         insertDocument.CommandText = """
             INSERT INTO documents (document_id, stable_key, kind, title, artist, album)
             VALUES ($documentId, $stableKey, $kind, $title, $artist, $album);
@@ -240,7 +321,7 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
         var albumParameter = insertDocument.Parameters.Add("$album", SqliteType.Text);
 
         await using var insertTerm = connection.CreateCommand();
-        insertTerm.Transaction = (SqliteTransaction)transaction;
+        insertTerm.Transaction = transaction;
         insertTerm.CommandText = """
             INSERT OR IGNORE INTO lookup_terms (lane, term, document_id)
             VALUES ($lane, $term, $documentId);
@@ -250,7 +331,7 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
         var termDocumentIdParameter = insertTerm.Parameters.Add("$documentId", SqliteType.Integer);
 
         await using var insertFts = connection.CreateCommand();
-        insertFts.Transaction = (SqliteTransaction)transaction;
+        insertFts.Transaction = transaction;
         insertFts.CommandText = """
             INSERT INTO document_fts (document_id, content)
             VALUES ($documentId, $content);
@@ -259,7 +340,7 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
         var contentParameter = insertFts.Parameters.Add("$content", SqliteType.Text);
 
         await using var insertTrigramFts = connection.CreateCommand();
-        insertTrigramFts.Transaction = (SqliteTransaction)transaction;
+        insertTrigramFts.Transaction = transaction;
         insertTrigramFts.CommandText = """
             INSERT INTO document_trigram_fts (document_id, content)
             VALUES ($documentId, $content);
@@ -269,22 +350,19 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
             SqliteType.Integer);
         var trigramContentParameter = insertTrigramFts.Parameters.Add("$content", SqliteType.Text);
 
-        for (var index = 0; index < candidates.Count; index++)
+        var documentId = previousDocumentId;
+        foreach (var document in documents)
         {
-            if ((index & 255) == 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            var documentId = index + 1L;
-            var source = candidates[index];
-            var candidate = CataloguePhuzzySearchResolver.CreateCandidate(source);
+            cancellationToken.ThrowIfCancellationRequested();
+            documentId++;
+            var source = CatalogueIndexCandidate.FromDocument(document);
+            var candidate = CatalogueSearchRanker.CreateCandidate(source);
             documentIdParameter.Value = documentId;
             stableKeyParameter.Value = source.StableKey;
-            kindParameter.Value = (int)source.Value.Kind;
-            titleParameter.Value = source.Value.Title;
-            artistParameter.Value = source.Value.Artist ?? (object)DBNull.Value;
-            albumParameter.Value = source.Value.Album ?? (object)DBNull.Value;
+            kindParameter.Value = (int)document.Identity.Kind;
+            titleParameter.Value = document.Title;
+            artistParameter.Value = document.Artist ?? (object)DBNull.Value;
+            albumParameter.Value = document.Album ?? (object)DBNull.Value;
             await insertDocument.ExecuteNonQueryAsync(cancellationToken);
 
             termDocumentIdParameter.Value = documentId;
@@ -298,19 +376,13 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
             ftsDocumentIdParameter.Value = documentId;
             contentParameter.Value = candidate.Combined.Normalised;
             await insertFts.ExecuteNonQueryAsync(cancellationToken);
-
             trigramDocumentIdParameter.Value = documentId;
             trigramContentParameter.Value = candidate.Combined.Compact;
             await insertTrigramFts.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
-        await using var optimise = connection.CreateCommand();
-        optimise.CommandText = """
-            INSERT INTO document_fts(document_fts) VALUES('optimize');
-            INSERT INTO document_trigram_fts(document_trigram_fts) VALUES('optimize');
-            """;
-        await optimise.ExecuteNonQueryAsync(cancellationToken);
+        return documentId;
     }
 
     private static IEnumerable<LookupTerm> CreateStoredTerms(PhuzzyCandidate candidate)
@@ -619,7 +691,7 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
         {
             var documentId = reader.GetInt64(0);
             var stableKey = reader.GetString(1);
-            var source = new CatalogueEvaluationCandidate(
+            var source = new CatalogueIndexCandidate(
                 stableKey,
                 new EvaluationSearchCandidate(
                     (MediaEntityKind)reader.GetInt32(2),
@@ -630,7 +702,7 @@ public sealed class CataloguePhuzzyIndexedSearchResolver : IEvaluationDiagnostic
                 reader.IsDBNull(4) ? string.Empty : PhuzzyText.Normalise(reader.GetString(4)),
                 reader.IsDBNull(5) ? string.Empty : PhuzzyText.Normalise(reader.GetString(5)),
                 string.Empty);
-            candidates.Add(CataloguePhuzzySearchResolver.CreateCandidate(source));
+            candidates.Add(CatalogueSearchRanker.CreateCandidate(source));
             if (captureEvidence)
             {
                 retrievalLanes.Add(stableKey, collectedCandidates.GetEvidence(documentId));

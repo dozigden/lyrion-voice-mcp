@@ -12,8 +12,10 @@ const requiredPaths = [
   'LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj',
   'LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj',
   'LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj',
+  'LyrionVoiceMcp.Search/LyrionVoiceMcp.Search.csproj',
   'LyrionVoiceMcp.Evaluation/LyrionVoiceMcp.Evaluation.csproj',
   'LyrionVoiceMcp.Evaluation.Tests/LyrionVoiceMcp.Evaluation.Tests.csproj',
+  'LyrionVoiceMcp.Search.Tests/LyrionVoiceMcp.Search.Tests.csproj',
   'LyrionVoiceMcp.Web/package.json',
   'LyrionVoiceMcp.Dev/LyrionVoiceMcp.Dev.csproj',
   'scripts/test-fast.sh',
@@ -57,6 +59,7 @@ for (const project of [
   'LyrionVoiceMcp.Services',
   'LyrionVoiceMcp.Lms',
   'LyrionVoiceMcp.Persistence',
+  'LyrionVoiceMcp.Search',
   'LyrionVoiceMcp.Evaluation',
   'LyrionVoiceMcp.Web',
   'LyrionVoiceMcp.Dev'
@@ -83,13 +86,20 @@ assertProjectReferences('LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.c
 assertProjectReferences('LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj', [
   'LyrionVoiceMcp.Persistence'
 ]);
+assertProjectReferences('LyrionVoiceMcp.Search/LyrionVoiceMcp.Search.csproj', [
+  'LyrionVoiceMcp.Abstractions'
+]);
+assertProjectReferences('LyrionVoiceMcp.Search.Tests/LyrionVoiceMcp.Search.Tests.csproj', [
+  'LyrionVoiceMcp.Search'
+]);
 assertProjectReferences('LyrionVoiceMcp.Evaluation/LyrionVoiceMcp.Evaluation.csproj', [
   'LyrionVoiceMcp.Abstractions',
   'LyrionVoiceMcp.Lms',
-  'LyrionVoiceMcp.Persistence'
+  'LyrionVoiceMcp.Search'
 ]);
 assertProjectReferences('LyrionVoiceMcp.Evaluation.Tests/LyrionVoiceMcp.Evaluation.Tests.csproj', [
-  'LyrionVoiceMcp.Evaluation'
+  'LyrionVoiceMcp.Evaluation',
+  'LyrionVoiceMcp.Search'
 ]);
 assertProjectReferences('LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj', [
   'LyrionVoiceMcp.Abstractions',
@@ -97,6 +107,7 @@ assertProjectReferences('LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj', [
   'LyrionVoiceMcp.Evaluation',
   'LyrionVoiceMcp.Lms',
   'LyrionVoiceMcp.Persistence',
+  'LyrionVoiceMcp.Search',
   'LyrionVoiceMcp.Services'
 ]);
 

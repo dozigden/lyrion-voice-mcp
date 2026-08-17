@@ -11,32 +11,17 @@ public sealed class SearchIndexService(
     IJobLifecycleGate lifecycleGate,
     TimeProvider timeProvider) : ISearchIndexService
 {
-    public async Task<IReadOnlyList<SearchIndexStatus>> ListAsync(
-        CancellationToken cancellationToken)
-    {
-        var results = new List<SearchIndexStatus>(builder.Resolvers.Count);
-        foreach (var resolver in builder.Resolvers)
-        {
-            results.Add(new SearchIndexStatus(
-                resolver,
-                await builder.GetArtifactAsync(resolver, cancellationToken),
-                await GetLatestJobAsync(resolver, cancellationToken)));
-        }
+    private const string Resolver = "catalogue-phuzzy-sqlite";
 
-        return results;
-    }
+    public async Task<SearchIndexStatus> GetAsync(CancellationToken cancellationToken) =>
+        new(
+            Resolver,
+            await builder.GetArtifactAsync(cancellationToken),
+            await GetLatestJobAsync(cancellationToken));
 
-    public Task<SearchIndexRebuildOutcome> RebuildAsync(
-        string resolver,
-        CancellationToken cancellationToken) =>
+    public Task<SearchIndexRebuildOutcome> RebuildAsync(CancellationToken cancellationToken) =>
         lifecycleGate.ExecuteAsync<SearchIndexRebuildOutcome>(async token =>
         {
-            if (!builder.Resolvers.Contains(resolver, StringComparer.Ordinal))
-            {
-                return new SearchIndexRebuildRejected(
-                    $"Search-index resolver '{resolver}' is not supported.");
-            }
-
             if (await jobStore.GetLatestActiveByTypeAsync(
                     JobTypes.CatalogueRefresh,
                     token) is not null)
@@ -54,16 +39,15 @@ public sealed class SearchIndexService(
                     "The catalogue has not completed successfully.");
             }
 
-            if (await GetActiveJobAsync(resolver, token) is not null)
+            if (await GetActiveJobAsync(token) is not null)
             {
                 return new SearchIndexRebuildRejected(
                     "A rebuild for this search index is already queued or running.");
             }
 
             var outcome = await EnqueueAsync(
-                resolver,
                 catalogue.RefreshId,
-                $"search-index:{resolver}:manual:{Guid.NewGuid():N}",
+                $"search-index:production:manual:{Guid.NewGuid():N}",
                 token);
             if (outcome is not JobEnqueued enqueued)
             {
@@ -74,63 +58,46 @@ public sealed class SearchIndexService(
             }
 
             return new SearchIndexRebuildStarted(new SearchIndexStatus(
-                resolver,
-                await builder.GetArtifactAsync(resolver, token),
+                Resolver,
+                await builder.GetArtifactAsync(token),
                 enqueued.Job));
         }, cancellationToken);
 
-    public async Task<IReadOnlyList<long>> EnqueueForCatalogueAsync(
+    public async Task<long?> EnqueueForCatalogueAsync(
         string catalogueRefreshId,
         CancellationToken cancellationToken)
     {
-        var jobIds = new List<long>(builder.Resolvers.Count);
-        foreach (var resolver in builder.Resolvers)
-        {
-            var outcome = await EnqueueAsync(
-                resolver,
-                catalogueRefreshId,
-                $"search-index:{resolver}:catalogue:{catalogueRefreshId}",
-                cancellationToken);
-            if (outcome is JobEnqueued enqueued)
-            {
-                jobIds.Add(enqueued.Job.Id);
-            }
-        }
-
-        return jobIds;
+        var outcome = await EnqueueAsync(
+            catalogueRefreshId,
+            $"search-index:production:catalogue:{catalogueRefreshId}",
+            cancellationToken);
+        return outcome is JobEnqueued enqueued ? enqueued.Job.Id : null;
     }
 
     private Task<JobEnqueueOutcome> EnqueueAsync(
-        string resolver,
         string catalogueRefreshId,
         string correlationId,
         CancellationToken cancellationToken) =>
         jobService.EnqueueAsync(
             new CreateJob(
                 JobTypes.SearchIndexRebuild,
-                JsonSerializer.Serialize(new SearchIndexRebuildPayload(
-                    resolver,
-                    catalogueRefreshId)),
+                JsonSerializer.Serialize(new SearchIndexRebuildPayload(catalogueRefreshId)),
                 timeProvider.GetUtcNow(),
                 correlationId),
             cancellationToken);
 
-    private async Task<Job?> GetLatestJobAsync(
-        string resolver,
-        CancellationToken cancellationToken) =>
-        await GetActiveJobAsync(resolver, cancellationToken)
+    private async Task<Job?> GetLatestJobAsync(CancellationToken cancellationToken) =>
+        await GetActiveJobAsync(cancellationToken)
         ?? await jobStore.GetLatestStartedByCorrelationPrefixesAsync(
-            Prefix(resolver),
-            Prefix(resolver),
+            Prefix,
+            Prefix,
             cancellationToken);
 
-    private Task<Job?> GetActiveJobAsync(
-        string resolver,
-        CancellationToken cancellationToken) =>
+    private Task<Job?> GetActiveJobAsync(CancellationToken cancellationToken) =>
         jobStore.GetLatestActiveByCorrelationPrefixesAsync(
-            Prefix(resolver),
-            Prefix(resolver),
+            Prefix,
+            Prefix,
             cancellationToken);
 
-    private static string Prefix(string resolver) => $"search-index:{resolver}:";
+    private const string Prefix = "search-index:production:";
 }

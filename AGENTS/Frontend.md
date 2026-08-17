@@ -9,4 +9,4 @@
 - Prefer semantic HTML, labelled controls, keyboard access, and responsive layouts.
 - Do not use nested ternaries or `$event` expressions in templates; use named handlers and explicit branching.
 - Keep operational warnings concise. The trusted-LAN warning must remain visible wherever connection details are presented.
-- Search-observation pages must keep retention/privacy visible and must distinguish LMS retrieval from local result processing.
+- Search-observation pages must keep retention/privacy visible and describe retrieval sources generically; observations may combine the production catalogue resolver with LMS playlist retrieval.

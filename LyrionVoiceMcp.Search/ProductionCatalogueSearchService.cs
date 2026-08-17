@@ -1,0 +1,304 @@
+using System.Text.Json;
+using LyrionVoiceMcp.Abstractions;
+
+namespace LyrionVoiceMcp.Search;
+
+public sealed record ProductionSearchSettings(string IndexDirectoryPath)
+{
+    public static ProductionSearchSettings FromValues(
+        string contentRootPath,
+        string? indexDirectoryPath)
+    {
+        var configured = string.IsNullOrWhiteSpace(indexDirectoryPath)
+            ? Path.Combine(contentRootPath, ".data", "search-index")
+            : indexDirectoryPath.Trim();
+        return new ProductionSearchSettings(Path.IsPathRooted(configured)
+            ? Path.GetFullPath(configured)
+            : Path.GetFullPath(configured, contentRootPath));
+    }
+}
+
+public sealed class ProductionCatalogueSearchService :
+    ISearchIndexBuilder,
+    ICatalogueSearchResolver,
+    IAsyncDisposable
+{
+    public const string ResolverName = "catalogue-phuzzy-sqlite";
+    public const string ResolverVersion = "1";
+    private const string ManifestFileName = "manifest.json";
+    private const string IndexFileName = "search.db";
+    private const string PointerFileName = "current.json";
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly ProductionSearchSettings settings;
+    private readonly ICatalogueSearchDocumentSource documentSource;
+    private readonly TimeProvider timeProvider;
+    private LoadedGeneration? loaded;
+
+    public ProductionCatalogueSearchService(
+        ProductionSearchSettings settings,
+        ICatalogueSearchDocumentSource documentSource,
+        TimeProvider timeProvider)
+    {
+        this.settings = settings;
+        this.documentSource = documentSource;
+        this.timeProvider = timeProvider;
+    }
+
+    public async Task<CatalogueSearchResponse> SearchAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var generation = await GetLoadedAsync(cancellationToken);
+        if (generation is null)
+        {
+            throw new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built.");
+        }
+
+        return await generation.Resolver.SearchCatalogueAsync(query, cancellationToken);
+    }
+
+    public async Task<EvaluationDiagnosticSearchResponse> SearchDetailedAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var generation = await GetLoadedAsync(cancellationToken);
+        if (generation is null)
+        {
+            throw new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built.");
+        }
+
+        return await generation.Resolver.SearchDetailedAsync(query, cancellationToken);
+    }
+
+    public async Task<SearchIndexArtifact?> GetArtifactAsync(
+        CancellationToken cancellationToken) =>
+        (await GetLoadedAsync(cancellationToken))?.Artifact;
+
+    public async Task<SearchIndexRebuildResult> RebuildAsync(
+        string catalogueRefreshId,
+        long jobId,
+        ISearchIndexProgress progress,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(settings.IndexDirectoryPath);
+        var generationName = $"generation-{jobId}-{Guid.NewGuid():N}";
+        var stagingName = $".{generationName}.building";
+        var stagingDirectory = Path.Combine(settings.IndexDirectoryPath, stagingName);
+        var generationDirectory = Path.Combine(settings.IndexDirectoryPath, generationName);
+        Directory.CreateDirectory(stagingDirectory);
+
+        try
+        {
+            await progress.ReportAsync(
+                "Building production catalogue search index.",
+                new { catalogueRefreshId, generation = generationName },
+                cancellationToken);
+            var indexPath = Path.Combine(stagingDirectory, IndexFileName);
+            var resolver = await SqliteCatalogueSearchIndex.CreateAsync(
+                documentSource,
+                catalogueRefreshId,
+                indexPath,
+                progress,
+                cancellationToken);
+            var artifact = new SearchIndexArtifact(
+                ResolverName,
+                ResolverVersion,
+                catalogueRefreshId,
+                timeProvider.GetUtcNow(),
+                resolver.Metrics.IndexedCandidateCount
+                    ?? throw new InvalidOperationException(
+                        "The completed search index did not report a candidate count."),
+                resolver.Metrics.PreparationDurationMilliseconds,
+                resolver.Metrics.IndexSizeBytes
+                    ?? throw new InvalidOperationException(
+                        "The completed search index did not report its size."));
+            await WriteJsonAsync(
+                Path.Combine(stagingDirectory, ManifestFileName),
+                artifact,
+                cancellationToken);
+
+            var validated = SqliteCatalogueSearchIndex.Open(indexPath, artifact);
+            await validated.SearchCatalogueAsync("validation", cancellationToken);
+            Directory.Move(stagingDirectory, generationDirectory);
+            var publishedResolver = SqliteCatalogueSearchIndex.Open(
+                Path.Combine(generationDirectory, IndexFileName),
+                artifact);
+
+            await progress.ReportAsync(
+                "Publishing production catalogue search index.",
+                artifact,
+                cancellationToken);
+            string? previousGeneration;
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                previousGeneration = loaded?.Name;
+                var pointerTemporaryPath = Path.Combine(
+                    settings.IndexDirectoryPath,
+                    $".{PointerFileName}.{Guid.NewGuid():N}.tmp");
+                await WriteJsonAsync(
+                    pointerTemporaryPath,
+                    new GenerationPointer(generationName),
+                    cancellationToken);
+                File.Move(
+                    pointerTemporaryPath,
+                    Path.Combine(settings.IndexDirectoryPath, PointerFileName),
+                    overwrite: true);
+                loaded = new LoadedGeneration(generationName, artifact, publishedResolver);
+            }
+            finally
+            {
+                gate.Release();
+            }
+
+            TryCleanOldGenerations(generationName, previousGeneration);
+
+            return new SearchIndexRebuildResult(artifact);
+        }
+        finally
+        {
+            if (Directory.Exists(stagingDirectory))
+            {
+                Directory.Delete(stagingDirectory, recursive: true);
+            }
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        gate.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    private async Task<LoadedGeneration?> GetLoadedAsync(CancellationToken cancellationToken)
+    {
+        if (loaded is not null)
+        {
+            return loaded;
+        }
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (loaded is not null)
+            {
+                return loaded;
+            }
+
+            var pointer = await ReadJsonAsync<GenerationPointer>(
+                Path.Combine(settings.IndexDirectoryPath, PointerFileName),
+                cancellationToken);
+            if (pointer is null || !IsSafeGenerationName(pointer.Generation))
+            {
+                return null;
+            }
+
+            var directory = Path.Combine(settings.IndexDirectoryPath, pointer.Generation);
+            var artifact = await ReadJsonAsync<SearchIndexArtifact>(
+                Path.Combine(directory, ManifestFileName),
+                cancellationToken);
+            if (artifact is null
+                || !string.Equals(artifact.Resolver, ResolverName, StringComparison.Ordinal)
+                || !string.Equals(artifact.ResolverVersion, ResolverVersion, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var indexPath = Path.Combine(directory, IndexFileName);
+            if (!File.Exists(indexPath))
+            {
+                return null;
+            }
+
+            loaded = new LoadedGeneration(
+                pointer.Generation,
+                artifact,
+                SqliteCatalogueSearchIndex.Open(indexPath, artifact));
+            return loaded;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static bool IsSafeGenerationName(string value) =>
+        value.StartsWith("generation-", StringComparison.Ordinal)
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character == '-');
+
+    private void TryCleanOldGenerations(string currentGeneration, string? previousGeneration)
+    {
+        try
+        {
+            foreach (var directory in Directory.EnumerateDirectories(
+                settings.IndexDirectoryPath,
+                "generation-*",
+                SearchOption.TopDirectoryOnly))
+            {
+                var name = Path.GetFileName(directory);
+                if (string.Equals(name, currentGeneration, StringComparison.Ordinal)
+                    || string.Equals(name, previousGeneration, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+                catch (Exception)
+                {
+                    // A query may still hold this generation. A later rebuild will retry cleanup.
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Cleanup is best effort and must not change a successfully published job outcome.
+        }
+    }
+
+    private static async Task WriteJsonAsync<T>(
+        string path,
+        T value,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            16 * 1024,
+            FileOptions.Asynchronous);
+        await JsonSerializer.SerializeAsync(stream, value, JsonOptions, cancellationToken);
+        await stream.FlushAsync(cancellationToken);
+    }
+
+    private static async Task<T?> ReadJsonAsync<T>(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
+        {
+            return default;
+        }
+
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            16 * 1024,
+            FileOptions.Asynchronous);
+        return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken);
+    }
+
+    private sealed record GenerationPointer(string Generation);
+    private sealed record LoadedGeneration(
+        string Name,
+        SearchIndexArtifact Artifact,
+        SqliteCatalogueSearchIndex Resolver);
+}

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LyrionVoiceMcp.Evaluation;
+using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Api.Endpoints;
 
@@ -35,7 +36,7 @@ public static class EvaluationEndpoints
             var response = await service.SearchAsync(request, cancellationToken);
             return Results.Json(response, JsonOptions);
         }
-        catch (SearchIndexUnavailableException exception)
+        catch (CatalogueSearchUnavailableException exception)
         {
             return Results.Conflict(new EvaluationEndpointError(exception.Message));
         }

@@ -59,7 +59,7 @@ describe('SearchObservationDetailView', () => {
     // Assert
     expect(wrapper.text()).toContain('Search request failed');
     expect(wrapper.text()).toContain('No candidates were recovered before the request failed.');
-    expect(wrapper.text()).not.toContain('LMS returned no candidates.');
+    expect(wrapper.text()).not.toContain('Search returned no candidates.');
     expect(wrapper.get('input[type="checkbox"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('select').element.value).toBe('other');
   });

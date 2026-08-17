@@ -39,15 +39,15 @@ Every item returned by `browse` also has one opaque server-issued handle. Its re
 
 `search` resolves voice-derived text into ordered media candidates.
 
-The implemented first-pass input consists only of a required query. It searches the whole configured LMS library and passes the query through to LMS.
+The implemented input consists only of a required query of at most 500 characters and 20 words. It searches the whole configured library through the production catalogue resolver, while playlists use an isolated LMS request.
 
-Each ordered result carries its opaque candidate reference, media kind, and display information. An empty list represents no match. LMS artist, album, and track results retain their category order, followed by matching playlists.
+Each ordered result carries its opaque candidate reference, media kind, and display information. An empty list represents no match. Up to 20 ranked catalogue artists, albums, and tracks are followed by up to 20 matching playlists in LMS order.
 
-The first-pass LMS pass-through does not invent a confidence rating which LMS cannot support. The server does not silently select or play a result.
+The production catalogue resolver does not expose its ranking score as confidence. Playlist results follow catalogue results in LMS order. The server does not silently select or play a result.
 
 Provider and collection scopes, kind filters, caller-selected result limits, match evidence, explicit rank, and public timing are not part of the first-pass contract. Observation timing and other diagnostic evidence remain internal concerns.
 
-Confidence may be reconsidered later alongside indexed search and ranking. An invalid query returns an MCP tool execution error with `isError: true`, rather than a protocol error or validation exception. Precise property names beyond the implemented first pass have not yet been agreed.
+Confidence may be reconsidered later alongside ranking calibration. An invalid query returns an MCP tool execution error with `isError: true`, rather than a protocol error or validation exception. Precise property names beyond the implemented first pass have not yet been agreed.
 
 ## `browse`
 

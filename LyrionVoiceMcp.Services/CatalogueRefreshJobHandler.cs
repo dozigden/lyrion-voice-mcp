@@ -76,14 +76,14 @@ public sealed class CatalogueRefreshJobHandler(
                 cancellationToken);
         }
 
-        var indexJobIds = await searchIndexes.EnqueueForCatalogueAsync(
+        var indexJobId = await searchIndexes.EnqueueForCatalogueAsync(
             refreshId,
             cancellationToken);
         await logs.WriteAsync(
             context.JobId,
             JobLogLevel.Information,
-            "Queued search-index rebuilds.",
-            new { jobIds = indexJobIds },
+            "Queued production search-index rebuild.",
+            new { jobId = indexJobId },
             cancellationToken);
         await logs.WriteAsync(
             context.JobId,
@@ -94,7 +94,7 @@ public sealed class CatalogueRefreshJobHandler(
         return JobHandlerResult.Succeeded(JsonSerializer.Serialize(new
         {
             catalogue = completion.Summary,
-            searchIndexJobIds = indexJobIds
+            searchIndexJobId = indexJobId
         }));
     }
 

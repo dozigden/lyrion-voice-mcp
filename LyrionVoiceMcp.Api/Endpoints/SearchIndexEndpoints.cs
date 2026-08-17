@@ -8,22 +8,21 @@ public static class SearchIndexEndpoints
     public static IEndpointRouteBuilder MapSearchIndexEndpoints(
         this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/evaluation/indexes", ListAsync);
-        endpoints.MapPost("/api/evaluation/indexes/{resolver}/rebuild", RebuildAsync);
+        endpoints.MapGet("/api/search/index", GetAsync);
+        endpoints.MapPost("/api/search/index/rebuild", RebuildAsync);
         return endpoints;
     }
 
-    private static async Task<IResult> ListAsync(
+    private static async Task<IResult> GetAsync(
         ISearchIndexService service,
         CancellationToken cancellationToken) =>
-        Results.Ok((await service.ListAsync(cancellationToken)).Select(ToResponse));
+        Results.Ok(ToResponse(await service.GetAsync(cancellationToken)));
 
     private static async Task<IResult> RebuildAsync(
-        string resolver,
         ISearchIndexService service,
         CancellationToken cancellationToken)
     {
-        var outcome = await service.RebuildAsync(resolver, cancellationToken);
+        var outcome = await service.RebuildAsync(cancellationToken);
         return outcome switch
         {
             SearchIndexRebuildStarted started => Results.Accepted(

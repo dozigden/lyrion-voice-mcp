@@ -2,13 +2,14 @@
 
 Read this before changing catalogue models, LMS ingestion, provider metadata, catalogue persistence, or refresh orchestration.
 
-The import contracts, bounded LMS reader/writer pipeline, durable reconciliation, durable refresh job, and manual refresh orchestration are implemented; the queryable canonical catalogue is not. The evidence and provisional data shape are recorded in [CATALOGUE_RECONNAISSANCE.md](../CATALOGUE_RECONNAISSANCE.md).
+The import contracts, bounded LMS reader/writer pipeline, durable reconciliation, refresh job, queryable canonical catalogue, and bounded production-search document source are implemented. The evidence and provisional data shape are recorded in [CATALOGUE_RECONNAISSANCE.md](../CATALOGUE_RECONNAISSANCE.md).
 
 ## Boundaries
 
 - Catalogue application contracts belong in Abstractions, orchestration belongs in Services, LMS response parsing belongs in Lms, and concrete storage belongs behind a persistence adapter.
 - Do not expose LMS JSON response types, a concrete database, or a search-engine document through catalogue contracts.
 - The catalogue is canonical application data. Search indexes are disposable derived data and operational search observations remain separate application data.
+- Stream production search documents in stable keyset-ordered batches of at most 500. Validate the successful refresh before and after streaming; never return a partially converged catalogue or materialise the complete library.
 - Preserve provider/source metadata needed for later Spotify, BBC Sounds, and other plugin adapters. Do not model every item as a local file merely because the first representative library currently contains local tracks.
 - Keep typed entities and relationships for artists, albums, tracks, genres, playlists, and virtual libraries. Avoid an untyped metadata bag as the primary model.
 - Artists mean main track artists and album artists. Do not generalise them into contributors or ingest composer, conductor, band, or other contributor-role relationships.
@@ -29,7 +30,7 @@ The import contracts, bounded LMS reader/writer pipeline, durable reconciliation
 
 ## Refresh
 
-- `ICatalogueImportWriter` is the storage-neutral page/batch boundary. `SqliteMediaCatalogueStore` implements it in a catalogue database separate from search observations; do not leak this adapter choice into catalogue consumers or the future search index.
+- `ICatalogueImportWriter` is the storage-neutral write boundary and `ICatalogueSearchDocumentSource` is the storage-neutral production-index read boundary. `SqliteMediaCatalogueStore` implements both without leaking its database to Search.
 - Every LMS page is upserted in its own short transaction and is immediately durable. The store marks each canonical row with the current refresh ID. Track relationships are replaced for the bounded track page being written; virtual-library memberships carry their own seen marker. A bounded reconciliation table records every broad artist-lookup ID even though only referenced main and album artists enter the canonical artist table.
 - A failed run may leave successfully written new or updated rows alongside older rows. Do not remove unseen rows unless every LMS phase and the final `serverstatus` stability check succeeded. A retry must converge without duplicating identities.
 - After a successful read, validate the unique seen counts for the broad artist lookup, albums, genres, tracks, virtual libraries, and each virtual-library membership, then delete unseen memberships and entities in dependency order. Cleanup is deliberately not an all-catalogue transaction; a cleanup failure is recorded and the next refresh converges.
@@ -38,7 +39,6 @@ The import contracts, bounded LMS reader/writer pipeline, durable reconciliation
 - Existing catalogue schemas are disposable derived data. When this bounded-ingestion schema replaces an older schema, rebuild the catalogue database rather than maintaining data migrations. Never delete or rebuild the separate operational search-observation database.
 - `GET /api/catalogue` exposes the current successful summary, when there is one, plus the latest catalogue job. `POST /api/catalogue/refresh` queues one durable job, returns `202 Accepted`, and rejects concurrent attempts. Full progress and result inspection belongs to `/api/jobs/{id}` and the Jobs UI. The catalogue schedule definition is present but disabled by default; run-now is allowed, while automatic LMS reads require explicit configuration.
 - `serverstatus lastscan` is a useful library-scan signal but not a complete change token: ratings, play counts, dynamic virtual-library membership, and plugin statistics can change without a media scan.
-- A successful deployed refresh queues one `search-index.rebuild` durable job for each diagnostic resolver. The single job runner executes them serially. Each job records the catalogue refresh ID it was created for and refuses to build after catalogue readiness moves to another refresh. The published artifact records that same ID.
-- Offline evaluation owns a separate local catalogue snapshot under `.data/evaluation` and may compose the existing LMS reader and SQLite store to refresh it from the live evaluation LMS. It must not reuse or overwrite the normal development catalogue. Reuse the same successful snapshot when comparing search candidates.
-- The deployed `/api/evaluation` diagnostics intentionally build disposable comparator indexes from the deployment's canonical catalogue so measurements reflect the target hardware and real deployed library. Building occurs only in durable jobs; search opens the last published artifact and never performs a lazy build. A missing artifact makes diagnostic search unavailable until its rebuild completes.
-- Do not choose SQLite, FTS5, Lucene.NET, or another backend as part of the ingestion contract. Storage and search-engine selection remain separate decisions.
+- A successful deployed refresh queues one `search-index.rebuild` durable job. The job records the catalogue refresh ID and refuses to build after readiness moves to another refresh; the published artifact records the same ID.
+- Production and diagnostic searches share the last compatible published artifact. Building occurs only in durable jobs; a missing artifact makes search explicitly unavailable.
+- Do not expose SQLite or FTS5 through the catalogue boundary. Storage and search-engine selection remain separate decisions even while both adapters use SQLite.

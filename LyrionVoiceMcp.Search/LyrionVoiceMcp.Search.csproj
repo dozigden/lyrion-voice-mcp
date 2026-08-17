@@ -1,14 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="LyrionVoiceMcp.Evaluation.Tests" />
+    <InternalsVisibleTo Include="LyrionVoiceMcp.Search.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Lucene.Net.Analysis.Phonetic" Version="4.8.0-beta00018" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LyrionVoiceMcp.Abstractions\LyrionVoiceMcp.Abstractions.csproj" />
-    <ProjectReference Include="..\LyrionVoiceMcp.Lms\LyrionVoiceMcp.Lms.csproj" />
-    <ProjectReference Include="..\LyrionVoiceMcp.Search\LyrionVoiceMcp.Search.csproj" />
   </ItemGroup>
 </Project>

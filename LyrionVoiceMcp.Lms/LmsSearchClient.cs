@@ -4,7 +4,9 @@ using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Lms;
 
-public sealed class LmsSearchClient(LmsJsonRpcClient jsonRpcClient) : ILmsSearchClient
+public sealed class LmsSearchClient(LmsJsonRpcClient jsonRpcClient) :
+    ILmsSearchClient,
+    ILmsPlaylistSearchClient
 {
     private const int ItemsPerCategory = 20;
 
@@ -52,6 +54,36 @@ public sealed class LmsSearchClient(LmsJsonRpcClient jsonRpcClient) : ILmsSearch
                 $"LMS search failed for {string.Join(" and ", failedSources)}.",
                 response,
                 failure);
+        }
+
+        return response;
+    }
+
+    public async Task<LmsSearchResponse> SearchPlaylistsAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        object[] command = ["playlists", 0, ItemsPerCategory, $"search:{query}"];
+        var stopwatch = Stopwatch.StartNew();
+        var observed = await SendObservedAsync(command, cancellationToken);
+        stopwatch.Stop();
+        var candidates = new List<LmsSearchCandidate>();
+        var appended = AppendObservedCandidates(
+            candidates,
+            "playlists",
+            command,
+            observed,
+            AppendPlaylistCandidates);
+        var response = new LmsSearchResponse(
+            candidates,
+            [appended.Observation],
+            stopwatch.ElapsedMilliseconds);
+        if (appended.Failure is not null)
+        {
+            throw new LmsSearchFailedException(
+                "LMS search failed for playlists.",
+                response,
+                appended.Failure);
         }
 
         return response;

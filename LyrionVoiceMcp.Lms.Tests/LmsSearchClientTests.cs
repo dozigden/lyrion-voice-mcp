@@ -86,6 +86,27 @@ public sealed class LmsSearchClientTests
     }
 
     [Fact]
+    public async Task PlaylistSearchShouldNotCallTheLmsLibrarySearch()
+    {
+        var handler = new StubHttpMessageHandler(command => command == "playlists"
+            ? JsonResponse(
+                """{"id":1,"result":{"playlists_loop":[{"id":"44","playlist":"Morning Signals"}]}}""")
+            : throw new InvalidOperationException($"Unexpected command {command}."));
+        using var client = new HttpClient(handler);
+        var searchClient = new LmsSearchClient(new LmsJsonRpcClient(
+            ConfiguredSettings(),
+            client));
+
+        var response = await searchClient.SearchPlaylistsAsync(
+            "morning",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("Morning Signals", Assert.Single(response.Candidates).Title);
+        Assert.Equal("playlists", Assert.Single(handler.Commands).Name);
+        Assert.Equal("playlists", Assert.Single(response.Requests).Source);
+    }
+
+    [Fact]
     public async Task SearchShouldRejectAnInvalidLoopShape()
     {
         // Arrange

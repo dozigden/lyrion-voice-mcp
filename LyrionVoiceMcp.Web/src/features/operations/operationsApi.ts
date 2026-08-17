@@ -147,20 +147,19 @@ export async function rebuildCatalogue(signal?: AbortSignal): Promise<CatalogueS
   return parseCatalogueStatus(await response.json() as unknown);
 }
 
-export async function getSearchIndexes(signal?: AbortSignal): Promise<SearchIndexStatusResponse[]> {
-  const value = await getJson('/api/evaluation/indexes', signal);
-  if (!Array.isArray(value) || !value.every(isSearchIndexStatus)) {
-    throw new Error('/api/evaluation/indexes returned an invalid response.');
+export async function getSearchIndex(signal?: AbortSignal): Promise<SearchIndexStatusResponse> {
+  const value = await getJson('/api/search/index', signal);
+  if (!isSearchIndexStatus(value)) {
+    throw new Error('/api/search/index returned an invalid response.');
   }
 
   return value;
 }
 
 export async function rebuildSearchIndex(
-  resolver: string,
   signal?: AbortSignal
 ): Promise<SearchIndexStatusResponse> {
-  const url = `/api/evaluation/indexes/${encodeURIComponent(resolver)}/rebuild`;
+  const url = '/api/search/index/rebuild';
   const response = await fetch(url, {
     method: 'POST',
     headers: {

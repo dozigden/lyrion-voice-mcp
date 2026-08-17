@@ -2,6 +2,27 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
+      "Lucene.Net.Analysis.Phonetic": {
+        "type": "Direct",
+        "requested": "[4.8.0-beta00018, )",
+        "resolved": "4.8.0-beta00018",
+        "contentHash": "2oac64GQNPctTYJsEO3cJY1VJkAxVKs290hNNKEW3tQhjlMdsW1C9k0rh1QPRZSBF895RZ0azw2TN8ineGqI+Q==",
+        "dependencies": {
+          "Lucene.Net": "4.8.0-beta00018",
+          "Lucene.Net.Analysis.Common": "4.8.0-beta00018"
+        }
+      },
+      "Microsoft.Data.Sqlite": {
+        "type": "Direct",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "7je7UELzm131GiLYc4PpZvfKXIgIyzPM+v+tjcd/nbnuWRfgcONYKzDTqJlURxwVCFsVnlpmq6y6yn4qvR8QXQ==",
+        "dependencies": {
+          "Microsoft.Data.Sqlite.Core": "10.0.11",
+          "SQLitePCLRaw.bundle_e_sqlite3": "2.1.12",
+          "SQLitePCLRaw.core": "2.1.12"
+        }
+      },
       "J2N": {
         "type": "Transitive",
         "resolved": "2.1.0",
@@ -22,25 +43,6 @@
         "contentHash": "35M1i4enb8rVeqXiKgDJzgqYDa5VtpgI2sK5gYg1Yd9kmpjPmaLHgN9/rGyHd67XWhT7fh0X8UuXu70PH58pcA==",
         "dependencies": {
           "Lucene.Net": "4.8.0-beta00018"
-        }
-      },
-      "Lucene.Net.Analysis.Phonetic": {
-        "type": "Transitive",
-        "resolved": "4.8.0-beta00018",
-        "contentHash": "2oac64GQNPctTYJsEO3cJY1VJkAxVKs290hNNKEW3tQhjlMdsW1C9k0rh1QPRZSBF895RZ0azw2TN8ineGqI+Q==",
-        "dependencies": {
-          "Lucene.Net": "4.8.0-beta00018",
-          "Lucene.Net.Analysis.Common": "4.8.0-beta00018"
-        }
-      },
-      "Microsoft.Data.Sqlite": {
-        "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "7je7UELzm131GiLYc4PpZvfKXIgIyzPM+v+tjcd/nbnuWRfgcONYKzDTqJlURxwVCFsVnlpmq6y6yn4qvR8QXQ==",
-        "dependencies": {
-          "Microsoft.Data.Sqlite.Core": "10.0.11",
-          "SQLitePCLRaw.bundle_e_sqlite3": "2.1.12",
-          "SQLitePCLRaw.core": "2.1.12"
         }
       },
       "Microsoft.Data.Sqlite.Core": {
@@ -93,20 +95,6 @@
       },
       "lyrionvoicemcp.abstractions": {
         "type": "Project"
-      },
-      "lyrionvoicemcp.lms": {
-        "type": "Project",
-        "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )"
-        }
-      },
-      "lyrionvoicemcp.search": {
-        "type": "Project",
-        "dependencies": {
-          "Lucene.Net.Analysis.Phonetic": "[4.8.0-beta00018, )",
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "Microsoft.Data.Sqlite": "[10.0.11, )"
-        }
       }
     }
   }

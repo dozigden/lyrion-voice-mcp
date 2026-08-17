@@ -6,9 +6,50 @@ namespace LyrionVoiceMcp.Persistence;
 
 public sealed class SqliteMediaCatalogueStore(
     CatalogueSettings settings,
-    TimeProvider? configuredTimeProvider = null) : IMediaCatalogueStore
+    TimeProvider? configuredTimeProvider = null) :
+    IMediaCatalogueStore,
+    ICatalogueSearchDocumentSource
 {
     private const int SchemaVersion = 6;
+    private static readonly SearchDocumentQuery[] SearchDocumentQueries =
+    [
+        new(MediaEntityKind.Artist, """
+            SELECT source_id, name, NULL, NULL
+            FROM catalogue_artists
+            WHERE source_id > $afterId
+            ORDER BY source_id
+            LIMIT $limit;
+            """),
+        new(MediaEntityKind.Album, """
+            SELECT album.source_id, album.title, artist.name, NULL
+            FROM catalogue_albums album
+            LEFT JOIN catalogue_artists artist
+              ON artist.source_id = album.album_artist_source_id
+            WHERE album.source_id > $afterId
+            ORDER BY album.source_id
+            LIMIT $limit;
+            """),
+        new(MediaEntityKind.Track, """
+            SELECT track.source_id,
+                   track.title,
+                   COALESCE(
+                       (SELECT GROUP_CONCAT(artist.name, ', ')
+                        FROM catalogue_track_artists track_artist
+                        JOIN catalogue_artists artist
+                          ON artist.source_id = track_artist.artist_source_id
+                        WHERE track_artist.track_source_id = track.source_id),
+                       album_artist.name),
+                   album.title
+            FROM catalogue_tracks track
+            LEFT JOIN catalogue_albums album
+              ON album.source_id = track.album_source_id
+            LEFT JOIN catalogue_artists album_artist
+              ON album_artist.source_id = album.album_artist_source_id
+            WHERE track.source_id > $afterId
+            ORDER BY track.source_id
+            LIMIT $limit;
+            """)
+    ];
     private readonly TimeProvider timeProvider = configuredTimeProvider ?? TimeProvider.System;
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -17,6 +58,8 @@ public sealed class SqliteMediaCatalogueStore(
         Cache = SqliteCacheMode.Shared,
         ForeignKeys = true
     }.ToString();
+
+    private sealed record SearchDocumentQuery(MediaEntityKind Kind, string Sql);
 
     public async Task InitialiseAsync(CancellationToken cancellationToken)
     {
@@ -85,6 +128,72 @@ public sealed class SqliteMediaCatalogueStore(
 
     public async Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken) =>
         (await GetStateAsync(cancellationToken))?.Summary;
+
+    public async IAsyncEnumerable<CatalogueSearchDocumentBatch> ReadBatchesAsync(
+        string catalogueRefreshId,
+        int batchSize,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        if (batchSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(batchSize));
+        }
+
+        var state = await GetStateAsync(cancellationToken);
+        if (state is null
+            || state.Status != CatalogueStateStatus.Succeeded
+            || !string.Equals(state.RefreshId, catalogueRefreshId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The catalogue is not at the successful refresh requested by the search-index job.");
+        }
+
+        await using var connection = await OpenAsync(cancellationToken);
+        foreach (var query in SearchDocumentQueries)
+        {
+            var afterId = string.Empty;
+            while (true)
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = query.Sql;
+                Add(command, "$limit", batchSize);
+                Add(command, "$afterId", afterId);
+                var documents = new List<CatalogueSearchDocument>(batchSize);
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    documents.Add(new CatalogueSearchDocument(
+                        new MediaIdentity(query.Kind, reader.GetString(0)),
+                        reader.GetString(1),
+                        reader.IsDBNull(2) ? null : reader.GetString(2),
+                        reader.IsDBNull(3) ? null : reader.GetString(3)));
+                }
+
+                if (documents.Count == 0)
+                {
+                    break;
+                }
+
+                yield return new CatalogueSearchDocumentBatch(
+                    catalogueRefreshId,
+                    documents);
+                afterId = documents[^1].Identity.Id;
+                if (documents.Count < batchSize)
+                {
+                    break;
+                }
+            }
+        }
+
+        state = await GetStateAsync(cancellationToken);
+        if (state is null
+            || state.Status != CatalogueStateStatus.Succeeded
+            || !string.Equals(state.RefreshId, catalogueRefreshId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The catalogue changed while search documents were being streamed.");
+        }
+    }
 
     public async Task BeginRefreshAsync(
         string refreshId,

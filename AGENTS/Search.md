@@ -2,28 +2,24 @@
 
 Read this before changing search contracts, ranking, observation capture, catalogue ingestion, or search storage.
 
-- The implemented first pass deliberately sends the query to LMS `search` plus playlist search to produce a usable baseline and real failure examples.
-- The first-pass result order is artists, albums, tracks, then playlists, preserving LMS order within each category.
-- Keep the public result contract independent of LMS response shapes and any later search engine.
-- Search returns one opaque result reference per candidate; it does not return a separate public search identifier.
-- Each result reference combines candidate correlation with the underlying LMS playback identity so a later `play` can record which returned candidate was selected.
-- Returning the same LMS item from two searches must produce distinct result references for the two candidate occurrences.
-- Artist, album, and playlist search references can seed `browse`. Preserve that candidate's correlation through derived browse descendants and continuations so eventual playback or queue addition marks the originating search result selected. Browsing alone is not a selection, and pure browse flows have no search correlation.
-- The operational observation store records the original and trimmed query, resolver/version, direct LMS commands, timings, ordered candidates, zero-result searches, failures, later successful `play` selections, and human reviews.
-- Record the outcome of each concurrent LMS request independently. If one request fails, retain its failure and the successful sibling request's candidates as diagnostic evidence while failing the public search call.
-- Treat failed searches separately from completed searches with no results. Failed searches must not default to `no_match` or be eligible for evaluation export.
-- Observation recording is best-effort: persistence failure must not fail a search or turn successful playback into a failure.
-- Only mark a candidate selected after its LMS playback or queue mutation succeeds. For partial batches, never mark skipped, failed, or unattempted references selected. Do not infer retries, rephrases, or clarification from unrelated requests while the MCP contract lacks conversation context.
-- Do not manufacture a confidence rating for the first-pass LMS results. Reconsider confidence only when a later resolver has meaningful ranking evidence.
-- SQLite is the implemented operational observation store, not a decision about the future search index. Do not add FTS/search behaviour to it incidentally.
-- Evaluation exports contain only explicitly included cases and omit observation IDs, LMS media IDs, correlation references, timestamps, and private notes.
-- The observation export is review evidence, not the canonical corpus. Real curated cases live only in the permanently private `lyrion-voice-evaluation` repository; this repository contains fictional evaluation fixtures only.
-- A later catalogue is canonical application data; a search index is rebuildable derived data.
+- Production artist, album, and track search uses the catalogue-backed `catalogue-phuzzy-sqlite` resolver version 1. Playlist discovery remains an isolated LMS `playlists` request.
+- Return at most 20 ranked catalogue candidates followed by at most 20 playlists in LMS order. Do not interleave the two sources.
+- Reject public search queries over 500 characters or 20 normalised letter-or-digit tokens before starting either retrieval source. Keep diagnostic and production limits aligned.
+- The production resolver uses bounded normalised, compact, acronym, consonant-skeleton, Double Metaphone, token/prefix, and trigram retrieval lanes, then applies the application-owned scorer. Preserve the distinction between retrieval evidence, ranking score, and confidence; no confidence or speculative no-match threshold is implemented.
+- Numeric tokens must contribute to phonetic evidence through spoken digit forms. Do not allow a phonetic encoder to silently discard a digit while treating the remaining words as a complete query span.
+- Keep the public result contract independent of catalogue rows, SQLite documents, and LMS response shapes.
+- Search returns one opaque result reference per candidate; it does not return a separate public search identifier. Each reference combines candidate correlation with the underlying LMS playback identity.
+- Returning the same media item from two searches must produce distinct result references for the two candidate occurrences.
+- Artist, album, and playlist search references can seed `browse`. Preserve correlation through derived browse descendants and continuations so successful playback or queue mutation marks the originating result selected.
+- A production index is disposable derived data. Build only from storage-neutral `ICatalogueSearchDocumentSource` batches of 500 or fewer documents; never materialise the complete library in application memory.
+- Build in a job-specific staging generation, validate it, move it into place, and atomically replace the small current-generation pointer. Continue serving the previous compatible generation throughout a rebuild.
+- If no compatible published generation exists, return an explicit unavailable error. Do not build lazily and do not fall back to LMS artist, album, or track search.
+- A successful catalogue refresh queues exactly one production index rebuild. Manual rebuild is a REST/UI administration action, not an MCP tool.
+- The operational observation store records original and trimmed query, resolver/version, retrieval sources, timings, ordered candidates, zero-result searches, failures, later successful selections, and human reviews.
+- If playlist retrieval fails, retain catalogue candidates and per-source failure evidence while failing the public search call. Treat failed searches separately from completed searches with no results.
+- Observation recording is best effort and must not fail search, playback, or queue operations.
+- Only mark candidates selected after their LMS mutation succeeds. Never mark skipped, failed, or unattempted batch items selected.
+- Evaluation exports contain only explicitly included cases and omit observation IDs, LMS media IDs, correlation references, timestamps, and private notes. The canonical real corpus lives only in the private sibling repository.
 - Spotify may be used only in a later offline experiment over recorded misses. It is not a runtime fallback or dependency.
-- The first catalogue-backed benchmark resolver lives only in Evaluation and may read the concrete catalogue SQLite database directly. This is intentional experimental coupling, not a production search decision. It covers normalised lexical/token/prefix/bounded-edit matching only; do not describe it as phonetic or production-ready.
-- The second `catalogue-phuzzy` evaluator adds transliteration, query spans, joined tokens, character trigrams, a deliberately simple consonant skeleton, Double Metaphone, uppercase spoken aliases, and query-coverage ranking. It is a quality probe that still scans every candidate and has no calibrated no-match threshold; do not promote its heuristics or latency profile into production.
-- The `catalogue-phuzzy-indexed` evaluator uses disposable SQLite FTS and lookup tables, including primary and alternate Double Metaphone codes, to retrieve at most 80 candidates from each implemented signal lane, then applies the same application-owned scorer to their union. Keep it ring-fenced in Evaluation; its database is derived evidence rather than canonical application state.
-- The `catalogue-lucene` evaluator adds bounded Lucene fuzzy, prefix, token, trigram, and Double Metaphone candidate lanes. It is an evaluation-only backend comparator; keep Lucene out of production projects until representative quality and target-device measurements justify a selection.
-- The `catalogue-lucene-native` evaluator deliberately tests a different architecture: one field-boosted, coverage-weighted disjunction-max Lucene query combines exact, phrase-slop, token, prefix, fuzzy, acronym, consonant-skeleton, and Double Metaphone clauses, and Lucene supplies final ordering. Its scaled native score is not comparable to the shared phuzzy score and is not confidence. Keep this alternative ring-fenced until representative positive, negative, ambiguous, multilingual, and performance evidence justifies it.
-- Remote comparator evaluation uses the deployed API's diagnostic REST endpoints backed by its canonical catalogue. Lane-based results are the full bounded retrieval union; native-ranking results are the bounded native hit list. Neither is the whole catalogue or the public MCP result limit. Keep applicable retrieval and score evidence available there, without copying a private corpus into this repository.
-- Use `SEARCH_RESEARCH.md` for the existing research baseline and update it when new evidence changes the decision space.
+- `GET /api/evaluation` and `POST /api/evaluation/search` expose diagnostics for the actual production resolver under the external name `production`. Keep lane and scoring evidence available without accepting or persisting corpus cases.
+- Historical comparator evidence and the SQLite selection rationale live in `SEARCH_RESEARCH.md`; retired comparator implementations do not belong in production or Evaluation.

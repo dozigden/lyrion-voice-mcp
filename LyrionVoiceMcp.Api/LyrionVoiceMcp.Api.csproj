@@ -11,6 +11,7 @@
     <ProjectReference Include="..\LyrionVoiceMcp.Evaluation\LyrionVoiceMcp.Evaluation.csproj" />
     <ProjectReference Include="..\LyrionVoiceMcp.Lms\LyrionVoiceMcp.Lms.csproj" />
     <ProjectReference Include="..\LyrionVoiceMcp.Persistence\LyrionVoiceMcp.Persistence.csproj" />
+    <ProjectReference Include="..\LyrionVoiceMcp.Search\LyrionVoiceMcp.Search.csproj" />
     <ProjectReference Include="..\LyrionVoiceMcp.Services\LyrionVoiceMcp.Services.csproj" />
   </ItemGroup>
 </Project>

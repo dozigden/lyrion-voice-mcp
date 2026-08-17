@@ -1,6 +1,6 @@
 # Third-party notices
 
-The deployed search-evaluation comparators include these Apache License 2.0 packages:
+The production catalogue search resolver uses Double Metaphone from these Apache License 2.0 packages:
 
 - `Lucene.Net` 4.8.0-beta00018
 - `Lucene.Net.Analysis.Common` 4.8.0-beta00018

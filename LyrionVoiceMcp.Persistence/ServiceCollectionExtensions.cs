@@ -10,7 +10,11 @@ public static class ServiceCollectionExtensions
         CatalogueSettings settings)
     {
         services.AddSingleton(settings);
-        services.AddSingleton<IMediaCatalogueStore, SqliteMediaCatalogueStore>();
+        services.AddSingleton<SqliteMediaCatalogueStore>();
+        services.AddSingleton<IMediaCatalogueStore>(provider =>
+            provider.GetRequiredService<SqliteMediaCatalogueStore>());
+        services.AddSingleton<ICatalogueSearchDocumentSource>(provider =>
+            provider.GetRequiredService<SqliteMediaCatalogueStore>());
         return services;
     }
 

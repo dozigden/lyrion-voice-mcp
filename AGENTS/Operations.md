@@ -9,7 +9,7 @@ Read this before changing background work, scheduling, error capture, retention,
 - Keep lifecycle mutations behind `IJobLifecycleGate`, register running cancellation tokens, and leave a running row for startup recovery when process shutdown interrupts execution.
 - Expected handler outcomes return `JobHandlerResult`; unexpected exceptions are persisted through `IErrorLogService` with the job ID and then fail the job.
 - Keep payload and result JSON inspectable and valid. Correlations are stable idempotency keys, not display labels.
-- Catalogue refresh and deployed search-index rebuilds are separate jobs. A successful catalogue job queues one correlated rebuild per resolver; the single runner serialises their expensive work. Manual rebuilds use unique correlations, reject a concurrent rebuild of the same resolver, and always target the current successful catalogue refresh.
+- Catalogue refresh and production search-index rebuild are separate jobs. A successful catalogue job queues one correlated production rebuild; the single runner serialises expensive work. Manual rebuilds use unique correlations, reject a concurrent rebuild, and target the current successful catalogue refresh.
 
 ## Scheduling
 
@@ -34,6 +34,6 @@ Read this before changing background work, scheduling, error capture, retention,
 
 ## Administration surface
 
-- Jobs, schedules, errors, MCP calls, and diagnostic search-index controls are REST/UI administration features, never MCP tools.
+- Jobs, schedules, errors, MCP calls, and production search-index controls are REST/UI administration features, never MCP tools.
 - Maintain lightweight paged summaries and complete detail views. List queries must not load payloads, results, stack traces or context; keep those values and relevant cross-links inspectable through detail routes.
 - Retention is enforced by scheduled maintenance jobs and must remain visible where relevant in the UI.

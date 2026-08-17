@@ -6,6 +6,7 @@ using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Evaluation;
 using LyrionVoiceMcp.Lms;
 using LyrionVoiceMcp.Persistence;
+using LyrionVoiceMcp.Search;
 using LyrionVoiceMcp.Services;
 using ModelContextProtocol.Protocol;
 
@@ -59,21 +60,22 @@ var operationalSchedules = OperationalSettings.CreateSchedulePolicy(
     builder.Configuration["LyrionVoiceMcpOperations:Schedules:JobHistoryPurge:Cron"],
     ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:ToolCallHistoryPurge:Enabled"], true),
     builder.Configuration["LyrionVoiceMcpOperations:Schedules:ToolCallHistoryPurge:Cron"]);
-var evaluationSettings = EvaluationDiagnosticSettings.FromValues(
+var searchSettings = ProductionSearchSettings.FromValues(
     builder.Environment.ContentRootPath,
-    catalogueSettings.DatabasePath,
-    builder.Configuration["LyrionVoiceMcpEvaluation:IndexDirectoryPath"]);
+    builder.Configuration["LyrionVoiceMcpSearch:IndexDirectoryPath"]);
 
 builder.Services.AddSingleton(buildInfo);
 builder.Services.AddSingleton(lmsSettings);
 builder.Services.AddSearchObservationPersistence(observationSettings);
 builder.Services.AddCataloguePersistence(catalogueSettings);
 builder.Services.AddOperationalPersistence(operationalSettings, operationalSchedules);
-builder.Services.AddSingleton(provider => new EvaluationDiagnosticSearchService(
-    evaluationSettings,
-    provider.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton(searchSettings);
+builder.Services.AddSingleton<ProductionCatalogueSearchService>();
 builder.Services.AddSingleton<ISearchIndexBuilder>(provider =>
-    provider.GetRequiredService<EvaluationDiagnosticSearchService>());
+    provider.GetRequiredService<ProductionCatalogueSearchService>());
+builder.Services.AddSingleton<ICatalogueSearchResolver>(provider =>
+    provider.GetRequiredService<ProductionCatalogueSearchService>());
+builder.Services.AddSingleton<EvaluationDiagnosticSearchService>();
 builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
 {
     client.Timeout = lmsSettings.RequestTimeout;
@@ -87,6 +89,7 @@ builder.Services.AddTransient<ILmsPlayerControlClient, LmsPlayerControlClient>()
 builder.Services.AddTransient<ILmsPlayerClient, LmsPlayerClient>();
 builder.Services.AddTransient<ILmsQueueClient, LmsQueueClient>();
 builder.Services.AddTransient<ILmsSearchClient, LmsSearchClient>();
+builder.Services.AddTransient<ILmsPlaylistSearchClient, LmsSearchClient>();
 builder.Services.AddLyrionVoiceMcpServices();
 builder.Services
     .AddMcpServer(options =>

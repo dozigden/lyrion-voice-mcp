@@ -54,6 +54,34 @@ public sealed class SqliteMediaCatalogueStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchDocumentsShouldStreamBoundedBatchesFromTheCompletedRefresh()
+    {
+        await WriteCatalogueAsync("refresh-1", [CreateTrack("31", "First Tide")]);
+        await store.CompleteRefreshAsync(
+            "refresh-1",
+            CreateReadResult(trackCount: 1),
+            CompletedAt,
+            0,
+            TestContext.Current.CancellationToken);
+        var batches = new List<CatalogueSearchDocumentBatch>();
+
+        await foreach (var batch in store.ReadBatchesAsync(
+            "refresh-1",
+            1,
+            TestContext.Current.CancellationToken))
+        {
+            batches.Add(batch);
+        }
+
+        Assert.All(batches, batch => Assert.Single(batch.Documents));
+        Assert.Equal(4, batches.Count);
+        Assert.Equal(
+            [MediaEntityKind.Artist, MediaEntityKind.Artist, MediaEntityKind.Album, MediaEntityKind.Track],
+            batches.Select(batch => batch.Documents[0].Identity.Kind).ToArray());
+        Assert.Equal("First Tide", batches[^1].Documents[0].Title);
+    }
+
+    [Fact]
     public async Task CompleteRefreshShouldRejectDuplicateArtistLookupRowsAcrossBatches()
     {
         // Arrange

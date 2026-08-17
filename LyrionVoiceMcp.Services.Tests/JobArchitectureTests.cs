@@ -203,7 +203,7 @@ public sealed class JobArchitectureTests : IDisposable
     }
 
     [Fact]
-    public async Task SuccessfulCatalogueShouldEnqueueOneDurableJobPerSearchResolver()
+    public async Task SuccessfulCatalogueShouldEnqueueOneProductionSearchJob()
     {
         // Arrange
         var catalogue = new TestCatalogueStore(CreateCatalogueState("job-42"));
@@ -218,27 +218,21 @@ public sealed class JobArchitectureTests : IDisposable
             timeProvider);
 
         // Act
-        var jobIds = await service.EnqueueForCatalogueAsync(
+        var jobId = await service.EnqueueForCatalogueAsync(
             "job-42",
             TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(builder.Resolvers.Count, jobIds.Count);
+        Assert.NotNull(jobId);
         var jobs = await store.BrowseAsync(
             new JobQuery(Type: JobTypes.SearchIndexRebuild),
             TestContext.Current.CancellationToken);
-        Assert.Equal(builder.Resolvers.Count, jobs.Total);
-        foreach (var jobId in jobIds)
-        {
-            var job = (await store.GetAsync(jobId, TestContext.Current.CancellationToken))!.Job;
-            var payload = JsonSerializer.Deserialize<SearchIndexRebuildPayload>(job.PayloadJson);
-            Assert.NotNull(payload);
-            Assert.Equal("job-42", payload.CatalogueRefreshId);
-            Assert.Contains(payload.Resolver, builder.Resolvers);
-            Assert.Equal(
-                $"search-index:{payload.Resolver}:catalogue:job-42",
-                job.CorrelationId);
-        }
+        Assert.Equal(1, jobs.Total);
+        var job = (await store.GetAsync(jobId.Value, TestContext.Current.CancellationToken))!.Job;
+        var payload = JsonSerializer.Deserialize<SearchIndexRebuildPayload>(job.PayloadJson);
+        Assert.NotNull(payload);
+        Assert.Equal("job-42", payload.CatalogueRefreshId);
+        Assert.Equal("search-index:production:catalogue:job-42", job.CorrelationId);
     }
 
     [Fact]
@@ -251,9 +245,7 @@ public sealed class JobArchitectureTests : IDisposable
             new TestCatalogueStore(CreateCatalogueState("job-42")),
             builder,
             logs);
-        var payload = JsonSerializer.Serialize(new SearchIndexRebuildPayload(
-            builder.Resolvers[0],
-            "job-42"));
+        var payload = JsonSerializer.Serialize(new SearchIndexRebuildPayload("job-42"));
 
         // Act
         var result = await handler.HandleAsync(
@@ -262,7 +254,6 @@ public sealed class JobArchitectureTests : IDisposable
 
         // Assert
         Assert.True(result.Success);
-        Assert.Equal(builder.Resolvers[0], builder.RebuiltResolver);
         Assert.Equal("job-42", builder.RebuiltCatalogueRefreshId);
         Assert.Equal(101, builder.RebuiltJobId);
         Assert.Contains(logs.Messages, message => message == "Search-index rebuild started.");
@@ -360,35 +351,23 @@ public sealed class JobArchitectureTests : IDisposable
 
     private sealed class RecordingIndexBuilder : ISearchIndexBuilder
     {
-        public IReadOnlyList<string> Resolvers { get; } =
-        [
-            "catalogue-phuzzy-indexed",
-            "catalogue-lucene",
-            "catalogue-lucene-native"
-        ];
-
-        public string? RebuiltResolver { get; private set; }
         public string? RebuiltCatalogueRefreshId { get; private set; }
         public long? RebuiltJobId { get; private set; }
 
-        public Task<SearchIndexArtifact?> GetArtifactAsync(
-            string resolver,
-            CancellationToken cancellationToken) =>
+        public Task<SearchIndexArtifact?> GetArtifactAsync(CancellationToken cancellationToken) =>
             Task.FromResult<SearchIndexArtifact?>(null);
 
         public async Task<SearchIndexRebuildResult> RebuildAsync(
-            string resolver,
             string catalogueRefreshId,
             long jobId,
             ISearchIndexProgress progress,
             CancellationToken cancellationToken)
         {
-            RebuiltResolver = resolver;
             RebuiltCatalogueRefreshId = catalogueRefreshId;
             RebuiltJobId = jobId;
             await progress.ReportAsync("Building fictional index.", null, cancellationToken);
             return new SearchIndexRebuildResult(new SearchIndexArtifact(
-                resolver,
+                "catalogue-phuzzy-sqlite",
                 "1",
                 catalogueRefreshId,
                 Now,

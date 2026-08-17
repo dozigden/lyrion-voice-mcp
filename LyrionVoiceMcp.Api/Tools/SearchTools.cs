@@ -24,7 +24,7 @@ public sealed class SearchTools(ISearchService searchService)
         OutputSchemaType = typeof(SearchResponse))]
     [Description("Search the whole configured Lyrion Music Server library for artists, albums, tracks, and playlists.")]
     public async Task<CallToolResult> SearchAsync(
-        [Description("The artist, album, track, or playlist text to search for.")] string query,
+        [Description("The artist, album, track, or playlist text to search for, up to 500 characters and 20 words.")] string query,
         CancellationToken cancellationToken)
     {
         try

@@ -4,7 +4,7 @@
 
 - Use `scripts/test-fast.sh` or `scripts/test-fast.ps1` for normal changed-area validation.
 - Use `scripts/test-full.sh` or `scripts/test-full.ps1` for broad or release-shaped validation.
-- Use explicit lanes such as `--api-only`, `--services-only`, `--lms-only`, `--persistence-only`, `--dev-only`, `--evaluation-only`, `--web-only`, or `--backend-only` when appropriate.
+- Use explicit lanes such as `--api-only`, `--services-only`, `--lms-only`, `--persistence-only`, `--search-only`, `--dev-only`, `--evaluation-only`, `--web-only`, or `--backend-only` when appropriate.
 - Bypass the scripts only when changing them, diagnosing a failure they conceal, or when the user requests a raw command.
 
 ## Ownership
@@ -14,8 +14,9 @@
 - Services tests own application behaviour, validation matrices, opaque-handle expiry/eviction and routing, shared-registry composition across service scopes, durable catalogue-to-index enqueue policy, index-job catalogue validation, and edge cases.
 - LMS tests own configuration validation, JSON-RPC request/response plumbing, and upstream failure mapping.
 - Persistence tests own schema initialisation/rebuild, singleton catalogue readiness transitions, bounded catalogue batch durability, source-identity count validation, convergence, durable job/log lifecycle, scheduler state, error/tool-call retention and correlation, filtering, selection correlation, review round-trips, and export privacy.
+- Search tests own bounded index construction, matching/scoring signals, numeric phonetic handling, publication, compatibility and no-index behaviour.
 - Dev tests own command construction, process state, recognised listener detection, and bounded log handling.
-- Evaluation tests own corpus parsing and validation, local evaluation-catalogue refresh orchestration, descriptive matching, scoring, and report privacy. They use fictional cases and fake LMS responses; routine tests never contact a real LMS.
+- Evaluation tests own corpus parsing and validation, LMS-baseline reporting, production-diagnostic validation, descriptive matching, and report privacy. They use fictional cases and fake sources; routine tests never contact a real LMS.
 - Vitest owns frontend API/state/component behaviour.
 - Container smoke tests prove release assembly and runtime wiring, not business-rule matrices.
 

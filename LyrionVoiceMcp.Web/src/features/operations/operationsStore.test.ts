@@ -111,19 +111,19 @@ describe('operationsStore', () => {
     expect(store.catalogueErrorMessage).toBe('Catalogue unavailable.');
   });
 
-  it('loads search indexes and retains their artifact while a rebuild starts', async () => {
+  it('loads the production search index and retains its artifact while a rebuild starts', async () => {
     // Arrange
     const published = searchIndexStatus('succeeded');
-    vi.spyOn(api, 'getSearchIndexes').mockResolvedValue([published]);
+    vi.spyOn(api, 'getSearchIndex').mockResolvedValue(published);
     vi.spyOn(api, 'rebuildSearchIndex').mockResolvedValue(searchIndexStatus('pending'));
     const store = useOperationsStore();
 
     // Act
     await store.loadSearchIndexes();
-    await store.rebuildIndex('phuzzy');
+    await store.rebuildIndex();
 
     // Assert
-    expect(store.searchIndexes[0]?.artifact).toEqual(published.artifact);
+    expect(store.searchIndex?.artifact).toEqual(published.artifact);
     expect(store.searchIndexesRebuilding).toBe(true);
     expect(store.searchIndexesErrorMessage).toBeNull();
   });
@@ -133,7 +133,7 @@ function searchIndexStatus(
   status: 'pending' | 'succeeded'
 ): api.SearchIndexStatusResponse {
   return {
-    resolver: 'phuzzy',
+    resolver: 'catalogue-phuzzy-sqlite',
     artifact: {
       resolverVersion: '2',
       catalogueRefreshId: 'refresh-1',

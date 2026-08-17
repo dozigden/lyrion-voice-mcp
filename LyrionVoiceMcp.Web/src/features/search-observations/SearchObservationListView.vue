@@ -4,7 +4,7 @@
       <div>
         <p class="eyebrow">Search evidence</p>
         <h1>Observation log</h1>
-        <p>Inspect what the pass-through resolver asked LMS and what came back.</p>
+        <p>Inspect how each resolver searched and which ordered candidates it returned.</p>
       </div>
       <a class="export-link" href="/api/search-observations/export">Export evaluation cases</a>
     </header>

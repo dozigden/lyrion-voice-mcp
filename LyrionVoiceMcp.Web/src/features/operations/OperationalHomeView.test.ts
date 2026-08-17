@@ -12,7 +12,7 @@ describe('OperationalHomeView', () => {
       summary: null,
       latestRefresh: null
     });
-    vi.spyOn(api, 'getSearchIndexes').mockResolvedValue([]);
+    vi.spyOn(api, 'getSearchIndex').mockResolvedValue(searchIndexStatus('succeeded'));
   });
 
   it('shows a healthy build', async () => {
@@ -99,7 +99,7 @@ describe('OperationalHomeView', () => {
     wrapper.unmount();
   });
 
-  it('shows published search indexes and starts an index rebuild', async () => {
+  it('shows the production search index and starts its rebuild', async () => {
     // Arrange
     vi.spyOn(api, 'getHealth').mockResolvedValue({ status: 'ok' });
     vi.spyOn(api, 'getVersion').mockResolvedValue({
@@ -116,7 +116,7 @@ describe('OperationalHomeView', () => {
       message: 'Connected.'
     });
     vi.mocked(api.getCatalogue).mockResolvedValue(catalogueStatus('succeeded'));
-    vi.mocked(api.getSearchIndexes).mockResolvedValue([searchIndexStatus('succeeded')]);
+    vi.mocked(api.getSearchIndex).mockResolvedValue(searchIndexStatus('succeeded'));
     vi.spyOn(api, 'rebuildSearchIndex').mockResolvedValue(searchIndexStatus('pending'));
     const wrapper = mount(OperationalHomeView, {
       global: { plugins: [createPinia()] }
@@ -128,10 +128,10 @@ describe('OperationalHomeView', () => {
     await flushPromises();
 
     // Assert
-    expect(wrapper.text()).toContain('phuzzy');
+    expect(wrapper.text()).toContain('catalogue-phuzzy-sqlite');
     expect(wrapper.text()).toContain('1,234 candidates');
     expect(wrapper.text()).toContain('Job 42 · pending');
-    expect(api.rebuildSearchIndex).toHaveBeenCalledWith('phuzzy', undefined);
+    expect(api.rebuildSearchIndex).toHaveBeenCalledWith(undefined);
     wrapper.unmount();
   });
 });
@@ -140,7 +140,7 @@ function searchIndexStatus(
   status: 'pending' | 'succeeded'
 ): api.SearchIndexStatusResponse {
   return {
-    resolver: 'phuzzy',
+    resolver: 'catalogue-phuzzy-sqlite',
     artifact: {
       resolverVersion: '2',
       catalogueRefreshId: 'refresh-1',

@@ -56,7 +56,9 @@ curl --fail --silent "$base_url/api/error-logs?limit=1" \
 curl --fail --silent "$base_url/api/tool-calls?limit=1" \
   | jq --exit-status '(.items | type) == "array" and .retentionDays == 30' >/dev/null
 curl --fail --silent "$base_url/api/evaluation" \
-  | jq --exit-status '.schemaVersion == 1 and (.resolvers | index("catalogue-phuzzy-indexed")) and (.resolvers | index("catalogue-lucene")) and (.resolvers | index("catalogue-lucene-native"))' >/dev/null
+  | jq --exit-status '.schemaVersion == 1 and .resolvers == ["production"]' >/dev/null
+curl --fail --silent "$base_url/api/search/index" \
+  | jq --exit-status '.resolver == "catalogue-phuzzy-sqlite" and .artifact == null' >/dev/null
 docker exec "$container_name" test -r /app/licenses/Apache-2.0.txt
 docker exec "$container_name" test -r /app/licenses/Lucene.Net-NOTICE.txt
 docker exec "$container_name" test -r /app/licenses/Cronos-LICENSE.txt

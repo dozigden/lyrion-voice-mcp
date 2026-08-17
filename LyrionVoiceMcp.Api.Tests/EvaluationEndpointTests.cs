@@ -16,7 +16,7 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
     }
 
     [Fact]
-    public async Task DiscoveryShouldAdvertiseTheDeployedComparators()
+    public async Task DiscoveryShouldAdvertiseOnlyTheProductionResolver()
     {
         using var client = factory.CreateClient();
 
@@ -29,12 +29,10 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(1, document.RootElement.GetProperty("schemaVersion").GetInt32());
-        Assert.Contains(
-            document.RootElement.GetProperty("resolvers").EnumerateArray(),
-            item => item.GetString() == "catalogue-phuzzy-indexed");
-        Assert.Contains(
-            document.RootElement.GetProperty("resolvers").EnumerateArray(),
-            item => item.GetString() == "catalogue-lucene-native");
+        Assert.Equal(
+            "production",
+            Assert.Single(document.RootElement.GetProperty("resolvers").EnumerateArray())
+                .GetString());
     }
 
     [Fact]
@@ -43,7 +41,7 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
         using var client = factory.CreateClient();
         await SeedCatalogueAsync();
         using var rebuildResponse = await client.PostAsync(
-            "/api/evaluation/indexes/catalogue-phuzzy-indexed/rebuild",
+            "/api/search/index/rebuild",
             null,
             TestContext.Current.CancellationToken);
         var rebuild = await rebuildResponse.Content.ReadFromJsonAsync<SearchIndexStatusResponse>(
@@ -54,7 +52,7 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
 
         using var response = await client.PostAsJsonAsync(
             "/api/evaluation/search",
-            new { resolver = "catalogue-phuzzy-indexed", query = "Nite" },
+            new { resolver = "production", query = "Nite" },
             TestContext.Current.CancellationToken);
         using var document = await JsonDocument.ParseAsync(
             await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken),
@@ -65,7 +63,7 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
         var search = document.RootElement.GetProperty("search");
         Assert.Equal("Knight", search.GetProperty("results")[0].GetProperty("title").GetString());
         Assert.Equal("artist", search.GetProperty("results")[0].GetProperty("kind").GetString());
-        Assert.True(Directory.Exists(factory.EvaluationIndexDirectoryPath));
+        Assert.True(Directory.Exists(factory.SearchIndexDirectoryPath));
     }
 
     [Fact]
@@ -79,6 +77,28 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ProductionDiagnosticsShouldReportAnUnbuiltIndexExplicitly()
+    {
+        using var isolatedFactory = new LyrionVoiceMcpApiFactory();
+        using var client = isolatedFactory.CreateClient();
+
+        using var status = await client.GetAsync(
+            "/api/search/index",
+            TestContext.Current.CancellationToken);
+        var index = await status.Content.ReadFromJsonAsync<SearchIndexStatusResponse>(
+            TestContext.Current.CancellationToken);
+        using var search = await client.PostAsJsonAsync(
+            "/api/evaluation/search",
+            new { resolver = "production", query = "Fictional Signal" },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        Assert.Equal("catalogue-phuzzy-sqlite", index?.Resolver);
+        Assert.Null(index?.Artifact);
+        Assert.Equal(HttpStatusCode.Conflict, search.StatusCode);
     }
 
     private async Task SeedCatalogueAsync()

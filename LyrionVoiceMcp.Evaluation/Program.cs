@@ -1,7 +1,6 @@
 using System.Text.Json;
 using LyrionVoiceMcp.Evaluation;
 using LyrionVoiceMcp.Lms;
-using LyrionVoiceMcp.Persistence;
 
 var repositoryRoot = RepositoryRoot.Find(Environment.CurrentDirectory);
 if (repositoryRoot is null)
@@ -11,8 +10,10 @@ if (repositoryRoot is null)
     return 2;
 }
 
-var now = TimeProvider.System.GetUtcNow();
-var arguments = EvaluationCommandOptions.Parse(args, repositoryRoot, now);
+var arguments = EvaluationCommandOptions.Parse(
+    args,
+    repositoryRoot,
+    TimeProvider.System.GetUtcNow());
 if (arguments is EvaluationHelpRequested)
 {
     PrintHelp();
@@ -27,8 +28,9 @@ if (arguments is EvaluationArgumentsRejected rejectedArguments)
 }
 
 var options = (EvaluationArgumentsParsed)arguments;
-var reader = new EvaluationCorpusReader();
-var corpusOutcome = await reader.ReadFileAsync(options.CorpusPath, CancellationToken.None);
+var corpusOutcome = await new EvaluationCorpusReader().ReadFileAsync(
+    options.CorpusPath,
+    CancellationToken.None);
 if (corpusOutcome is CorpusRejected rejectedCorpus)
 {
     foreach (var error in rejectedCorpus.Errors)
@@ -39,6 +41,19 @@ if (corpusOutcome is CorpusRejected rejectedCorpus)
     return 2;
 }
 
+var configuration = EvaluationConfiguration.LoadFromEnvironment();
+if (configuration is EvaluationConfigurationRejected rejectedConfiguration)
+{
+    Console.Error.WriteLine(rejectedConfiguration.Error);
+    return 2;
+}
+
+var settings = ((EvaluationConfigurationLoaded)configuration).Settings;
+using var httpClient = new HttpClient { Timeout = settings.RequestTimeout };
+httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("LyrionVoiceMcp.Evaluation/0.1.0");
+var searchClient = new LmsSearchClient(new LmsJsonRpcClient(settings, httpClient));
+var resolver = new LmsEvaluationSearchResolver(searchClient);
+var runner = new EvaluationRunner(resolver, TimeProvider.System);
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>
 {
@@ -46,111 +61,11 @@ Console.CancelKeyPress += (_, eventArgs) =>
     cancellation.Cancel();
 };
 
-var loadedCorpus = (CorpusRead)corpusOutcome;
-HttpClient? httpClient = null;
-IEvaluationSearchResolver resolver;
-if (options.Resolver == EvaluationResolverSelection.LmsPassThrough)
-{
-    var settings = LoadEvaluationLmsSettings();
-    if (settings is null)
-    {
-        return 2;
-    }
-
-    httpClient = CreateHttpClient(settings);
-    var searchClient = new LmsSearchClient(new LmsJsonRpcClient(settings, httpClient));
-    resolver = new LmsEvaluationSearchResolver(searchClient);
-}
-else
-{
-    try
-    {
-        var cataloguePath = options.CataloguePath!;
-        if (options.RefreshCatalogue || !File.Exists(cataloguePath))
-        {
-            var settings = LoadEvaluationLmsSettings();
-            if (settings is null)
-            {
-                return 2;
-            }
-
-            httpClient = CreateHttpClient(settings);
-            var jsonRpcClient = new LmsJsonRpcClient(settings, httpClient);
-            var store = new SqliteMediaCatalogueStore(
-                new CatalogueSettings(cataloguePath));
-            var sourceReader = new LmsCatalogueReader(
-                jsonRpcClient,
-                settings,
-                TimeProvider.System);
-            var refresher = new EvaluationCatalogueRefresher(
-                store,
-                sourceReader,
-                TimeProvider.System);
-
-            Console.WriteLine($"Refreshing the local evaluation catalogue at {cataloguePath}...");
-            var summary = await refresher.RefreshAsync(cancellation.Token);
-            Console.WriteLine(
-                $"Catalogue refreshed: {summary.ArtistCount} artists, "
-                + $"{summary.AlbumCount} albums, {summary.TrackCount} tracks.");
-        }
-
-        resolver = options.Resolver switch
-        {
-            EvaluationResolverSelection.CatalogueLexical =>
-                await CatalogueLexicalSearchResolver.CreateAsync(
-                    cataloguePath,
-                    cancellation.Token),
-            EvaluationResolverSelection.CataloguePhuzzy =>
-                await CataloguePhuzzySearchResolver.CreateAsync(
-                    cataloguePath,
-                    cancellation.Token),
-            EvaluationResolverSelection.CataloguePhuzzyIndexed =>
-                await CataloguePhuzzyIndexedSearchResolver.CreateAsync(
-                    cataloguePath,
-                    GetPhuzzyIndexPath(cataloguePath),
-                    cancellation.Token),
-            EvaluationResolverSelection.CatalogueLucene =>
-                await CatalogueLuceneSearchResolver.CreateAsync(
-                    cataloguePath,
-                    GetLuceneIndexPath(cataloguePath),
-                    cancellation.Token),
-            EvaluationResolverSelection.CatalogueLuceneNative =>
-                await CatalogueLuceneNativeSearchResolver.CreateAsync(
-                    cataloguePath,
-                    GetLuceneNativeIndexPath(cataloguePath),
-                    cancellation.Token),
-            _ => throw new InvalidOperationException("The catalogue resolver is not supported.")
-        };
-    }
-    catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-    {
-        httpClient?.Dispose();
-        Console.Error.WriteLine("Evaluation catalogue refresh cancelled.");
-        return 130;
-    }
-    catch (Exception exception) when (exception is not OperationCanceledException)
-    {
-        httpClient?.Dispose();
-        Console.Error.WriteLine($"Could not prepare the catalogue: {exception.Message}");
-        return 2;
-    }
-}
-
-using var httpClientLifetime = httpClient;
-using var resolverLifetime = resolver as IDisposable;
-var runner = new EvaluationRunner(resolver, TimeProvider.System);
-
 try
 {
+    var loadedCorpus = (CorpusRead)corpusOutcome;
     Console.WriteLine(
-        $"Running {loadedCorpus.Corpus.Cases.Count} cases against {resolver.Name} {resolver.Version}...");
-    if (resolver.Metrics.IndexedCandidateCount is { } candidateCount)
-    {
-        Console.WriteLine(
-            $"Prepared {candidateCount} candidates in "
-            + $"{resolver.Metrics.PreparationDurationMilliseconds} ms.");
-    }
-
+        $"Running {loadedCorpus.Corpus.Cases.Count} cases against the LMS baseline...");
     var report = await runner.RunAsync(
         loadedCorpus.Corpus,
         loadedCorpus.ContentHash,
@@ -163,7 +78,6 @@ try
         new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true },
         cancellation.Token);
     await output.FlushAsync(cancellation.Token);
-
     Console.WriteLine(
         $"Passed {report.Summary.PassedCases}/{report.Summary.TotalCases}; "
         + $"top-1 {report.Summary.Top1Matches}/{report.Summary.PositiveCases}; "
@@ -181,67 +95,9 @@ catch (OperationCanceledException)
 static void PrintHelp()
 {
     Console.WriteLine(
-        "Usage: evaluate.sh [--resolver lms-pass-through|catalogue-lexical|catalogue-phuzzy|catalogue-phuzzy-indexed|catalogue-lucene|catalogue-lucene-native] "
-        + "[--refresh-catalogue] [--catalogue PATH] [--corpus PATH] [--output PATH]");
+        "Usage: evaluate.sh [--resolver lms-pass-through] [--corpus PATH] [--output PATH]");
     Console.WriteLine();
-    Console.WriteLine("Resolver requirements:");
-    Console.WriteLine("  lms-pass-through   LVM_EVALUATION_LMS_BASE_URL must identify the live LMS origin");
     Console.WriteLine(
-        "  catalogue-lexical  reads .data/evaluation/catalogue.db; builds it from the live "
-        + "LMS when missing");
-    Console.WriteLine(
-        "  catalogue-phuzzy   uses the same catalogue with experimental voice-tolerant scoring");
-    Console.WriteLine(
-        "  catalogue-phuzzy-indexed retrieves bounded lane candidates before applying that scoring");
-    Console.WriteLine(
-        "  catalogue-lucene   compares Lucene fuzzy, phonetic and lexical candidate lanes");
-    Console.WriteLine(
-        "  catalogue-lucene-native uses one field-aware query and native Lucene ranking");
-    Console.WriteLine(
-        "                     --refresh-catalogue refreshes that local snapshot before use");
-    Console.WriteLine();
-    Console.WriteLine("Defaults:");
-    Console.WriteLine("  resolver   lms-pass-through");
-    Console.WriteLine("  corpus     ../lyrion-voice-evaluation/corpus.json");
-    Console.WriteLine("  output     .data/evaluation/<resolver>-<timestamp>.json");
-}
-
-static string GetPhuzzyIndexPath(string cataloguePath)
-{
-    var directory = Path.GetDirectoryName(cataloguePath) ?? string.Empty;
-    var fileName = Path.GetFileNameWithoutExtension(cataloguePath);
-    return Path.Combine(directory, $"{fileName}.phuzzy-index.db");
-}
-
-static string GetLuceneIndexPath(string cataloguePath)
-{
-    var directory = Path.GetDirectoryName(cataloguePath) ?? string.Empty;
-    var fileName = Path.GetFileNameWithoutExtension(cataloguePath);
-    return Path.Combine(directory, $"{fileName}.lucene-index");
-}
-
-static string GetLuceneNativeIndexPath(string cataloguePath)
-{
-    var directory = Path.GetDirectoryName(cataloguePath) ?? string.Empty;
-    var fileName = Path.GetFileNameWithoutExtension(cataloguePath);
-    return Path.Combine(directory, $"{fileName}.lucene-native-index");
-}
-
-static LmsConnectionSettings? LoadEvaluationLmsSettings()
-{
-    var configurationOutcome = EvaluationConfiguration.LoadFromEnvironment();
-    if (configurationOutcome is EvaluationConfigurationRejected rejectedConfiguration)
-    {
-        Console.Error.WriteLine(rejectedConfiguration.Error);
-        return null;
-    }
-
-    return ((EvaluationConfigurationLoaded)configurationOutcome).Settings;
-}
-
-static HttpClient CreateHttpClient(LmsConnectionSettings settings)
-{
-    var client = new HttpClient { Timeout = settings.RequestTimeout };
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("LyrionVoiceMcp.Evaluation/0.1.0");
-    return client;
+        "The local runner retains the LMS baseline. Evaluate the production resolver through "
+        + "the deployed /api/evaluation/search endpoint.");
 }

@@ -4,7 +4,7 @@ import {
   getCatalogue,
   getHealth,
   getLmsConnection,
-  getSearchIndexes,
+  getSearchIndex,
   getVersion,
   rebuildCatalogue,
   rebuildSearchIndex,
@@ -24,16 +24,17 @@ export const useOperationsStore = defineStore('operations', () => {
   const catalogueLoading = ref(false);
   const catalogueRebuildPending = ref(false);
   const catalogueErrorMessage = ref<string | null>(null);
-  const searchIndexes = ref<SearchIndexStatusResponse[]>([]);
+  const searchIndex = ref<SearchIndexStatusResponse | null>(null);
   const searchIndexesLoading = ref(false);
-  const searchIndexRebuildPending = ref<string | null>(null);
+  const searchIndexRebuildPending = ref(false);
   const searchIndexesErrorMessage = ref<string | null>(null);
 
   const isHealthy = computed(() => status.value === 'ok' && errorMessage.value === null);
   const catalogueRebuilding = computed(
     () => catalogue.value?.latestRefresh?.status === 'running');
-  const searchIndexesRebuilding = computed(() => searchIndexes.value.some(
-    index => index.latestJob?.status === 'pending' || index.latestJob?.status === 'running'));
+  const searchIndexesRebuilding = computed(() =>
+    searchIndex.value?.latestJob?.status === 'pending'
+    || searchIndex.value?.latestJob?.status === 'running');
 
   async function load(signal?: AbortSignal): Promise<void> {
     loading.value = true;
@@ -89,7 +90,7 @@ export const useOperationsStore = defineStore('operations', () => {
     searchIndexesErrorMessage.value = null;
 
     try {
-      searchIndexes.value = await getSearchIndexes(signal);
+      searchIndex.value = await getSearchIndex(signal);
     } catch (error) {
       searchIndexesErrorMessage.value = describeSearchIndexError(error);
     } finally {
@@ -97,22 +98,16 @@ export const useOperationsStore = defineStore('operations', () => {
     }
   }
 
-  async function rebuildIndex(resolver: string, signal?: AbortSignal): Promise<void> {
-    searchIndexRebuildPending.value = resolver;
+  async function rebuildIndex(signal?: AbortSignal): Promise<void> {
+    searchIndexRebuildPending.value = true;
     searchIndexesErrorMessage.value = null;
 
     try {
-      const status = await rebuildSearchIndex(resolver, signal);
-      const existingIndex = searchIndexes.value.findIndex(index => index.resolver === resolver);
-      if (existingIndex < 0) {
-        searchIndexes.value.push(status);
-      } else {
-        searchIndexes.value.splice(existingIndex, 1, status);
-      }
+      searchIndex.value = await rebuildSearchIndex(signal);
     } catch (error) {
       searchIndexesErrorMessage.value = describeSearchIndexError(error);
     } finally {
-      searchIndexRebuildPending.value = null;
+      searchIndexRebuildPending.value = false;
     }
   }
 
@@ -126,7 +121,7 @@ export const useOperationsStore = defineStore('operations', () => {
     catalogueLoading,
     catalogueRebuildPending,
     catalogueErrorMessage,
-    searchIndexes,
+    searchIndex,
     searchIndexesLoading,
     searchIndexRebuildPending,
     searchIndexesErrorMessage,

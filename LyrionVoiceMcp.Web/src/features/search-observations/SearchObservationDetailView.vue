@@ -15,20 +15,20 @@
 
       <section class="timings" aria-label="Search timings">
         <div><strong>{{ item.totalDurationMilliseconds }} ms</strong><span>Total</span></div>
-        <div><strong>{{ item.retrievalDurationMilliseconds }} ms</strong><span>LMS retrieval</span></div>
+        <div><strong>{{ item.retrievalDurationMilliseconds }} ms</strong><span>Candidate retrieval</span></div>
         <div><strong>{{ item.processingDurationMilliseconds }} ms</strong><span>Result processing</span></div>
         <div><strong>{{ item.candidates.length }}</strong><span>Candidates</span></div>
       </section>
 
       <aside v-if="item.status === 'failed'" class="failure-notice" role="status">
         <strong>Search request failed</strong>
-        <span>{{ item.failureMessage ?? 'LMS did not complete the search.' }}</span>
-        <span>Any candidates below came from the sibling request that completed successfully.</span>
+        <span>{{ item.failureMessage ?? 'A search source did not complete.' }}</span>
+        <span>Any candidates below came from sources that completed successfully.</span>
       </aside>
 
       <section class="panel">
-        <div class="panel-title"><h2>Requests to LMS</h2><span>{{ item.provider }} · {{ item.collection.replaceAll('_', ' ') }}</span></div>
-        <div v-if="!item.requests.length" class="empty-inline">No completed LMS request was captured.</div>
+        <div class="panel-title"><h2>Retrieval sources</h2><span>{{ item.provider }} · {{ item.collection.replaceAll('_', ' ') }}</span></div>
+        <div v-if="!item.requests.length" class="empty-inline">No retrieval source was captured.</div>
         <article v-for="request in item.requests" :key="request.source" class="request-row">
           <div>
             <strong>{{ request.source }}</strong>
@@ -42,9 +42,9 @@
       </section>
 
       <section class="panel">
-        <div class="panel-title"><h2>Ordered candidates</h2><span>Original LMS pass-through order</span></div>
+        <div class="panel-title"><h2>Ordered candidates</h2><span>Order returned to the calling agent</span></div>
         <div v-if="!item.candidates.length" class="no-results">
-          {{ item.status === 'failed' ? 'No candidates were recovered before the request failed.' : 'LMS returned no candidates.' }}
+          {{ item.status === 'failed' ? 'No candidates were recovered before the request failed.' : 'Search returned no candidates.' }}
         </div>
         <ol v-else class="candidate-list">
           <li v-for="candidate in item.candidates" :key="candidate.correlationId" :class="{ selected: candidate.selectedAt }">

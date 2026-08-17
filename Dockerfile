@@ -25,6 +25,8 @@ COPY LyrionVoiceMcp.Evaluation/ LyrionVoiceMcp.Evaluation/
 COPY LyrionVoiceMcp.Lms/ LyrionVoiceMcp.Lms/
 COPY LyrionVoiceMcp.Persistence/ LyrionVoiceMcp.Persistence/
 COPY LyrionVoiceMcp.Persistence.Tests/ LyrionVoiceMcp.Persistence.Tests/
+COPY LyrionVoiceMcp.Search/ LyrionVoiceMcp.Search/
+COPY LyrionVoiceMcp.Search.Tests/ LyrionVoiceMcp.Search.Tests/
 COPY LyrionVoiceMcp.Services/ LyrionVoiceMcp.Services/
 COPY LyrionVoiceMcp.Services.Tests/ LyrionVoiceMcp.Services.Tests/
 RUN dotnet restore LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj --locked-mode -maxcpucount:1 -nodeReuse:false
@@ -50,7 +52,7 @@ ENV LyrionVoiceMcpBuild__Commit=$LVM_COMMIT
 ENV LyrionVoiceMcpObservations__DatabasePath=/data/search-observations.db
 ENV LyrionVoiceMcpCatalogue__DatabasePath=/data/catalogue.db
 ENV LyrionVoiceMcpOperations__DatabasePath=/data/operations.db
-ENV LyrionVoiceMcpEvaluation__IndexDirectoryPath=/data/search-indexes
+ENV LyrionVoiceMcpSearch__IndexDirectoryPath=/data/search-index
 EXPOSE 5600
 VOLUME ["/data"]
 USER $APP_UID

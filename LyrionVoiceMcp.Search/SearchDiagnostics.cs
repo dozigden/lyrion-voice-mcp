@@ -1,6 +1,6 @@
 using LyrionVoiceMcp.Abstractions;
 
-namespace LyrionVoiceMcp.Evaluation;
+namespace LyrionVoiceMcp.Search;
 
 public interface IEvaluationDiagnosticSearchResolver : IEvaluationSearchResolver
 {

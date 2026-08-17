@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace LyrionVoiceMcp.Abstractions;
 
 public enum MediaEntityKind
@@ -44,6 +46,81 @@ public interface ILmsSearchClient
         CancellationToken cancellationToken);
 }
 
+public interface ILmsPlaylistSearchClient
+{
+    Task<LmsSearchResponse> SearchPlaylistsAsync(
+        string query,
+        CancellationToken cancellationToken);
+}
+
+public sealed record CatalogueSearchDocument(
+    MediaIdentity Identity,
+    string Title,
+    string? Artist,
+    string? Album);
+
+public sealed record CatalogueSearchDocumentBatch(
+    string CatalogueRefreshId,
+    IReadOnlyList<CatalogueSearchDocument> Documents);
+
+public interface ICatalogueSearchDocumentSource
+{
+    IAsyncEnumerable<CatalogueSearchDocumentBatch> ReadBatchesAsync(
+        string catalogueRefreshId,
+        int batchSize,
+        CancellationToken cancellationToken);
+}
+
+public sealed record CatalogueSearchCandidate(
+    MediaIdentity Identity,
+    string Title,
+    string? Artist,
+    string? Album,
+    int Score);
+
+public sealed record CatalogueSearchResponse(
+    IReadOnlyList<CatalogueSearchCandidate> Candidates,
+    long RetrievalDurationMilliseconds,
+    long RerankDurationMilliseconds);
+
+public interface ICatalogueSearchResolver
+{
+    Task<CatalogueSearchResponse> SearchAsync(
+        string query,
+        CancellationToken cancellationToken);
+}
+
+public sealed class CatalogueSearchUnavailableException(string message) : Exception(message);
+
+public static class SearchQueryPolicy
+{
+    public const int MaximumLength = 500;
+    public const int MaximumTokenCount = 20;
+
+    public static int CountNormalisedTokens(string value)
+    {
+        var count = 0;
+        var insideToken = false;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            if (Rune.IsLetterOrDigit(rune))
+            {
+                if (!insideToken)
+                {
+                    count++;
+                    insideToken = true;
+                }
+
+                continue;
+            }
+
+            insideToken = false;
+        }
+
+        return count;
+    }
+}
+
 public sealed record SearchCandidateResult(
     string Reference,
     MediaEntityKind Kind,
@@ -53,7 +130,8 @@ public sealed record SearchCandidateResult(
 
 public enum SearchRejectionReason
 {
-    InvalidQuery
+    InvalidQuery,
+    SearchUnavailable
 }
 
 public abstract record SearchOutcome;

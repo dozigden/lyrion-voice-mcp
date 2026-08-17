@@ -3,7 +3,7 @@ import {
   getCatalogue,
   getHealth,
   getLmsConnection,
-  getSearchIndexes,
+  getSearchIndex,
   rebuildCatalogue,
   rebuildSearchIndex
 } from './operationsApi';
@@ -110,17 +110,17 @@ describe('operationsApi', () => {
     }));
   });
 
-  it('returns published search indexes', async () => {
+  it('returns the published production search index', async () => {
     // Arrange
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([searchIndexStatus('succeeded')], 200));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(searchIndexStatus('succeeded'), 200));
     vi.stubGlobal('fetch', fetchMock);
 
     // Act
-    const result = await getSearchIndexes();
+    const result = await getSearchIndex();
 
     // Assert
-    expect(result[0]?.resolver).toBe('phuzzy');
-    expect(result[0]?.artifact?.candidateCount).toBe(1_234);
+    expect(result.resolver).toBe('catalogue-phuzzy-sqlite');
+    expect(result.artifact?.candidateCount).toBe(1_234);
   });
 
   it('starts a search-index rebuild', async () => {
@@ -129,19 +129,19 @@ describe('operationsApi', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     // Act
-    const result = await rebuildSearchIndex('lucene-native');
+    const result = await rebuildSearchIndex();
 
     // Assert
     expect(result.latestJob?.status).toBe('pending');
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/evaluation/indexes/lucene-native/rebuild',
+      '/api/search/index/rebuild',
       expect.objectContaining({ method: 'POST' }));
   });
 });
 
 function searchIndexStatus(status: 'pending' | 'succeeded'): Record<string, unknown> {
   return {
-    resolver: 'phuzzy',
+    resolver: 'catalogue-phuzzy-sqlite',
     artifact: {
       resolverVersion: '2',
       catalogueRefreshId: 'refresh-1',

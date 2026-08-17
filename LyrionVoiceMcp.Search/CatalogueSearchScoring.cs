@@ -1,67 +1,12 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Lucene.Net.Analysis.Phonetic.Language;
 using LyrionVoiceMcp.Abstractions;
 
-namespace LyrionVoiceMcp.Evaluation;
+namespace LyrionVoiceMcp.Search;
 
-public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
+internal static class CatalogueSearchRanker
 {
-    private const int ResultLimit = 20;
-    private readonly IReadOnlyList<PhuzzyCandidate> candidates;
-
-    private CataloguePhuzzySearchResolver(
-        IReadOnlyList<PhuzzyCandidate> candidates,
-        long preparationDurationMilliseconds)
-    {
-        this.candidates = candidates;
-        Metrics = new EvaluationResolverMetrics(
-            candidates.Count,
-            preparationDurationMilliseconds,
-            null);
-    }
-
-    public string Name => "catalogue-phuzzy";
-    public string Version => "2";
-    public EvaluationResolverMetrics Metrics { get; }
-
-    public static async Task<CataloguePhuzzySearchResolver> CreateAsync(
-        string databasePath,
-        CancellationToken cancellationToken)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        var index = await CatalogueEvaluationIndex.LoadAsync(databasePath, cancellationToken);
-        var forms = new Dictionary<string, PhuzzyTextForms>(StringComparer.Ordinal);
-        var candidates = index.Candidates
-            .Select(candidate => CreateCandidate(candidate, forms))
-            .ToArray();
-        stopwatch.Stop();
-        return new CataloguePhuzzySearchResolver(candidates, stopwatch.ElapsedMilliseconds);
-    }
-
-    public Task<EvaluationSearchResponse> SearchAsync(
-        string query,
-        CancellationToken cancellationToken) =>
-        SearchCandidatesAsync(query, candidates, cancellationToken);
-
-    internal static Task<EvaluationSearchResponse> SearchCandidatesAsync(
-        string query,
-        IReadOnlyList<PhuzzyCandidate> candidates,
-        CancellationToken cancellationToken)
-    {
-        var results = RankCandidates(
-                query,
-                candidates,
-                includeUnmatched: false,
-                captureEvidence: false,
-                cancellationToken)
-            .Take(ResultLimit)
-            .Select(item => item.Candidate.Source.Value)
-            .ToArray();
-        return Task.FromResult(new EvaluationSearchResponse(results, null));
-    }
-
     internal static IReadOnlyList<RankedPhuzzyCandidate> RankCandidates(
         string query,
         IReadOnlyList<PhuzzyCandidate> candidates,
@@ -109,11 +54,11 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
     }
 
     internal static PhuzzyCandidate CreateCandidate(
-        CatalogueEvaluationCandidate candidate) =>
+        CatalogueIndexCandidate candidate) =>
         CreateCandidate(candidate, new Dictionary<string, PhuzzyTextForms>(StringComparer.Ordinal));
 
     private static PhuzzyCandidate CreateCandidate(
-        CatalogueEvaluationCandidate candidate,
+        CatalogueIndexCandidate candidate,
         Dictionary<string, PhuzzyTextForms> cache)
     {
         var title = GetForms(candidate.Value.Title, cache);
@@ -394,7 +339,7 @@ public sealed class CataloguePhuzzySearchResolver : IEvaluationSearchResolver
 }
 
 internal sealed record PhuzzyCandidate(
-    CatalogueEvaluationCandidate Source,
+    CatalogueIndexCandidate Source,
     PhuzzyTextForms Title,
     PhuzzyTextForms Artist,
     PhuzzyTextForms Album,
@@ -526,8 +471,11 @@ internal static class PhuzzyText
             return codes;
         }
 
-        var primary = DoubleMetaphoneEncoder.GetDoubleMetaphone(normalised);
-        var alternate = DoubleMetaphoneEncoder.GetDoubleMetaphone(normalised, alternate: true);
+        var phoneticInput = ExpandDigitsForPhonetics(normalised);
+        var primary = DoubleMetaphoneEncoder.GetDoubleMetaphone(phoneticInput);
+        var alternate = DoubleMetaphoneEncoder.GetDoubleMetaphone(
+            phoneticInput,
+            alternate: true);
         if (!string.IsNullOrEmpty(primary))
         {
             codes.Add(primary);
@@ -540,6 +488,56 @@ internal static class PhuzzyText
 
         return codes;
     }
+
+    private static string ExpandDigitsForPhonetics(string value)
+    {
+        if (!value.Any(char.IsDigit))
+        {
+            return value;
+        }
+
+        var parts = new List<string>();
+        foreach (var token in value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var expanded = new StringBuilder();
+            foreach (var character in token)
+            {
+                if (char.IsDigit(character))
+                {
+                    if (expanded.Length > 0 && expanded[^1] != ' ')
+                    {
+                        expanded.Append(' ');
+                    }
+
+                    expanded.Append(DigitName(character));
+                    expanded.Append(' ');
+                }
+                else
+                {
+                    expanded.Append(character);
+                }
+            }
+
+            parts.Add(expanded.ToString().Trim());
+        }
+
+        return string.Join(' ', parts);
+    }
+
+    private static string DigitName(char value) => value switch
+    {
+        '0' => "zero",
+        '1' => "one",
+        '2' => "two",
+        '3' => "three",
+        '4' => "four",
+        '5' => "five",
+        '6' => "six",
+        '7' => "seven",
+        '8' => "eight",
+        '9' => "nine",
+        _ => throw new ArgumentOutOfRangeException(nameof(value), value, null)
+    };
 
     public static IReadOnlySet<string> Trigrams(string compact)
     {

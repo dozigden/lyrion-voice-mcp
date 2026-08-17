@@ -136,16 +136,16 @@ public sealed class CatalogueRefreshServiceTests
     {
         public string? CatalogueRefreshId { get; private set; }
 
-        public Task<IReadOnlyList<SearchIndexStatus>> ListAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<SearchIndexStatus>>([]);
+        public Task<SearchIndexStatus> GetAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new SearchIndexStatus("catalogue-phuzzy-sqlite", null, null));
 
-        public Task<SearchIndexRebuildOutcome> RebuildAsync(string resolver, CancellationToken cancellationToken) =>
+        public Task<SearchIndexRebuildOutcome> RebuildAsync(CancellationToken cancellationToken) =>
             Task.FromResult<SearchIndexRebuildOutcome>(new SearchIndexRebuildRejected("Not used."));
 
-        public Task<IReadOnlyList<long>> EnqueueForCatalogueAsync(string catalogueRefreshId, CancellationToken cancellationToken)
+        public Task<long?> EnqueueForCatalogueAsync(string catalogueRefreshId, CancellationToken cancellationToken)
         {
             CatalogueRefreshId = catalogueRefreshId;
-            return Task.FromResult<IReadOnlyList<long>>([101, 102, 103]);
+            return Task.FromResult<long?>(101);
         }
     }
 

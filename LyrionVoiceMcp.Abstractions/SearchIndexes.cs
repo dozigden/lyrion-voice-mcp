@@ -27,14 +27,9 @@ public interface ISearchIndexProgress
 
 public interface ISearchIndexBuilder
 {
-    IReadOnlyList<string> Resolvers { get; }
-
-    Task<SearchIndexArtifact?> GetArtifactAsync(
-        string resolver,
-        CancellationToken cancellationToken);
+    Task<SearchIndexArtifact?> GetArtifactAsync(CancellationToken cancellationToken);
 
     Task<SearchIndexRebuildResult> RebuildAsync(
-        string resolver,
         string catalogueRefreshId,
         long jobId,
         ISearchIndexProgress progress,
@@ -43,13 +38,11 @@ public interface ISearchIndexBuilder
 
 public interface ISearchIndexService
 {
-    Task<IReadOnlyList<SearchIndexStatus>> ListAsync(CancellationToken cancellationToken);
+    Task<SearchIndexStatus> GetAsync(CancellationToken cancellationToken);
 
-    Task<SearchIndexRebuildOutcome> RebuildAsync(
-        string resolver,
-        CancellationToken cancellationToken);
+    Task<SearchIndexRebuildOutcome> RebuildAsync(CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<long>> EnqueueForCatalogueAsync(
+    Task<long?> EnqueueForCatalogueAsync(
         string catalogueRefreshId,
         CancellationToken cancellationToken);
 }
@@ -63,5 +56,4 @@ public sealed record SearchIndexRebuildRejected(
     string Message) : SearchIndexRebuildOutcome;
 
 public sealed record SearchIndexRebuildPayload(
-    string Resolver,
     string CatalogueRefreshId);
