@@ -25,7 +25,8 @@ public sealed class SearchServiceTests
                 null)
         ]);
         var codec = new ReferenceCodecTestContext().Search;
-        var service = CreateService(catalogue, playlists, codec, new RecordingSearchObservationStore());
+        var observations = new RecordingSearchObservationStore();
+        var service = CreateService(catalogue, playlists, codec, observations);
 
         var outcome = await service.SearchAsync(
             "  copper  ",
@@ -38,7 +39,11 @@ public sealed class SearchServiceTests
             results,
             item => Assert.Equal(MediaEntityKind.Artist, item.Kind),
             item => Assert.Equal(MediaEntityKind.Playlist, item.Kind));
-        Assert.Equal("7", codec.TryDecode(results[0].Reference)?.Identity.Id);
+        var decoded = codec.TryDecode(results[0].Reference);
+        Assert.Equal("7", decoded?.Identity.Id);
+        Assert.Equal(
+            observations.Recorded?.Candidates[0].CorrelationId,
+            decoded?.CorrelationId);
     }
 
     [Fact]
@@ -121,6 +126,33 @@ public sealed class SearchServiceTests
     }
 
     [Fact]
+    public async Task ObservationPersistenceFailureShouldNotFailSuccessfulSearch()
+    {
+        var observations = new RecordingSearchObservationStore
+        {
+            RecordFailure = new InvalidOperationException("Synthetic persistence failure.")
+        };
+        var service = CreateService(
+            new StubCatalogueSearch([
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Artist, "7"),
+                    "Copper Lines",
+                    null,
+                    null,
+                    1_040)
+            ]),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            observations);
+
+        var outcome = await service.SearchAsync(
+            "copper",
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(Assert.IsType<SearchSucceeded>(outcome).Results);
+    }
+
+    [Fact]
     public async Task PlaylistFailureShouldPreserveCatalogueCandidatesInTheObservation()
     {
         var store = new RecordingSearchObservationStore();
@@ -155,6 +187,45 @@ public sealed class SearchServiceTests
         Assert.Equal(catalogue.Descriptor.Name, store.Recorded?.Resolver);
         Assert.Equal(catalogue.Descriptor.Version, store.Recorded?.ResolverVersion);
         Assert.Equal("Silver Static", Assert.Single(store.Recorded!.Candidates).Title);
+        Assert.Equal(2, store.Recorded.Requests.Count);
+    }
+
+    [Fact]
+    public async Task UnexpectedPlaylistFailureShouldBeRethrownAndRecordedWithSourceEvidence()
+    {
+        var store = new RecordingSearchObservationStore();
+        var failure = new InvalidOperationException("Synthetic unexpected failure.");
+        var service = CreateService(
+            new StubCatalogueSearch([
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Track, "51"),
+                    "Silver Static",
+                    "The Copper Lines",
+                    "Night Signals",
+                    1_300)
+            ]),
+            new UnexpectedlyFailingPlaylistSearch(failure),
+            new ReferenceCodecTestContext().Search,
+            store);
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SearchAsync("signals", TestContext.Current.CancellationToken));
+
+        Assert.Same(failure, thrown);
+        Assert.Equal("Silver Static", Assert.Single(store.Recorded!.Candidates).Title);
+        Assert.Collection(
+            store.Recorded.Requests,
+            request =>
+            {
+                Assert.Equal("catalogue-index", request.Source);
+                Assert.Equal(LmsSearchRequestStatus.Completed, request.Status);
+            },
+            request =>
+            {
+                Assert.Equal("playlists", request.Source);
+                Assert.Equal(LmsSearchRequestStatus.Failed, request.Status);
+                Assert.Equal(failure.Message, request.FailureMessage);
+            });
     }
 
     private static SearchService CreateService(
@@ -165,8 +236,10 @@ public sealed class SearchServiceTests
             catalogue,
             playlists,
             codec,
-            observations,
-            TimeProvider.System,
+            new SearchObservationRecorder(
+                observations,
+                TimeProvider.System,
+                NullLogger<SearchObservationRecorder>.Instance),
             NullLogger<SearchService>.Instance);
 
     private sealed class StubCatalogueSearch(
@@ -225,6 +298,15 @@ public sealed class SearchServiceTests
                 "LMS search failed for playlists.",
                 response,
                 new LmsRequestException("Synthetic failure.")));
+    }
+
+    private sealed class UnexpectedlyFailingPlaylistSearch(
+        Exception failure) : ILmsPlaylistSearchClient
+    {
+        public Task<LmsSearchResponse> SearchPlaylistsAsync(
+            string query,
+            CancellationToken cancellationToken) =>
+            Task.FromException<LmsSearchResponse>(failure);
     }
 }
 

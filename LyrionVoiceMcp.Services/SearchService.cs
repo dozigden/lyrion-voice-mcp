@@ -5,12 +5,11 @@ using Microsoft.Extensions.Logging;
 
 namespace LyrionVoiceMcp.Services;
 
-public sealed class SearchService(
+internal sealed class SearchService(
     ICatalogueSearchResolver catalogueSearch,
     ILmsPlaylistSearchClient playlistSearch,
     ISearchResultReferenceCodec referenceCodec,
-    ISearchObservationStore observationStore,
-    TimeProvider timeProvider,
+    SearchObservationRecorder observationRecorder,
     ILogger<SearchService> logger) : ISearchService
 {
     public async Task<SearchOutcome> SearchAsync(
@@ -40,8 +39,10 @@ public sealed class SearchService(
                 $"The search query must contain no more than {SearchQueryPolicy.MaximumTokenCount} words.");
         }
 
-        var observationId = Guid.NewGuid().ToString("N");
-        var createdAt = timeProvider.GetUtcNow();
+        var observation = observationRecorder.Begin(
+            query,
+            normalisedQuery,
+            catalogueSearch.Descriptor);
         var stopwatch = Stopwatch.StartNew();
         var catalogueTask = catalogueSearch.SearchAsync(normalisedQuery, cancellationToken);
         var playlistTask = playlistSearch.SearchPlaylistsAsync(normalisedQuery, cancellationToken);
@@ -49,8 +50,7 @@ public sealed class SearchService(
         CatalogueSearchResponse? catalogueResponse = null;
         LmsSearchResponse? playlistResponse = null;
         Exception? catalogueFailure = null;
-        LmsSearchFailedException? playlistFailure = null;
-        Exception? unexpectedPlaylistFailure = null;
+        Exception? playlistFailure = null;
         try
         {
             catalogueResponse = await catalogueTask;
@@ -71,20 +71,18 @@ public sealed class SearchService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            unexpectedPlaylistFailure = exception;
+            playlistFailure = exception;
         }
 
         if (catalogueFailure is not null)
         {
             stopwatch.Stop();
-            await TryRecordAsync(CreateFailedObservation(
-                observationId,
-                createdAt,
-                query,
-                normalisedQuery,
+            await observationRecorder.RecordCatalogueFailureAsync(
+                observation,
                 catalogueFailure,
                 stopwatch.ElapsedMilliseconds,
-                playlistResponse), cancellationToken);
+                playlistResponse,
+                cancellationToken);
             if (catalogueFailure is CatalogueSearchUnavailableException)
             {
                 return new SearchRejected(
@@ -96,7 +94,7 @@ public sealed class SearchService(
             throw new UnreachableException();
         }
 
-        var allCandidates = catalogueResponse!.Candidates
+        var candidates = catalogueResponse!.Candidates
             .Take(20)
             .Select(candidate => new Candidate(
                 candidate.Identity,
@@ -111,58 +109,31 @@ public sealed class SearchService(
                     candidate.Title,
                     candidate.Artist,
                     candidate.Album)))
+            .Select((candidate, index) => new SearchCandidateOccurrence(
+                index + 1,
+                Guid.NewGuid().ToString("N"),
+                candidate.Identity,
+                candidate.Title,
+                candidate.Artist,
+                candidate.Album))
             .ToArray();
-        var observedCandidates = CreateObservationCandidates(allCandidates);
         stopwatch.Stop();
-        var requests = CreateRequestObservations(catalogueResponse, playlistResponse);
-        var retrievalDuration = Math.Max(
-            catalogueResponse.RetrievalDurationMilliseconds
-                + catalogueResponse.RerankDurationMilliseconds,
-            playlistResponse?.RetrievalDurationMilliseconds ?? 0);
-
-        if (unexpectedPlaylistFailure is not null)
-        {
-            await TryRecordAsync(CreateObservation(
-                observationId,
-                createdAt,
-                query,
-                normalisedQuery,
-                SearchObservationStatus.Failed,
-                unexpectedPlaylistFailure.Message,
-                stopwatch.ElapsedMilliseconds,
-                retrievalDuration,
-                [
-                    .. requests,
-                    new LmsSearchRequestObservation(
-                        "playlists",
-                        "playlists",
-                        LmsSearchRequestStatus.Failed,
-                        unexpectedPlaylistFailure.Message,
-                        stopwatch.ElapsedMilliseconds,
-                        0)
-                ],
-                observedCandidates), cancellationToken);
-            ExceptionDispatchInfo.Capture(unexpectedPlaylistFailure).Throw();
-            throw new UnreachableException();
-        }
 
         if (playlistFailure is not null)
         {
-            await TryRecordAsync(CreateObservation(
-                observationId,
-                createdAt,
-                query,
-                normalisedQuery,
-                SearchObservationStatus.Failed,
-                playlistFailure.Message,
+            await observationRecorder.RecordPlaylistFailureAsync(
+                observation,
+                catalogueResponse,
+                playlistResponse,
+                candidates,
+                playlistFailure,
                 stopwatch.ElapsedMilliseconds,
-                retrievalDuration,
-                requests,
-                observedCandidates), cancellationToken);
-            throw playlistFailure;
+                cancellationToken);
+            ExceptionDispatchInfo.Capture(playlistFailure).Throw();
+            throw new UnreachableException();
         }
 
-        var results = observedCandidates
+        var results = candidates
             .Select(candidate => new SearchCandidateResult(
                 referenceCodec.Encode(new SearchResultReferenceValue(
                     candidate.CorrelationId,
@@ -172,17 +143,13 @@ public sealed class SearchService(
                 candidate.Artist,
                 candidate.Album))
             .ToArray();
-        await TryRecordAsync(CreateObservation(
-            observationId,
-            createdAt,
-            query,
-            normalisedQuery,
-            SearchObservationStatus.Completed,
-            null,
+        await observationRecorder.RecordCompletedAsync(
+            observation,
+            catalogueResponse,
+            playlistResponse,
+            candidates,
             stopwatch.ElapsedMilliseconds,
-            retrievalDuration,
-            requests,
-            observedCandidates), cancellationToken);
+            cancellationToken);
 
         logger.LogInformation(
             "Catalogue and playlist search for {Query} returned {ResultCount} candidates in {ElapsedMilliseconds} ms.",
@@ -190,115 +157,6 @@ public sealed class SearchService(
             results.Length,
             stopwatch.ElapsedMilliseconds);
         return new SearchSucceeded(results);
-    }
-
-    private IReadOnlyList<LmsSearchRequestObservation> CreateRequestObservations(
-        CatalogueSearchResponse catalogue,
-        LmsSearchResponse? playlists) =>
-    [
-        new LmsSearchRequestObservation(
-            "catalogue-index",
-            catalogueSearch.Descriptor.Name,
-            LmsSearchRequestStatus.Completed,
-            null,
-            catalogue.RetrievalDurationMilliseconds + catalogue.RerankDurationMilliseconds,
-            catalogue.Candidates.Count),
-        .. playlists?.Requests ?? []
-    ];
-
-    private static SearchObservationCandidate[] CreateObservationCandidates(
-        IReadOnlyList<Candidate> candidates) =>
-        candidates.Select((candidate, index) => new SearchObservationCandidate(
-            index + 1,
-            Guid.NewGuid().ToString("N"),
-            candidate.Identity,
-            candidate.Title,
-            candidate.Artist,
-            candidate.Album,
-            null)).ToArray();
-
-    private SearchObservation CreateObservation(
-        string id,
-        DateTimeOffset createdAt,
-        string originalQuery,
-        string normalisedQuery,
-        SearchObservationStatus status,
-        string? failureMessage,
-        long totalDuration,
-        long retrievalDuration,
-        IReadOnlyList<LmsSearchRequestObservation> requests,
-        IReadOnlyList<SearchObservationCandidate> candidates) => new(
-            id,
-            createdAt,
-            originalQuery,
-            normalisedQuery,
-            null,
-            "catalogue+lms",
-            "whole_library",
-            catalogueSearch.Descriptor.Name,
-            catalogueSearch.Descriptor.Version,
-            status,
-            failureMessage,
-            totalDuration,
-            retrievalDuration,
-            Math.Max(0, totalDuration - retrievalDuration),
-            requests,
-            candidates,
-            null);
-
-    private SearchObservation CreateFailedObservation(
-        string id,
-        DateTimeOffset createdAt,
-        string originalQuery,
-        string normalisedQuery,
-        Exception exception,
-        long elapsedMilliseconds,
-        LmsSearchResponse? playlists)
-    {
-        var playlistCandidates = (playlists?.Candidates ?? [])
-            .Select(candidate => new Candidate(
-                candidate.Identity,
-                candidate.Title,
-                candidate.Artist,
-                candidate.Album))
-            .ToArray();
-        return CreateObservation(
-            id,
-            createdAt,
-            originalQuery,
-            normalisedQuery,
-            SearchObservationStatus.Failed,
-            exception.Message,
-            elapsedMilliseconds,
-            elapsedMilliseconds,
-            [
-                new LmsSearchRequestObservation(
-                    "catalogue-index",
-                    catalogueSearch.Descriptor.Name,
-                    LmsSearchRequestStatus.Failed,
-                    exception.Message,
-                    elapsedMilliseconds,
-                    0),
-                .. playlists?.Requests ?? []
-            ],
-            CreateObservationCandidates(playlistCandidates));
-    }
-
-    private async Task TryRecordAsync(
-        SearchObservation observation,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await observationStore.RecordAsync(observation, cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogWarning(
-                exception,
-                "Could not persist search observation {ObservationId}.",
-                observation.Id);
-        }
     }
 
     private sealed record Candidate(

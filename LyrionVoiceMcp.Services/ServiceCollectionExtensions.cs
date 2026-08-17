@@ -37,6 +37,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IPlayerStatusService, PlayerStatusService>();
         services.AddTransient<IQueueService, QueueService>();
         services.AddTransient<IQueueManagementService, QueueManagementService>();
+        services.AddTransient<SearchObservationRecorder>();
         services.AddTransient<ISearchService, SearchService>();
         services.AddTransient<ISearchObservationReviewService, SearchObservationReviewService>();
         services.AddSingleton<ReferenceHandleRegistry>();

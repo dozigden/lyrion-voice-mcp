@@ -6,10 +6,16 @@ internal sealed class RecordingSearchObservationStore : ISearchObservationStore
 {
     public SearchObservation? Recorded { get; private set; }
     public IReadOnlyCollection<string>? SelectedCorrelationIds { get; private set; }
+    public Exception? RecordFailure { get; init; }
     public int RetentionDays => 90;
     public Task InitialiseAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public Task RecordAsync(SearchObservation observation, CancellationToken cancellationToken)
     {
+        if (RecordFailure is not null)
+        {
+            return Task.FromException(RecordFailure);
+        }
+
         Recorded = observation;
         return Task.CompletedTask;
     }
