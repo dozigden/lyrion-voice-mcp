@@ -104,7 +104,6 @@ assertProjectReferences('LyrionVoiceMcp.Evaluation.Tests/LyrionVoiceMcp.Evaluati
 assertProjectReferences('LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj', [
   'LyrionVoiceMcp.Abstractions',
   'LyrionVoiceMcp.Contracts',
-  'LyrionVoiceMcp.Evaluation',
   'LyrionVoiceMcp.Lms',
   'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Search',

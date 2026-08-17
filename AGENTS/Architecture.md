@@ -10,8 +10,8 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Services`: application orchestration and policy.
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
 - `LyrionVoiceMcp.Persistence`: separate SQLite-backed catalogue, search-observation, and operational jobs/errors/tool-call stores behind abstractions.
-- `LyrionVoiceMcp.Search`: the production catalogue-backed resolver, bounded index construction, scoring, diagnostics and safe artifact publication. It depends only on storage-neutral abstractions.
-- `LyrionVoiceMcp.Evaluation`: corpus validation, the LMS baseline, production-resolver benchmarking, and its transport-neutral diagnostic service. The deployed API composes that service so private evaluation can measure the target hardware.
+- `LyrionVoiceMcp.Search`: the production catalogue-backed resolver, production-neutral resolver and diagnostic contracts, bounded index construction, scoring, diagnostics and safe artifact publication. It depends only on storage-neutral abstractions.
+- `LyrionVoiceMcp.Evaluation`: the executable private-corpus validator, LMS baseline, and resolver-neutral benchmark runner. It consumes production-neutral Search contracts and is never a deployed runtime dependency.
 - `LyrionVoiceMcp.Web`: Vue administration and review UI.
 - `LyrionVoiceMcp.Dev`: local API/Vite process supervisor only.
 
@@ -19,8 +19,8 @@ Read this before adding projects, dependencies, storage, or new integration boun
 
 - Contracts and Abstractions have no project references.
 - Services, Lms, and Persistence may depend on Abstractions.
-- Search depends only on Abstractions. Evaluation depends on Abstractions, Lms, and Search. Api composes Contracts, Abstractions, Services, Lms, Persistence, Search, and Evaluation.
-- Api alone owns ASP.NET and MCP SDK transport wiring. Evaluation remains transport-neutral; do not add HTTP or MCP dependencies to it.
+- Search depends only on Abstractions. Evaluation depends on Abstractions, Lms, and Search. Api composes Contracts, Abstractions, Services, Lms, Persistence, and Search; it must not reference the executable Evaluation project.
+- Api alone owns ASP.NET, MCP SDK transport wiring, and the deployed production-search diagnostic service. Evaluation remains transport-neutral; do not add HTTP or MCP dependencies to it or move deployed runtime services into it.
 - Endpoint and MCP handlers stay thin and delegate behaviour to Services.
 - Services must not depend on ASP.NET, MCP SDK types, Vue, or a concrete future search engine.
 - MCP tools must not call raw LMS JSON-RPC directly.

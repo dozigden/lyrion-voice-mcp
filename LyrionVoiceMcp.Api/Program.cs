@@ -1,9 +1,9 @@
 using LyrionVoiceMcp.Api.Configuration;
+using LyrionVoiceMcp.Api.Diagnostics;
 using LyrionVoiceMcp.Api.Endpoints;
 using LyrionVoiceMcp.Api.Tools;
 using LyrionVoiceMcp.Api;
 using LyrionVoiceMcp.Abstractions;
-using LyrionVoiceMcp.Evaluation;
 using LyrionVoiceMcp.Lms;
 using LyrionVoiceMcp.Persistence;
 using LyrionVoiceMcp.Search;
@@ -75,7 +75,9 @@ builder.Services.AddSingleton<ISearchIndexBuilder>(provider =>
     provider.GetRequiredService<ProductionCatalogueSearchService>());
 builder.Services.AddSingleton<ICatalogueSearchResolver>(provider =>
     provider.GetRequiredService<ProductionCatalogueSearchService>());
-builder.Services.AddSingleton<EvaluationDiagnosticSearchService>();
+builder.Services.AddSingleton<IDiagnosticSearchResolver>(provider =>
+    provider.GetRequiredService<ProductionCatalogueSearchService>());
+builder.Services.AddSingleton<ProductionSearchDiagnosticService>();
 builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
 {
     client.Timeout = lmsSettings.RequestTimeout;

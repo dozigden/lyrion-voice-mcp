@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using LyrionVoiceMcp.Evaluation;
+using LyrionVoiceMcp.Api.Diagnostics;
 using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Api.Endpoints;
@@ -14,18 +14,18 @@ public static class EvaluationEndpoints
     {
         endpoints.MapGet(
             "/api/evaluation",
-            (EvaluationDiagnosticSearchService service) =>
+            (ProductionSearchDiagnosticService service) =>
                 Results.Json(service.Description, JsonOptions));
         endpoints.MapPost("/api/evaluation/search", SearchAsync);
         return endpoints;
     }
 
     private static async Task<IResult> SearchAsync(
-        EvaluationDiagnosticSearchRequest request,
-        EvaluationDiagnosticSearchService service,
+        ProductionSearchDiagnosticRequest request,
+        ProductionSearchDiagnosticService service,
         CancellationToken cancellationToken)
     {
-        var validationError = EvaluationDiagnosticSearchValidation.Validate(request);
+        var validationError = ProductionSearchDiagnosticValidation.Validate(request);
         if (validationError is not null)
         {
             return Results.BadRequest(new EvaluationEndpointError(validationError));

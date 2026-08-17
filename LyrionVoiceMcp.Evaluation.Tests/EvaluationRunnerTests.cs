@@ -68,7 +68,7 @@ public sealed class EvaluationRunnerTests
     public async Task RunAsync_report_omits_lms_ids_and_private_corpus_notes()
     {
         var resolver = new StubSearchResolver(_ => [
-            new EvaluationSearchCandidate(
+            new SearchCandidate(
                 MediaEntityKind.Track,
                 "Lantern Signals",
                 "The Paper Comets",
@@ -96,22 +96,22 @@ public sealed class EvaluationRunnerTests
         Assert.Contains("Lantern Signals", json, StringComparison.Ordinal);
     }
 
-    private static EvaluationSearchCandidate Candidate(MediaEntityKind kind, string title) =>
+    private static SearchCandidate Candidate(MediaEntityKind kind, string title) =>
         new(kind, title, null, null);
 
     private sealed class StubSearchResolver(
-        Func<string, IReadOnlyList<EvaluationSearchCandidate>> search) : IEvaluationSearchResolver
+        Func<string, IReadOnlyList<SearchCandidate>> search) : ISearchResolver
     {
         public string Name => "test-resolver";
         public string Version => "1";
-        public EvaluationResolverMetrics Metrics { get; } = new(null, 0, null);
+        public SearchResolverMetrics Metrics { get; } = new(null, 0, null);
 
-        public Task<EvaluationSearchResponse> SearchAsync(
+        public Task<SearchExecution> SearchAsync(
             string query,
             CancellationToken cancellationToken)
         {
             var candidates = search(query);
-            return Task.FromResult(new EvaluationSearchResponse(candidates, null));
+            return Task.FromResult(new SearchExecution(candidates, null));
         }
     }
 

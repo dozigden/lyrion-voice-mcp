@@ -2,28 +2,28 @@ using System.Diagnostics;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Search;
 
-namespace LyrionVoiceMcp.Evaluation;
+namespace LyrionVoiceMcp.Api.Diagnostics;
 
-public sealed record EvaluationDiagnosticSearchRequest(string Resolver, string Query);
+public sealed record ProductionSearchDiagnosticRequest(string Resolver, string Query);
 
-public sealed record EvaluationDiagnosticSearchExecution(
+public sealed record ProductionSearchDiagnosticExecution(
     bool ResolverPreparedForThisRequest,
-    EvaluationProcessMemory ProcessMemory,
-    EvaluationDiagnosticSearchResponse Search);
+    ProcessMemorySnapshot ProcessMemory,
+    SearchDiagnostics Search);
 
-public sealed record EvaluationProcessMemory(
+public sealed record ProcessMemorySnapshot(
     long WorkingSetBeforeResolverBytes,
     long WorkingSetAfterResolverBytes,
     long WorkingSetAfterSearchBytes,
     long ProcessPeakWorkingSetBytes);
 
-public sealed record EvaluationDiagnosticDescription(
+public sealed record ProductionSearchDiagnosticDescription(
     int SchemaVersion,
     IReadOnlyList<string> Resolvers);
 
-public static class EvaluationDiagnosticSearchValidation
+public static class ProductionSearchDiagnosticValidation
 {
-    public static string? Validate(EvaluationDiagnosticSearchRequest? request)
+    public static string? Validate(ProductionSearchDiagnosticRequest? request)
     {
         if (request is null)
         {
@@ -52,18 +52,19 @@ public static class EvaluationDiagnosticSearchValidation
     }
 }
 
-public sealed class EvaluationDiagnosticSearchService(
-    ProductionCatalogueSearchService productionSearch) : IAsyncDisposable
+public sealed class ProductionSearchDiagnosticService(
+    IDiagnosticSearchResolver resolver,
+    ISearchIndexBuilder indexBuilder) : IAsyncDisposable
 {
-    private static readonly EvaluationDiagnosticDescription DescriptionValue = new(
+    private static readonly ProductionSearchDiagnosticDescription DescriptionValue = new(
         1,
         ["production"]);
     private readonly SemaphoreSlim gate = new(1, 1);
 
-    public EvaluationDiagnosticDescription Description => DescriptionValue;
+    public ProductionSearchDiagnosticDescription Description => DescriptionValue;
 
-    public async Task<EvaluationDiagnosticSearchExecution> SearchAsync(
-        EvaluationDiagnosticSearchRequest request,
+    public async Task<ProductionSearchDiagnosticExecution> SearchAsync(
+        ProductionSearchDiagnosticRequest request,
         CancellationToken cancellationToken)
     {
         await gate.WaitAsync(cancellationToken);
@@ -72,7 +73,7 @@ public sealed class EvaluationDiagnosticSearchService(
             using var process = Process.GetCurrentProcess();
             process.Refresh();
             var before = process.WorkingSet64;
-            var artifact = await productionSearch.GetArtifactAsync(cancellationToken);
+            var artifact = await indexBuilder.GetArtifactAsync(cancellationToken);
             if (artifact is null)
             {
                 throw new CatalogueSearchUnavailableException(
@@ -81,13 +82,13 @@ public sealed class EvaluationDiagnosticSearchService(
 
             process.Refresh();
             var afterResolver = process.WorkingSet64;
-            var search = await productionSearch.SearchDetailedAsync(
+            var search = await resolver.SearchDetailedAsync(
                 request.Query,
                 cancellationToken);
             process.Refresh();
-            return new EvaluationDiagnosticSearchExecution(
+            return new ProductionSearchDiagnosticExecution(
                 false,
-                new EvaluationProcessMemory(
+                new ProcessMemorySnapshot(
                     before,
                     afterResolver,
                     process.WorkingSet64,

@@ -21,6 +21,7 @@ public sealed record ProductionSearchSettings(string IndexDirectoryPath)
 public sealed class ProductionCatalogueSearchService :
     ISearchIndexBuilder,
     ICatalogueSearchResolver,
+    IDiagnosticSearchResolver,
     IAsyncDisposable
 {
     public const string ResolverName = "catalogue-phuzzy-sqlite";
@@ -59,7 +60,7 @@ public sealed class ProductionCatalogueSearchService :
         return await generation.Resolver.SearchCatalogueAsync(query, cancellationToken);
     }
 
-    public async Task<EvaluationDiagnosticSearchResponse> SearchDetailedAsync(
+    public async Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
         CancellationToken cancellationToken)
     {

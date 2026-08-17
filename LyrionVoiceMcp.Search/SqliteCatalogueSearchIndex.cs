@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace LyrionVoiceMcp.Search;
 
-public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchResolver
+public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSearchResolver
 {
     private const int LaneCandidateLimit = 80;
     private readonly string connectionString;
@@ -20,7 +20,7 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
             DataSource = databasePath,
             Mode = SqliteOpenMode.ReadOnly
         }.ToString();
-        Metrics = new EvaluationResolverMetrics(
+        Metrics = new SearchResolverMetrics(
             candidateCount,
             preparationDurationMilliseconds,
             new FileInfo(databasePath).Length);
@@ -28,7 +28,7 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
 
     public string Name => "catalogue-phuzzy-sqlite";
     public string Version => "1";
-    public EvaluationResolverMetrics Metrics { get; }
+    public SearchResolverMetrics Metrics { get; }
 
     public static SqliteCatalogueSearchIndex Open(
         string indexDatabasePath,
@@ -59,7 +59,7 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
             stopwatch.ElapsedMilliseconds);
     }
 
-    public async Task<EvaluationSearchResponse> SearchAsync(
+    public async Task<SearchExecution> SearchAsync(
         string query,
         CancellationToken cancellationToken)
     {
@@ -68,7 +68,7 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
             .Take(20)
             .Select(result => result.Candidate.Source.Value)
             .ToArray();
-        return new EvaluationSearchResponse(candidates, null);
+        return new SearchExecution(candidates, null);
     }
 
     public async Task<CatalogueSearchResponse> SearchCatalogueAsync(
@@ -103,12 +103,12 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
             (long)Math.Round(execution.RerankDurationMilliseconds));
     }
 
-    public async Task<EvaluationDiagnosticSearchResponse> SearchDetailedAsync(
+    public async Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
         CancellationToken cancellationToken)
     {
         var execution = await SearchCoreAsync(query, captureDiagnostics: true, cancellationToken);
-        return EvaluationDiagnosticResults.Create(
+        return SearchDiagnosticResults.Create(
             this,
             execution.RetrievalDurationMilliseconds,
             execution.RerankDurationMilliseconds,
@@ -141,7 +141,7 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         var candidates = new CandidateCollector<long>(captureDiagnostics);
-        var laneMeasurements = new List<EvaluationLaneMeasurement>();
+        var laneMeasurements = new List<SearchLaneMeasurement>();
         foreach (var lane in CreateLookupLanes(queryForms))
         {
             await RetrieveLaneAsync(
@@ -693,7 +693,7 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
             var stableKey = reader.GetString(1);
             var source = new CatalogueIndexCandidate(
                 stableKey,
-                new EvaluationSearchCandidate(
+                new SearchCandidate(
                     (MediaEntityKind)reader.GetInt32(2),
                     reader.GetString(3),
                     reader.IsDBNull(4) ? null : reader.GetString(4),
@@ -713,7 +713,7 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
     }
 
     private static async Task RetrieveLaneAsync(
-        List<EvaluationLaneMeasurement>? measurements,
+        List<SearchLaneMeasurement>? measurements,
         string name,
         CandidateCollector<long> candidates,
         Func<Task<LaneRetrieval>> retrieve)
@@ -728,7 +728,7 @@ public sealed class SqliteCatalogueSearchIndex : IEvaluationDiagnosticSearchReso
         var stopwatch = Stopwatch.StartNew();
         var retrieval = await retrieve();
         stopwatch.Stop();
-        measurements.Add(new EvaluationLaneMeasurement(
+        measurements.Add(new SearchLaneMeasurement(
             name,
             stopwatch.Elapsed.TotalMilliseconds,
             retrieval.MatchedCandidateCount,

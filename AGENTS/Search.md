@@ -3,6 +3,7 @@
 Read this before changing search contracts, ranking, observation capture, catalogue ingestion, or search storage.
 
 - Production artist, album, and track search uses the catalogue-backed `catalogue-phuzzy-sqlite` resolver version 1. Playlist discovery remains an isolated LMS `playlists` request.
+- Keep resolver, candidate, execution, metric, and diagnostic contracts in Search production-neutral. The Evaluation executable consumes those contracts for benchmarking; deployed code must not depend on Evaluation types or the executable project.
 - Return at most 20 ranked catalogue candidates followed by at most 20 playlists in LMS order. Do not interleave the two sources.
 - Reject public search queries over 500 characters or 20 normalised letter-or-digit tokens before starting either retrieval source. Keep diagnostic and production limits aligned.
 - The production resolver uses bounded normalised, compact, acronym, consonant-skeleton, Double Metaphone, token/prefix, and trigram retrieval lanes, then applies the application-owned scorer. Preserve the distinction between retrieval evidence, ranking score, and confidence; no confidence or speculative no-match threshold is implemented.

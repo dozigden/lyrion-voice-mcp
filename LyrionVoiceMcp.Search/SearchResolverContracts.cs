@@ -2,28 +2,28 @@ using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Search;
 
-public interface IEvaluationSearchResolver
+public interface ISearchResolver
 {
     string Name { get; }
     string Version { get; }
-    EvaluationResolverMetrics Metrics { get; }
+    SearchResolverMetrics Metrics { get; }
 
-    Task<EvaluationSearchResponse> SearchAsync(
+    Task<SearchExecution> SearchAsync(
         string query,
         CancellationToken cancellationToken);
 }
 
-public sealed record EvaluationSearchResponse(
-    IReadOnlyList<EvaluationSearchCandidate> Candidates,
+public sealed record SearchExecution(
+    IReadOnlyList<SearchCandidate> Candidates,
     string? Error);
 
-public sealed record EvaluationSearchCandidate(
+public sealed record SearchCandidate(
     MediaEntityKind Kind,
     string Title,
     string? Artist,
     string? Album);
 
-public sealed record EvaluationResolverMetrics(
+public sealed record SearchResolverMetrics(
     int? IndexedCandidateCount,
     long PreparationDurationMilliseconds,
     long? IndexSizeBytes);

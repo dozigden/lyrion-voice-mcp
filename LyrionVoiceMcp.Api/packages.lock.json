@@ -118,14 +118,6 @@
       "lyrionvoicemcp.contracts": {
         "type": "Project"
       },
-      "lyrionvoicemcp.evaluation": {
-        "type": "Project",
-        "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "LyrionVoiceMcp.Lms": "[0.1.0, )",
-          "LyrionVoiceMcp.Search": "[0.1.0, )"
-        }
-      },
       "lyrionvoicemcp.lms": {
         "type": "Project",
         "dependencies": {

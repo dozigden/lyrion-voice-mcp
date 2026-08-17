@@ -64,7 +64,7 @@ internal static class CatalogueSearchRanker
         var title = GetForms(candidate.Value.Title, cache);
         var artist = GetForms(candidate.Value.Artist, cache);
         var album = GetForms(candidate.Value.Album, cache);
-        var combined = PhuzzyTextForms.Create(CatalogueEvaluationText.Join(
+        var combined = PhuzzyTextForms.Create(CatalogueSearchText.Join(
             candidate.Value.Title,
             candidate.Value.Artist ?? string.Empty,
             candidate.Value.Album ?? string.Empty));
@@ -120,7 +120,7 @@ internal static class CatalogueSearchRanker
 
         var value = best.Value;
         var evidence = captureEvidence
-            ? new EvaluationScoreEvidence(
+            ? new SearchScoreEvidence(
                 value.Field,
                 value.Signal,
                 value.QuerySpan,
@@ -322,7 +322,7 @@ internal static class CatalogueSearchRanker
 
     private readonly record struct CandidateScore(
         int Score,
-        EvaluationScoreEvidence? Evidence);
+        SearchScoreEvidence? Evidence);
 
     private readonly record struct FieldScoreResult(
         string Field,
@@ -361,7 +361,7 @@ internal sealed record PhuzzyTextForms(
         return new PhuzzyTextForms(
             normalised,
             compact,
-            CatalogueEvaluationText.SplitTokens(normalised),
+            CatalogueSearchText.SplitTokens(normalised),
             PhuzzyText.PhoneticSkeleton(compact),
             PhuzzyText.DoubleMetaphoneCodes(normalised),
             PhuzzyText.Trigrams(compact),
@@ -424,7 +424,7 @@ internal static class PhuzzyText
             }
         }
 
-        return CatalogueEvaluationText.Normalise(transliterated.ToString());
+        return CatalogueSearchText.Normalise(transliterated.ToString());
     }
 
     public static string PhoneticSkeleton(string compact)

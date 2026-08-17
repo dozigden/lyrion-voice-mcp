@@ -2,7 +2,7 @@ using System.Diagnostics;
 namespace LyrionVoiceMcp.Evaluation;
 
 public sealed class EvaluationRunner(
-    IEvaluationSearchResolver resolver,
+    ISearchResolver resolver,
     TimeProvider timeProvider)
 {
     public async Task<EvaluationReport> RunAsync(
@@ -51,7 +51,7 @@ public sealed class EvaluationRunner(
 
     private static EvaluationCaseResult BuildResult(
         EvaluationCase item,
-        IReadOnlyList<EvaluationSearchCandidate> candidates,
+        IReadOnlyList<SearchCandidate> candidates,
         long durationMilliseconds,
         string? error)
     {
@@ -85,7 +85,7 @@ public sealed class EvaluationRunner(
             reportCandidates);
     }
 
-    private static bool Matches(ExpectedEntity expected, EvaluationSearchCandidate candidate) =>
+    private static bool Matches(ExpectedEntity expected, SearchCandidate candidate) =>
         expected.Kind == candidate.Kind
         && Same(expected.Title, candidate.Title)
         && OptionalSame(expected.Artist, candidate.Artist)

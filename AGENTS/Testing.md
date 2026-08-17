@@ -9,14 +9,14 @@
 
 ## Ownership
 
-- Api tests prove routes, serialisation, middleware, DI, MCP negotiation, and SPA hosting. MCP endpoint coverage must include required nullable output fields with null values so structured content remains valid against advertised schemas.
+- Api tests prove routes, serialisation, middleware, DI, MCP negotiation, the deployed production-search diagnostic surface, and SPA hosting. MCP endpoint coverage must include required nullable output fields with null values so structured content remains valid against advertised schemas.
 - Api tests must override catalogue and operational persistence with isolated temporary databases; they must never read or write the developer's `.data` databases.
 - Services tests own application behaviour, validation matrices, opaque-handle expiry/eviction and routing, shared-registry composition across service scopes, durable catalogue-to-index enqueue policy, index-job catalogue validation, and edge cases.
 - LMS tests own configuration validation, JSON-RPC request/response plumbing, and upstream failure mapping.
 - Persistence tests own schema initialisation/rebuild, singleton catalogue readiness transitions, bounded catalogue batch durability, source-identity count validation, convergence, durable job/log lifecycle, scheduler state, error/tool-call retention and correlation, filtering, selection correlation, review round-trips, and export privacy.
 - Search tests own bounded index construction, matching/scoring signals, numeric phonetic handling, publication, compatibility and no-index behaviour.
 - Dev tests own command construction, process state, recognised listener detection, and bounded log handling.
-- Evaluation tests own corpus parsing and validation, LMS-baseline reporting, production-diagnostic validation, descriptive matching, and report privacy. They use fictional cases and fake sources; routine tests never contact a real LMS.
+- Evaluation tests own corpus parsing and validation, LMS-baseline reporting, descriptive matching, and report privacy. They use fictional cases and fake sources; routine tests never contact a real LMS.
 - Vitest owns frontend API/state/component behaviour.
 - Container smoke tests prove release assembly and runtime wiring, not business-rule matrices.
 

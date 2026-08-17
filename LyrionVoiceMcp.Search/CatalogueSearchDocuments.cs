@@ -6,7 +6,7 @@ namespace LyrionVoiceMcp.Search;
 
 internal sealed record CatalogueIndexCandidate(
     string StableKey,
-    EvaluationSearchCandidate Value,
+    SearchCandidate Value,
     string Title,
     string Artist,
     string Album,
@@ -14,12 +14,12 @@ internal sealed record CatalogueIndexCandidate(
 {
     public static CatalogueIndexCandidate FromDocument(CatalogueSearchDocument document)
     {
-        var title = CatalogueEvaluationText.Normalise(document.Title);
-        var artist = CatalogueEvaluationText.Normalise(document.Artist);
-        var album = CatalogueEvaluationText.Normalise(document.Album);
+        var title = CatalogueSearchText.Normalise(document.Title);
+        var artist = CatalogueSearchText.Normalise(document.Artist);
+        var album = CatalogueSearchText.Normalise(document.Album);
         return new CatalogueIndexCandidate(
             $"{document.Identity.Kind.ToString().ToLowerInvariant()}:{document.Identity.Id}",
-            new EvaluationSearchCandidate(
+            new SearchCandidate(
                 document.Identity.Kind,
                 document.Title,
                 document.Artist,
@@ -27,11 +27,11 @@ internal sealed record CatalogueIndexCandidate(
             title,
             artist,
             album,
-            CatalogueEvaluationText.Join(title, artist, album));
+            CatalogueSearchText.Join(title, artist, album));
     }
 }
 
-internal static class CatalogueEvaluationText
+internal static class CatalogueSearchText
 {
     public static string Normalise(string? value)
     {

@@ -2,32 +2,32 @@ using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Search;
 
-public interface IEvaluationDiagnosticSearchResolver : IEvaluationSearchResolver
+public interface IDiagnosticSearchResolver
 {
-    Task<EvaluationDiagnosticSearchResponse> SearchDetailedAsync(
+    Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
         CancellationToken cancellationToken);
 }
 
-public sealed record EvaluationDiagnosticSearchResponse(
+public sealed record SearchDiagnostics(
     string Resolver,
     string ResolverVersion,
-    EvaluationResolverMetrics ResolverMetrics,
+    SearchResolverMetrics ResolverMetrics,
     double RetrievalDurationMilliseconds,
     double RerankDurationMilliseconds,
     double TotalDurationMilliseconds,
     int RetrievedCandidateCount,
-    IReadOnlyList<EvaluationLaneMeasurement> Lanes,
-    IReadOnlyList<EvaluationDiagnosticCandidate> Results);
+    IReadOnlyList<SearchLaneMeasurement> Lanes,
+    IReadOnlyList<SearchDiagnosticCandidate> Results);
 
-public sealed record EvaluationLaneMeasurement(
+public sealed record SearchLaneMeasurement(
     string Name,
     double DurationMilliseconds,
     int MatchedCandidateCount,
     int RetrievedCandidateCount,
     int NewCandidateCount);
 
-public sealed record EvaluationDiagnosticCandidate(
+public sealed record SearchDiagnosticCandidate(
     int Position,
     MediaEntityKind Kind,
     string Title,
@@ -35,9 +35,9 @@ public sealed record EvaluationDiagnosticCandidate(
     string? Album,
     int Score,
     IReadOnlyList<string> RetrievalLanes,
-    EvaluationScoreEvidence? ScoreEvidence);
+    SearchScoreEvidence? ScoreEvidence);
 
-public sealed record EvaluationScoreEvidence(
+public sealed record SearchScoreEvidence(
     string Field,
     string Signal,
     string QuerySpan,
@@ -51,13 +51,13 @@ public sealed record EvaluationScoreEvidence(
 internal sealed record RankedPhuzzyCandidate(
     PhuzzyCandidate Candidate,
     int Score,
-    EvaluationScoreEvidence? Evidence);
+    SearchScoreEvidence? Evidence);
 
 internal sealed record ResolverSearchExecution(
     double RetrievalDurationMilliseconds,
     double RerankDurationMilliseconds,
     double TotalDurationMilliseconds,
-    IReadOnlyList<EvaluationLaneMeasurement> Lanes,
+    IReadOnlyList<SearchLaneMeasurement> Lanes,
     IReadOnlyList<RankedPhuzzyCandidate> Ranked,
     IReadOnlyDictionary<string, IReadOnlyList<string>> RetrievalLanes);
 
@@ -99,14 +99,14 @@ internal sealed class CandidateCollector<TKey>(bool captureEvidence)
             : [];
 }
 
-internal static class EvaluationDiagnosticResults
+internal static class SearchDiagnosticResults
 {
-    public static EvaluationDiagnosticSearchResponse Create(
-        IEvaluationSearchResolver resolver,
+    public static SearchDiagnostics Create(
+        ISearchResolver resolver,
         double retrievalDurationMilliseconds,
         double rerankDurationMilliseconds,
         double totalDurationMilliseconds,
-        IReadOnlyList<EvaluationLaneMeasurement> lanes,
+        IReadOnlyList<SearchLaneMeasurement> lanes,
         IReadOnlyList<RankedPhuzzyCandidate> ranked,
         IReadOnlyDictionary<string, IReadOnlyList<string>> retrievalLanes)
     {
@@ -114,7 +114,7 @@ internal static class EvaluationDiagnosticResults
         {
             var value = item.Candidate.Source.Value;
             retrievalLanes.TryGetValue(item.Candidate.Source.StableKey, out var candidateLanes);
-            return new EvaluationDiagnosticCandidate(
+            return new SearchDiagnosticCandidate(
                 index + 1,
                 value.Kind,
                 value.Title,
@@ -124,7 +124,7 @@ internal static class EvaluationDiagnosticResults
                 candidateLanes ?? [],
                 item.Evidence);
         }).ToArray();
-        return new EvaluationDiagnosticSearchResponse(
+        return new SearchDiagnostics(
             resolver.Name,
             resolver.Version,
             resolver.Metrics,
