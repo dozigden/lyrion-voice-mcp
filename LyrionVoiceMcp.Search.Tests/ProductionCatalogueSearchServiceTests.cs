@@ -46,7 +46,14 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
         Assert.Equal(500, source.RequestedBatchSize);
         Assert.Equal(2, rebuilt.Artifact.CandidateCount);
         Assert.Equal("artist-5", response.Candidates[0].Identity.Id);
-        Assert.Equal("catalogue-phuzzy-sqlite", rebuilt.Artifact.Resolver);
+        Assert.Equal(service.Descriptor.Name, rebuilt.Artifact.Resolver);
+        Assert.Equal(service.Descriptor.Version, rebuilt.Artifact.ResolverVersion);
+
+        var diagnostics = await service.SearchDetailedAsync(
+            "quartz five",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(service.Descriptor.Name, diagnostics.Resolver);
+        Assert.Equal(service.Descriptor.Version, diagnostics.ResolverVersion);
         Assert.True(File.Exists(Path.Combine(directory, "current.json")));
     }
 

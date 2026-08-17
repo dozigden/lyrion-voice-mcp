@@ -217,12 +217,15 @@ public sealed class JobArchitectureTests : IDisposable
             lifecycleGate,
             timeProvider);
 
+        var status = await service.GetAsync(TestContext.Current.CancellationToken);
+
         // Act
         var jobId = await service.EnqueueForCatalogueAsync(
             "job-42",
             TestContext.Current.CancellationToken);
 
         // Assert
+        Assert.Equal(builder.Descriptor.Name, status.Resolver);
         Assert.NotNull(jobId);
         var jobs = await store.BrowseAsync(
             new JobQuery(Type: JobTypes.SearchIndexRebuild),
@@ -351,6 +354,10 @@ public sealed class JobArchitectureTests : IDisposable
 
     private sealed class RecordingIndexBuilder : ISearchIndexBuilder
     {
+        public SearchResolverDescriptor Descriptor { get; } = new(
+            "fictional-index",
+            "3");
+
         public string? RebuiltCatalogueRefreshId { get; private set; }
         public long? RebuiltJobId { get; private set; }
 
@@ -367,8 +374,8 @@ public sealed class JobArchitectureTests : IDisposable
             RebuiltJobId = jobId;
             await progress.ReportAsync("Building fictional index.", null, cancellationToken);
             return new SearchIndexRebuildResult(new SearchIndexArtifact(
-                "catalogue-phuzzy-sqlite",
-                "1",
+                Descriptor.Name,
+                Descriptor.Version,
                 catalogueRefreshId,
                 Now,
                 100,

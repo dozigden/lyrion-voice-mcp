@@ -125,8 +125,8 @@ internal static class SearchDiagnosticResults
                 item.Evidence);
         }).ToArray();
         return new SearchDiagnostics(
-            resolver.Name,
-            resolver.Version,
+            resolver.Descriptor.Name,
+            resolver.Descriptor.Version,
             resolver.Metrics,
             retrievalDurationMilliseconds,
             rerankDurationMilliseconds,

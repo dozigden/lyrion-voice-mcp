@@ -10,6 +10,10 @@ public enum MediaEntityKind
     Playlist
 }
 
+public sealed record SearchResolverDescriptor(
+    string Name,
+    string Version);
+
 public sealed record MediaIdentity(
     MediaEntityKind Kind,
     string Id);
@@ -85,6 +89,8 @@ public sealed record CatalogueSearchResponse(
 
 public interface ICatalogueSearchResolver
 {
+    SearchResolverDescriptor Descriptor { get; }
+
     Task<CatalogueSearchResponse> SearchAsync(
         string query,
         CancellationToken cancellationToken);

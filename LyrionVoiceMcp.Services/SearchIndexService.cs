@@ -11,11 +11,9 @@ public sealed class SearchIndexService(
     IJobLifecycleGate lifecycleGate,
     TimeProvider timeProvider) : ISearchIndexService
 {
-    private const string Resolver = "catalogue-phuzzy-sqlite";
-
     public async Task<SearchIndexStatus> GetAsync(CancellationToken cancellationToken) =>
         new(
-            Resolver,
+            builder.Descriptor.Name,
             await builder.GetArtifactAsync(cancellationToken),
             await GetLatestJobAsync(cancellationToken));
 
@@ -58,7 +56,7 @@ public sealed class SearchIndexService(
             }
 
             return new SearchIndexRebuildStarted(new SearchIndexStatus(
-                Resolver,
+                builder.Descriptor.Name,
                 await builder.GetArtifactAsync(token),
                 enqueued.Job));
         }, cancellationToken);

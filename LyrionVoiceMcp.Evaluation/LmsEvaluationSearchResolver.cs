@@ -5,8 +5,11 @@ namespace LyrionVoiceMcp.Evaluation;
 public sealed class LmsEvaluationSearchResolver(
     ILmsSearchClient searchClient) : ISearchResolver
 {
-    public string Name => "lms-pass-through";
-    public string Version => "1";
+    private static readonly SearchResolverDescriptor DescriptorValue = new(
+        "lms-pass-through",
+        "1");
+
+    public SearchResolverDescriptor Descriptor => DescriptorValue;
     public SearchResolverMetrics Metrics { get; } = new(null, 0, null);
 
     public async Task<SearchExecution> SearchAsync(

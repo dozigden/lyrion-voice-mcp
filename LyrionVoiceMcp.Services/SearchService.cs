@@ -13,9 +13,6 @@ public sealed class SearchService(
     TimeProvider timeProvider,
     ILogger<SearchService> logger) : ISearchService
 {
-    private const string Resolver = "catalogue-phuzzy-sqlite";
-    private const string ResolverVersion = "1";
-
     public async Task<SearchOutcome> SearchAsync(
         string query,
         CancellationToken cancellationToken)
@@ -195,13 +192,13 @@ public sealed class SearchService(
         return new SearchSucceeded(results);
     }
 
-    private static IReadOnlyList<LmsSearchRequestObservation> CreateRequestObservations(
+    private IReadOnlyList<LmsSearchRequestObservation> CreateRequestObservations(
         CatalogueSearchResponse catalogue,
         LmsSearchResponse? playlists) =>
     [
         new LmsSearchRequestObservation(
             "catalogue-index",
-            Resolver,
+            catalogueSearch.Descriptor.Name,
             LmsSearchRequestStatus.Completed,
             null,
             catalogue.RetrievalDurationMilliseconds + catalogue.RerankDurationMilliseconds,
@@ -220,7 +217,7 @@ public sealed class SearchService(
             candidate.Album,
             null)).ToArray();
 
-    private static SearchObservation CreateObservation(
+    private SearchObservation CreateObservation(
         string id,
         DateTimeOffset createdAt,
         string originalQuery,
@@ -238,8 +235,8 @@ public sealed class SearchService(
             null,
             "catalogue+lms",
             "whole_library",
-            Resolver,
-            ResolverVersion,
+            catalogueSearch.Descriptor.Name,
+            catalogueSearch.Descriptor.Version,
             status,
             failureMessage,
             totalDuration,
@@ -249,7 +246,7 @@ public sealed class SearchService(
             candidates,
             null);
 
-    private static SearchObservation CreateFailedObservation(
+    private SearchObservation CreateFailedObservation(
         string id,
         DateTimeOffset createdAt,
         string originalQuery,
@@ -277,7 +274,7 @@ public sealed class SearchService(
             [
                 new LmsSearchRequestObservation(
                     "catalogue-index",
-                    Resolver,
+                    catalogueSearch.Descriptor.Name,
                     LmsSearchRequestStatus.Failed,
                     exception.Message,
                     elapsedMilliseconds,

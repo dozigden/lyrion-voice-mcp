@@ -124,6 +124,14 @@ public sealed class SearchServiceTests
     public async Task PlaylistFailureShouldPreserveCatalogueCandidatesInTheObservation()
     {
         var store = new RecordingSearchObservationStore();
+        var catalogue = new StubCatalogueSearch([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, "51"),
+                "Silver Static",
+                "The Copper Lines",
+                "Night Signals",
+                1_300)
+        ]);
         var response = new LmsSearchResponse(
             [],
             [new LmsSearchRequestObservation(
@@ -135,14 +143,7 @@ public sealed class SearchServiceTests
                 0)],
             4);
         var service = CreateService(
-            new StubCatalogueSearch([
-                new CatalogueSearchCandidate(
-                    new MediaIdentity(MediaEntityKind.Track, "51"),
-                    "Silver Static",
-                    "The Copper Lines",
-                    "Night Signals",
-                    1_300)
-            ]),
+            catalogue,
             new FailingPlaylistSearch(response),
             new ReferenceCodecTestContext().Search,
             store);
@@ -151,7 +152,8 @@ public sealed class SearchServiceTests
             service.SearchAsync("signals", TestContext.Current.CancellationToken));
 
         Assert.Equal(SearchObservationStatus.Failed, store.Recorded?.Status);
-        Assert.Equal("catalogue-phuzzy-sqlite", store.Recorded?.Resolver);
+        Assert.Equal(catalogue.Descriptor.Name, store.Recorded?.Resolver);
+        Assert.Equal(catalogue.Descriptor.Version, store.Recorded?.ResolverVersion);
         Assert.Equal("Silver Static", Assert.Single(store.Recorded!.Candidates).Title);
     }
 
@@ -170,6 +172,10 @@ public sealed class SearchServiceTests
     private sealed class StubCatalogueSearch(
         IReadOnlyList<CatalogueSearchCandidate> results) : ICatalogueSearchResolver
     {
+        public SearchResolverDescriptor Descriptor { get; } = new(
+            "fictional-catalogue",
+            "7");
+
         public string? Query { get; private set; }
 
         public Task<CatalogueSearchResponse> SearchAsync(
@@ -183,6 +189,10 @@ public sealed class SearchServiceTests
 
     private sealed class UnavailableCatalogueSearch : ICatalogueSearchResolver
     {
+        public SearchResolverDescriptor Descriptor { get; } = new(
+            "unavailable-catalogue",
+            "3");
+
         public Task<CatalogueSearchResponse> SearchAsync(
             string query,
             CancellationToken cancellationToken) =>

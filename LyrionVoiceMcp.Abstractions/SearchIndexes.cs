@@ -27,6 +27,8 @@ public interface ISearchIndexProgress
 
 public interface ISearchIndexBuilder
 {
+    SearchResolverDescriptor Descriptor { get; }
+
     Task<SearchIndexArtifact?> GetArtifactAsync(CancellationToken cancellationToken);
 
     Task<SearchIndexRebuildResult> RebuildAsync(

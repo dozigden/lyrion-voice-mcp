@@ -4,8 +4,7 @@ namespace LyrionVoiceMcp.Search;
 
 public interface ISearchResolver
 {
-    string Name { get; }
-    string Version { get; }
+    SearchResolverDescriptor Descriptor { get; }
     SearchResolverMetrics Metrics { get; }
 
     Task<SearchExecution> SearchAsync(

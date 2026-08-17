@@ -20,8 +20,8 @@ public sealed class EvaluationRunner(
             2,
             timeProvider.GetUtcNow(),
             corpusHash,
-            resolver.Name,
-            resolver.Version,
+            resolver.Descriptor.Name,
+            resolver.Descriptor.Version,
             resolver.Metrics,
             Summarise(results),
             results);

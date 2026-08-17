@@ -24,17 +24,20 @@ public sealed class ProductionCatalogueSearchService :
     IDiagnosticSearchResolver,
     IAsyncDisposable
 {
-    public const string ResolverName = "catalogue-phuzzy-sqlite";
-    public const string ResolverVersion = "1";
     private const string ManifestFileName = "manifest.json";
     private const string IndexFileName = "search.db";
     private const string PointerFileName = "current.json";
+    private static readonly SearchResolverDescriptor DescriptorValue = new(
+        "catalogue-phuzzy-sqlite",
+        "1");
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ProductionSearchSettings settings;
     private readonly ICatalogueSearchDocumentSource documentSource;
     private readonly TimeProvider timeProvider;
     private LoadedGeneration? loaded;
+
+    public SearchResolverDescriptor Descriptor => DescriptorValue;
 
     public ProductionCatalogueSearchService(
         ProductionSearchSettings settings,
@@ -100,13 +103,14 @@ public sealed class ProductionCatalogueSearchService :
             var indexPath = Path.Combine(stagingDirectory, IndexFileName);
             var resolver = await SqliteCatalogueSearchIndex.CreateAsync(
                 documentSource,
+                Descriptor,
                 catalogueRefreshId,
                 indexPath,
                 progress,
                 cancellationToken);
             var artifact = new SearchIndexArtifact(
-                ResolverName,
-                ResolverVersion,
+                Descriptor.Name,
+                Descriptor.Version,
                 catalogueRefreshId,
                 timeProvider.GetUtcNow(),
                 resolver.Metrics.IndexedCandidateCount
@@ -121,12 +125,13 @@ public sealed class ProductionCatalogueSearchService :
                 artifact,
                 cancellationToken);
 
-            var validated = SqliteCatalogueSearchIndex.Open(indexPath, artifact);
+            var validated = SqliteCatalogueSearchIndex.Open(indexPath, artifact, Descriptor);
             await validated.SearchCatalogueAsync("validation", cancellationToken);
             Directory.Move(stagingDirectory, generationDirectory);
             var publishedResolver = SqliteCatalogueSearchIndex.Open(
                 Path.Combine(generationDirectory, IndexFileName),
-                artifact);
+                artifact,
+                Descriptor);
 
             await progress.ReportAsync(
                 "Publishing production catalogue search index.",
@@ -202,8 +207,11 @@ public sealed class ProductionCatalogueSearchService :
                 Path.Combine(directory, ManifestFileName),
                 cancellationToken);
             if (artifact is null
-                || !string.Equals(artifact.Resolver, ResolverName, StringComparison.Ordinal)
-                || !string.Equals(artifact.ResolverVersion, ResolverVersion, StringComparison.Ordinal))
+                || !string.Equals(artifact.Resolver, Descriptor.Name, StringComparison.Ordinal)
+                || !string.Equals(
+                    artifact.ResolverVersion,
+                    Descriptor.Version,
+                    StringComparison.Ordinal))
             {
                 return null;
             }
@@ -217,7 +225,7 @@ public sealed class ProductionCatalogueSearchService :
             loaded = new LoadedGeneration(
                 pointer.Generation,
                 artifact,
-                SqliteCatalogueSearchIndex.Open(indexPath, artifact));
+                SqliteCatalogueSearchIndex.Open(indexPath, artifact, Descriptor));
             return loaded;
         }
         finally

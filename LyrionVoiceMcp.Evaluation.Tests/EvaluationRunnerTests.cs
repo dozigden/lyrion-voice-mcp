@@ -102,8 +102,10 @@ public sealed class EvaluationRunnerTests
     private sealed class StubSearchResolver(
         Func<string, IReadOnlyList<SearchCandidate>> search) : ISearchResolver
     {
-        public string Name => "test-resolver";
-        public string Version => "1";
+        public SearchResolverDescriptor Descriptor { get; } = new(
+            "test-resolver",
+            "1");
+
         public SearchResolverMetrics Metrics { get; } = new(null, 0, null);
 
         public Task<SearchExecution> SearchAsync(

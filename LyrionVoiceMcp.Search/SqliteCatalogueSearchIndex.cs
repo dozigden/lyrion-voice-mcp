@@ -11,10 +11,12 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
     private readonly string connectionString;
 
     private SqliteCatalogueSearchIndex(
+        SearchResolverDescriptor descriptor,
         string databasePath,
         int candidateCount,
         long preparationDurationMilliseconds)
     {
+        Descriptor = descriptor;
         connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
@@ -26,20 +28,22 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             new FileInfo(databasePath).Length);
     }
 
-    public string Name => "catalogue-phuzzy-sqlite";
-    public string Version => "1";
+    public SearchResolverDescriptor Descriptor { get; }
     public SearchResolverMetrics Metrics { get; }
 
     public static SqliteCatalogueSearchIndex Open(
         string indexDatabasePath,
-        SearchIndexArtifact artifact) =>
+        SearchIndexArtifact artifact,
+        SearchResolverDescriptor descriptor) =>
         new(
+            descriptor,
             indexDatabasePath,
             artifact.CandidateCount,
             artifact.PreparationDurationMilliseconds);
 
     public static async Task<SqliteCatalogueSearchIndex> CreateAsync(
         ICatalogueSearchDocumentSource source,
+        SearchResolverDescriptor descriptor,
         string catalogueRefreshId,
         string indexDatabasePath,
         ISearchIndexProgress progress,
@@ -54,6 +58,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             cancellationToken);
         stopwatch.Stop();
         return new SqliteCatalogueSearchIndex(
+            descriptor,
             indexDatabasePath,
             candidateCount,
             stopwatch.ElapsedMilliseconds);
