@@ -1,14 +1,13 @@
-namespace LyrionVoiceMcp.Persistence;
-
 using LyrionVoiceMcp.Abstractions;
 
+namespace LyrionVoiceMcp.Api.Configuration;
+
 public sealed record OperationalSettings(
-    string DatabasePath,
     int JobRetentionDays,
     int ErrorRetentionDays,
     int ToolCallRetentionDays,
     int ToolCallJsonMaximumCharacters,
-    string TimeZoneId)
+    TimeZoneInfo TimeZone)
 {
     public const int DefaultJobRetentionDays = 90;
     public const int DefaultErrorRetentionDays = 90;
@@ -16,60 +15,29 @@ public sealed record OperationalSettings(
     public const int DefaultToolCallJsonMaximumCharacters = 262_144;
 
     public static OperationalSettings FromValues(
-        string contentRootPath,
-        string? databasePath,
         string? jobRetentionDays,
         string? errorRetentionDays,
         string? toolCallRetentionDays,
         string? toolCallJsonMaximumCharacters,
-        string? timeZoneId)
-    {
-        var path = string.IsNullOrWhiteSpace(databasePath)
-            ? Path.Combine(contentRootPath, "..", ".data", "operations.db")
-            : databasePath.Trim();
-        if (!Path.IsPathRooted(path))
-        {
-            path = Path.GetFullPath(Path.Combine(contentRootPath, path));
-        }
-
-        return new OperationalSettings(
-            path,
-            PositiveOrDefault(jobRetentionDays, DefaultJobRetentionDays, "job retention"),
-            PositiveOrDefault(errorRetentionDays, DefaultErrorRetentionDays, "error retention"),
-            PositiveOrDefault(toolCallRetentionDays, DefaultToolCallRetentionDays, "tool-call retention"),
-            PositiveOrDefault(
-                toolCallJsonMaximumCharacters,
-                DefaultToolCallJsonMaximumCharacters,
-                "tool-call JSON maximum characters"),
-            ResolveTimeZoneId(timeZoneId));
-    }
-
-    public TimeZoneInfo GetTimeZone()
-    {
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId);
-        }
-        catch (TimeZoneNotFoundException exception)
-        {
-            throw new InvalidOperationException(
-                $"The configured operational time zone '{TimeZoneId}' was not found.",
-                exception);
-        }
-        catch (InvalidTimeZoneException exception)
-        {
-            throw new InvalidOperationException(
-                $"The configured operational time zone '{TimeZoneId}' is invalid.",
-                exception);
-        }
-    }
+        string? timeZoneId) => new(
+        PositiveOrDefault(jobRetentionDays, DefaultJobRetentionDays, "job retention"),
+        PositiveOrDefault(errorRetentionDays, DefaultErrorRetentionDays, "error retention"),
+        PositiveOrDefault(
+            toolCallRetentionDays,
+            DefaultToolCallRetentionDays,
+            "tool-call retention"),
+        PositiveOrDefault(
+            toolCallJsonMaximumCharacters,
+            DefaultToolCallJsonMaximumCharacters,
+            "tool-call JSON maximum characters"),
+        ResolveTimeZone(timeZoneId));
 
     public OperationalPolicy ToPolicy() => new(
         JobRetentionDays,
         ErrorRetentionDays,
         ToolCallRetentionDays,
         ToolCallJsonMaximumCharacters,
-        GetTimeZone());
+        TimeZone);
 
     public static OperationalSchedulePolicy CreateSchedulePolicy(
         bool catalogueRefreshEnabled,
@@ -94,18 +62,19 @@ public sealed record OperationalSettings(
 
         if (!int.TryParse(value, out var parsed) || parsed < 1)
         {
-            throw new InvalidOperationException($"The configured {name} must be a positive integer.");
+            throw new InvalidOperationException(
+                $"The configured {name} must be a positive integer.");
         }
 
         return parsed;
     }
 
-    private static string ResolveTimeZoneId(string? value)
+    private static TimeZoneInfo ResolveTimeZone(string? value)
     {
         var id = string.IsNullOrWhiteSpace(value) ? TimeZoneInfo.Local.Id : value.Trim();
         try
         {
-            return TimeZoneInfo.FindSystemTimeZoneById(id).Id;
+            return TimeZoneInfo.FindSystemTimeZoneById(id);
         }
         catch (TimeZoneNotFoundException exception)
         {

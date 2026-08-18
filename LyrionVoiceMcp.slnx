@@ -11,7 +11,6 @@
   <Project Path="LyrionVoiceMcp.Evaluation.Tests/LyrionVoiceMcp.Evaluation.Tests.csproj" />
   <Project Path="LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj" />
   <Project Path="LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj" />
-  <Project Path="LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj" />
   <Project Path="LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj" />
   <Project Path="LyrionVoiceMcp.Search/LyrionVoiceMcp.Search.csproj" />
   <Project Path="LyrionVoiceMcp.Search.Tests/LyrionVoiceMcp.Search.Tests.csproj" />

@@ -21,7 +21,7 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 ## Containers
 
 - The Docker image is the production-shaped deployment unit and serves API, MCP, and Vue on port 5600.
-- The EF application database, read-only legacy observation import source, untouched legacy catalogue and operational databases, and disposable production search index live under `/data`; keep that path on a persistent volume.
+- The EF application database and disposable production search index live under `/data`; keep that path on a persistent volume.
 - Supported architectures are `linux/amd64` and `linux/arm64` only.
 - Do not bake LMS environment addresses or local credentials into an image.
 - The current CI builds and smoke-tests images but does not publish them.
@@ -31,10 +31,9 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 - `dev.sh`, `dev.ps1`, and the unattended development launchers opt into `.data/dev/appsettings.local.json` automatically. Keep the machine's development LMS identity and origin there so normal startup needs no shell variables.
 - The local settings file is ignored and must never be committed. Environment variables may override it for exceptional automation, but are not the normal interactive workflow.
 - Compose maps `LVM_LMS_SERVER_ID`, `LVM_LMS_BASE_URL`, and optional `LVM_LMS_REQUEST_TIMEOUT_SECONDS` into the container.
-- Compose accepts optional `LVM_SEARCH_RETENTION_DAYS`; EF-backed operational search history defaults to 90 days. The configured legacy observation path is used only as an idempotent, read-only startup import source until its cleanup story lands.
-- Jobs, schedules, errors, and MCP-call history use the EF application database. `LyrionVoiceMcpOperations:DatabasePath` remains only as dormant legacy configuration until the cleanup story and runtime must not create or modify that file. Retention, JSON-bound, timezone, and schedule settings still live below `LyrionVoiceMcpOperations`; catalogue automatic scheduling is disabled by default.
+- Compose accepts optional `LVM_SEARCH_RETENTION_DAYS`; EF-backed operational search history defaults to 90 days.
+- Jobs, schedules, errors, and MCP-call history use the EF application database. Retention, JSON-bound, timezone, and schedule settings live below `LyrionVoiceMcpOperations`; catalogue automatic scheduling is disabled by default.
 - The EF application database uses `LyrionVoiceMcpPersistence:DatabasePath`, defaults to `.data/lyrion-voice-mcp.db`, and is `/data/lyrion-voice-mcp.db` in the container. It is migrated at startup and owns catalogue, search-observation, and operational data.
-- `LyrionVoiceMcpCatalogue:DatabasePath` remains dormant legacy configuration until cleanup. Runtime must not create or modify that catalogue file; rebuild canonical data from LMS into the application database.
 - Production search uses `LyrionVoiceMcpSearch:IndexDirectoryPath`, defaults to `.data/search-index`, and is `/data/search-index` in the container. Generation directories contain the index and manifest; the current pointer selects the published generation and job-specific staging is disposable.
 - Do not commit environment-specific LMS values. An unconfigured runtime is valid and reports `not_configured` from `/api/lms`.
 

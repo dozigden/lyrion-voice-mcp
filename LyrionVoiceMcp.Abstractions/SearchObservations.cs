@@ -98,19 +98,6 @@ public sealed record SearchObservationPage(
 
 public sealed record SearchObservationRetentionPolicy(int RetentionDays);
 
-public sealed record LegacySearchObservationCursor(
-    DateTimeOffset CreatedAt,
-    string ObservationId);
-
-public interface ILegacySearchObservationSource
-{
-    Task<IReadOnlyList<SearchObservation>> ReadBatchAsync(
-        DateTimeOffset cutoff,
-        LegacySearchObservationCursor? after,
-        int limit,
-        CancellationToken cancellationToken);
-}
-
 public sealed record EvaluationCandidate(
     int Position,
     MediaEntityKind Kind,

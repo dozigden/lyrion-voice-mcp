@@ -25,7 +25,6 @@ COPY LyrionVoiceMcp.Ef/ LyrionVoiceMcp.Ef/
 COPY LyrionVoiceMcp.Ef.Abstractions/ LyrionVoiceMcp.Ef.Abstractions/
 COPY LyrionVoiceMcp.Evaluation/ LyrionVoiceMcp.Evaluation/
 COPY LyrionVoiceMcp.Lms/ LyrionVoiceMcp.Lms/
-COPY LyrionVoiceMcp.Persistence/ LyrionVoiceMcp.Persistence/
 COPY LyrionVoiceMcp.Persistence.Tests/ LyrionVoiceMcp.Persistence.Tests/
 COPY LyrionVoiceMcp.Search/ LyrionVoiceMcp.Search/
 COPY LyrionVoiceMcp.Search.Tests/ LyrionVoiceMcp.Search.Tests/
@@ -53,9 +52,6 @@ ENV LyrionVoiceMcpBuild__Channel=$LVM_CHANNEL
 ENV LyrionVoiceMcpBuild__Build=$LVM_BUILD
 ENV LyrionVoiceMcpBuild__Commit=$LVM_COMMIT
 ENV LyrionVoiceMcpPersistence__DatabasePath=/data/lyrion-voice-mcp.db
-ENV LyrionVoiceMcpObservations__DatabasePath=/data/search-observations.db
-ENV LyrionVoiceMcpCatalogue__DatabasePath=/data/catalogue.db
-ENV LyrionVoiceMcpOperations__DatabasePath=/data/operations.db
 ENV LyrionVoiceMcpSearch__IndexDirectoryPath=/data/search-index
 EXPOSE 5600
 VOLUME ["/data"]

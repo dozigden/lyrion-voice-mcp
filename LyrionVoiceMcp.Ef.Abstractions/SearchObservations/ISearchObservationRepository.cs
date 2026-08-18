@@ -6,10 +6,6 @@ public interface ISearchObservationRepository
 {
     void Add(EntitySearchObservation observation);
 
-    Task<IReadOnlySet<string>> ListExistingObservationIdsAsync(
-        IReadOnlyCollection<string> observationIds,
-        CancellationToken cancellationToken);
-
     Task<EntitySearchObservationPage> BrowseAsync(
         EntitySearchObservationQuery query,
         CancellationToken cancellationToken);

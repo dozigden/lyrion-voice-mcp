@@ -1,6 +1,5 @@
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Ef;
-using LyrionVoiceMcp.Persistence;
 using LyrionVoiceMcp.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,7 +21,6 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         serviceProvider = CreateServiceProvider(
-            new EmptyLegacySearchObservationSource(),
             Now,
             90);
         await serviceProvider.InitialiseLyrionVoiceMcpEfAsync(
@@ -153,61 +151,6 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task InitialisationShouldImportRetainedLegacyRowsOnceWithoutChangingLegacyData()
-    {
-        await serviceProvider.DisposeAsync();
-        var legacyPath = Path.Combine(directory, "legacy-observations.db");
-        var legacySettings = new SearchObservationSettings(legacyPath, 90);
-        var legacyStore = new SqliteSearchObservationStore(
-            legacySettings,
-            new FixedTimeProvider(Now));
-        await legacyStore.InitialiseAsync(TestContext.Current.CancellationToken);
-        var retained = CreateObservation(Now.AddDays(-1)) with { Id = "legacy-retained" };
-        await legacyStore.RecordAsync(retained, TestContext.Current.CancellationToken);
-        await legacyStore.MarkSelectedAsync(
-            ["correlation-1"],
-            Now,
-            TestContext.Current.CancellationToken);
-        await legacyStore.SaveReviewAsync(
-            retained.Id,
-            new SearchObservationReview(
-                SearchReviewClassification.Good,
-                "correlation-1",
-                null,
-                null,
-                null,
-                null,
-                "Legacy private note",
-                true,
-                Now),
-            TestContext.Current.CancellationToken);
-
-        serviceProvider = CreateServiceProvider(
-            new LegacySearchObservationSource(legacySettings),
-            Now,
-            90);
-        await serviceProvider.InitialiseLyrionVoiceMcpEfAsync(
-            TestContext.Current.CancellationToken);
-        store = serviceProvider.GetRequiredService<ISearchObservationStore>();
-
-        await store.InitialiseAsync(TestContext.Current.CancellationToken);
-        await store.InitialiseAsync(TestContext.Current.CancellationToken);
-
-        var imported = await store.GetAsync(
-            retained.Id,
-            TestContext.Current.CancellationToken);
-        Assert.NotNull(imported);
-        Assert.Equal("Legacy private note", imported.Review?.Notes);
-        Assert.Equal(Now, imported.Candidates[0].SelectedAt);
-        Assert.Equal(1, (await store.BrowseAsync(
-            new SearchObservationQuery(null, SearchObservationReviewFilter.All, SearchObservationResultFilter.All, 0, 10),
-            TestContext.Current.CancellationToken)).Total);
-        Assert.NotNull(await legacyStore.GetAsync(
-            retained.Id,
-            TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task RecordingShouldDeleteExpiredRowsFromApplicationDatabase()
     {
         var expired = CreateObservation(Now.AddDays(-91)) with { Id = "expired" };
@@ -220,14 +163,12 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
     }
 
     private ServiceProvider CreateServiceProvider(
-        ILegacySearchObservationSource legacySource,
         DateTimeOffset now,
         int retentionDays)
     {
         var services = new ServiceCollection();
         services.AddLyrionVoiceMcpEf(new ApplicationDatabaseSettings(
             Path.Combine(directory, "application.db")));
-        services.AddSingleton(legacySource);
         services.AddSingleton(new SearchObservationRetentionPolicy(retentionDays));
         services.AddSingleton<TimeProvider>(new FixedTimeProvider(now));
         services.AddTransient<ISearchObservationStore, EfSearchObservationStore>();
@@ -284,16 +225,6 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
                 null)
         ],
         null);
-
-    private sealed class EmptyLegacySearchObservationSource : ILegacySearchObservationSource
-    {
-        public Task<IReadOnlyList<SearchObservation>> ReadBatchAsync(
-            DateTimeOffset cutoff,
-            LegacySearchObservationCursor? after,
-            int limit,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<SearchObservation>>([]);
-    }
 
     private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
     {

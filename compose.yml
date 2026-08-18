@@ -19,8 +19,8 @@ services:
       LyrionVoiceMcpOperations__ToolCallRetentionDays: "${LVM_TOOL_CALL_RETENTION_DAYS:-30}"
       LyrionVoiceMcpOperations__TimeZoneId: "${TZ:-UTC}"
     volumes:
-      - search-observations:/data
+      - application-data:/data
     restart: unless-stopped
 
 volumes:
-  search-observations:
+  application-data:

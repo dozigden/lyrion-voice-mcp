@@ -47,44 +47,6 @@ public sealed record ToolCallPage(
     int Offset,
     int Limit);
 
-public interface IToolCallStore
-{
-    Task StartAsync(ToolCallStart entry, CancellationToken cancellationToken);
-
-    Task CompleteAsync(ToolCallCompletion completion, CancellationToken cancellationToken);
-
-    Task<int> MarkRunningInterruptedAsync(
-        DateTimeOffset completedAt,
-        CancellationToken cancellationToken);
-
-    Task<ToolCallPage> BrowseAsync(ToolCallQuery query, CancellationToken cancellationToken);
-
-    Task<ToolCall?> GetAsync(string id, CancellationToken cancellationToken);
-
-    Task<int> DeleteOlderThanAsync(
-        DateTimeOffset cutoff,
-        int batchSize,
-        CancellationToken cancellationToken);
-}
-
-public sealed record ToolCallStart(
-    string Id,
-    string ToolName,
-    DateTimeOffset StartedAt,
-    string ArgumentsJson,
-    bool ArgumentsTruncated,
-    string? TraceIdentifier);
-
-public sealed record ToolCallCompletion(
-    string Id,
-    ToolCallStatus Status,
-    DateTimeOffset CompletedAt,
-    long DurationMilliseconds,
-    string? ResultJson,
-    bool ResultTruncated,
-    string? ErrorMessage,
-    long? ErrorLogId);
-
 public sealed record BoundedJson(string Json, bool Truncated);
 public sealed record ToolCallRecording(string Id, DateTimeOffset StartedAt);
 

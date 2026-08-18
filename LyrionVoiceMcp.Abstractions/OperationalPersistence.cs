@@ -1,10 +1,5 @@
 namespace LyrionVoiceMcp.Abstractions;
 
-public interface IOperationalStoreInitialiser
-{
-    Task InitialiseAsync(CancellationToken cancellationToken);
-}
-
 public sealed record OperationalPolicy(
     int JobRetentionDays,
     int ErrorRetentionDays,

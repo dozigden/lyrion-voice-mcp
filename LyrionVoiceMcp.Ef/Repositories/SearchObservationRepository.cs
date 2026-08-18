@@ -10,22 +10,6 @@ public sealed class SearchObservationRepository(
     : RepositoryBase<EntitySearchObservation>(ambientDbContextLocator),
         ISearchObservationRepository
 {
-    public async Task<IReadOnlySet<string>> ListExistingObservationIdsAsync(
-        IReadOnlyCollection<string> observationIds,
-        CancellationToken cancellationToken)
-    {
-        if (observationIds.Count == 0)
-        {
-            return new HashSet<string>(StringComparer.Ordinal);
-        }
-
-        var ids = await Query()
-            .Where(item => observationIds.Contains(item.ObservationId))
-            .Select(item => item.ObservationId)
-            .ToArrayAsync(cancellationToken);
-        return ids.ToHashSet(StringComparer.Ordinal);
-    }
-
     public async Task<EntitySearchObservationPage> BrowseAsync(
         EntitySearchObservationQuery query,
         CancellationToken cancellationToken)

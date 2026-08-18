@@ -13,7 +13,6 @@ const requiredPaths = [
   'LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj',
   'LyrionVoiceMcp.Ef/LyrionVoiceMcp.Ef.csproj',
   'LyrionVoiceMcp.Ef.Abstractions/LyrionVoiceMcp.Ef.Abstractions.csproj',
-  'LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj',
   'LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj',
   'LyrionVoiceMcp.Search/LyrionVoiceMcp.Search.csproj',
   'LyrionVoiceMcp.Evaluation/LyrionVoiceMcp.Evaluation.csproj',
@@ -64,7 +63,6 @@ for (const project of [
   'LyrionVoiceMcp.Lms',
   'LyrionVoiceMcp.Ef',
   'LyrionVoiceMcp.Ef.Abstractions',
-  'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Search',
   'LyrionVoiceMcp.Evaluation',
   'LyrionVoiceMcp.Web',
@@ -91,13 +89,9 @@ assertProjectReferences('LyrionVoiceMcp.Ef.Abstractions/LyrionVoiceMcp.Ef.Abstra
 assertProjectReferences('LyrionVoiceMcp.Ef/LyrionVoiceMcp.Ef.csproj', [
   'LyrionVoiceMcp.Ef.Abstractions'
 ]);
-assertProjectReferences('LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj', [
-  'LyrionVoiceMcp.Abstractions'
-]);
 assertProjectReferences('LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj', [
   'LyrionVoiceMcp.Ef',
   'LyrionVoiceMcp.Ef.Abstractions',
-  'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Services'
 ]);
 assertProjectReferences('LyrionVoiceMcp.Search/LyrionVoiceMcp.Search.csproj', [
@@ -120,7 +114,6 @@ assertProjectReferences('LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj', [
   'LyrionVoiceMcp.Contracts',
   'LyrionVoiceMcp.Ef',
   'LyrionVoiceMcp.Lms',
-  'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Search',
   'LyrionVoiceMcp.Services'
 ]);

@@ -665,7 +665,6 @@
           "LyrionVoiceMcp.Contracts": "[0.1.0, )",
           "LyrionVoiceMcp.Ef": "[0.1.0, )",
           "LyrionVoiceMcp.Lms": "[0.1.0, )",
-          "LyrionVoiceMcp.Persistence": "[0.1.0, )",
           "LyrionVoiceMcp.Search": "[0.1.0, )",
           "LyrionVoiceMcp.Services": "[0.1.0, )",
           "ModelContextProtocol.AspNetCore": "[2.1.0, )"
@@ -693,14 +692,6 @@
         "type": "Project",
         "dependencies": {
           "LyrionVoiceMcp.Abstractions": "[0.1.0, )"
-        }
-      },
-      "lyrionvoicemcp.persistence": {
-        "type": "Project",
-        "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "Microsoft.Data.Sqlite": "[10.0.11, )",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.10, )"
         }
       },
       "lyrionvoicemcp.search": {

@@ -209,30 +209,3 @@ public interface ICatalogueLifecycleService
         DateTimeOffset completedAt,
         CancellationToken cancellationToken);
 }
-
-public interface IMediaCatalogueStore : ICatalogueImportWriter
-{
-    Task InitialiseAsync(CancellationToken cancellationToken);
-
-    Task<CatalogueState?> GetStateAsync(CancellationToken cancellationToken);
-
-    Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken);
-
-    Task BeginRefreshAsync(
-        string refreshId,
-        DateTimeOffset startedAt,
-        CancellationToken cancellationToken);
-
-    Task<CatalogueRefreshCompletion> CompleteRefreshAsync(
-        string refreshId,
-        CatalogueSourceReadResult source,
-        DateTimeOffset completedAt,
-        int existingWarningCount,
-        CancellationToken cancellationToken);
-
-    Task FinishRefreshAsync(
-        string refreshId,
-        CatalogueStateStatus status,
-        DateTimeOffset completedAt,
-        CancellationToken cancellationToken);
-}

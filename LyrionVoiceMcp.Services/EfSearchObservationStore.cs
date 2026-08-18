@@ -9,19 +9,14 @@ namespace LyrionVoiceMcp.Services;
 public sealed class EfSearchObservationStore(
     IDbContextScopeFactory scopeFactory,
     ISearchObservationRepository repository,
-    ILegacySearchObservationSource legacySource,
     SearchObservationRetentionPolicy retentionPolicy,
     TimeProvider timeProvider) : ISearchObservationStore
 {
-    private const int ImportBatchSize = 100;
-
     public int RetentionDays => retentionPolicy.RetentionDays;
 
     public async Task InitialiseAsync(CancellationToken cancellationToken)
     {
         var cutoff = timeProvider.GetUtcNow().AddDays(-RetentionDays);
-        await ImportLegacyAsync(cutoff, cancellationToken);
-
         using var scope = scopeFactory.CreateWithTransaction(IsolationLevel.Serializable);
         await repository.DeleteOlderThanAsync(cutoff.UtcDateTime, cancellationToken);
         await scope.SaveChangesAsync(cancellationToken);
@@ -129,45 +124,6 @@ public sealed class EfSearchObservationStore(
         using var scope = scopeFactory.CreateReadOnly();
         var observations = await repository.ListForExportAsync(cancellationToken);
         return observations.Select(ToEvaluationCase).ToArray();
-    }
-
-    private async Task ImportLegacyAsync(
-        DateTimeOffset cutoff,
-        CancellationToken cancellationToken)
-    {
-        LegacySearchObservationCursor? cursor = null;
-        while (true)
-        {
-            var batch = await legacySource.ReadBatchAsync(
-                cutoff,
-                cursor,
-                ImportBatchSize,
-                cancellationToken);
-            if (batch.Count == 0)
-            {
-                return;
-            }
-
-            using (var scope = scopeFactory.CreateWithTransaction(IsolationLevel.Serializable))
-            {
-                var existing = await repository.ListExistingObservationIdsAsync(
-                    batch.Select(item => item.Id).ToArray(),
-                    cancellationToken);
-                foreach (var observation in batch.Where(item => !existing.Contains(item.Id)))
-                {
-                    repository.Add(ToEntity(observation));
-                }
-
-                await scope.SaveChangesAsync(cancellationToken);
-            }
-
-            var last = batch[^1];
-            cursor = new LegacySearchObservationCursor(last.CreatedAt, last.Id);
-            if (batch.Count < ImportBatchSize)
-            {
-                return;
-            }
-        }
     }
 
     private static EntitySearchObservation ToEntity(SearchObservation observation) => new()

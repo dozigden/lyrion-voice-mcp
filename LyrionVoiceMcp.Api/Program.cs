@@ -6,7 +6,6 @@ using LyrionVoiceMcp.Api;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Ef;
 using LyrionVoiceMcp.Lms;
-using LyrionVoiceMcp.Persistence;
 using LyrionVoiceMcp.Search;
 using LyrionVoiceMcp.Services;
 using ModelContextProtocol.Protocol;
@@ -40,13 +39,9 @@ var lmsSettings = LmsConnectionSettings.FromValues(
 var applicationDatabaseSettings = ApplicationDatabaseSettings.FromValues(
     builder.Environment.ContentRootPath,
     builder.Configuration["LyrionVoiceMcpPersistence:DatabasePath"]);
-var observationSettings = SearchObservationSettings.FromValues(
-    builder.Environment.ContentRootPath,
-    builder.Configuration["LyrionVoiceMcpObservations:DatabasePath"],
+var observationSettings = SearchObservationSettings.FromValue(
     builder.Configuration["LyrionVoiceMcpObservations:RetentionDays"]);
 var operationalSettings = OperationalSettings.FromValues(
-    builder.Environment.ContentRootPath,
-    builder.Configuration["LyrionVoiceMcpOperations:DatabasePath"],
     builder.Configuration["LyrionVoiceMcpOperations:JobRetentionDays"],
     builder.Configuration["LyrionVoiceMcpOperations:ErrorRetentionDays"],
     builder.Configuration["LyrionVoiceMcpOperations:ToolCallRetentionDays"],
@@ -70,8 +65,8 @@ builder.Services.AddSingleton(lmsSettings);
 builder.Services.AddSingleton(new SearchObservationRetentionPolicy(
     observationSettings.RetentionDays));
 builder.Services.AddLyrionVoiceMcpEf(applicationDatabaseSettings);
-builder.Services.AddLegacySearchObservationPersistence(observationSettings);
-builder.Services.AddOperationalPersistence(operationalSettings, operationalSchedules);
+builder.Services.AddSingleton(operationalSettings.ToPolicy());
+builder.Services.AddSingleton(operationalSchedules);
 builder.Services.AddSingleton(searchSettings);
 builder.Services.AddSingleton<ProductionCatalogueSearchService>();
 builder.Services.AddSingleton<ISearchIndexBuilder>(provider =>

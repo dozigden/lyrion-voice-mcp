@@ -56,16 +56,6 @@
         "resolved": "18.8.1",
         "contentHash": "Eclse/ZZjr4lmWzZFNN9h/OluhKL+SK/QbUyKUewgX139aGeyMEO/DkMPwuFs2MixvanTnz6891rF8UHDg+W4Q=="
       },
-      "Microsoft.Data.Sqlite": {
-        "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "7je7UELzm131GiLYc4PpZvfKXIgIyzPM+v+tjcd/nbnuWRfgcONYKzDTqJlURxwVCFsVnlpmq6y6yn4qvR8QXQ==",
-        "dependencies": {
-          "Microsoft.Data.Sqlite.Core": "10.0.11",
-          "SQLitePCLRaw.bundle_e_sqlite3": "2.1.12",
-          "SQLitePCLRaw.core": "2.1.12"
-        }
-      },
       "Microsoft.Data.Sqlite.Core": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -391,14 +381,6 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.EntityFrameworkCore": "[10.0.11, )"
-        }
-      },
-      "lyrionvoicemcp.persistence": {
-        "type": "Project",
-        "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "Microsoft.Data.Sqlite": "[10.0.11, )",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.10, )"
         }
       },
       "lyrionvoicemcp.services": {

@@ -62,36 +62,6 @@ public sealed record ErrorLogPage(
     int Offset,
     int Limit);
 
-public interface IErrorLogStore
-{
-    Task<long?> AddAsync(ErrorLogEntry entry, CancellationToken cancellationToken);
-
-    Task<bool> ReportExistsAsync(Guid reportId, CancellationToken cancellationToken);
-
-    Task<ErrorLogPage> BrowseAsync(ErrorLogQuery query, CancellationToken cancellationToken);
-
-    Task<ErrorLog?> GetErrorLogAsync(long id, CancellationToken cancellationToken);
-
-    Task<int> DeleteOlderThanAsync(
-        DateTimeOffset cutoff,
-        int batchSize,
-        CancellationToken cancellationToken);
-}
-
-public sealed record ErrorLogEntry(
-    Guid? ReportId,
-    DateTimeOffset OccurredAt,
-    string Source,
-    string Area,
-    string ExceptionType,
-    string Message,
-    string? StackTrace,
-    string? TraceIdentifier,
-    string? RequestMethod,
-    string? RequestPath,
-    long? JobId,
-    string? ContextJson);
-
 public interface IErrorLogService
 {
     int RetentionDays { get; }

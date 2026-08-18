@@ -192,13 +192,6 @@
           "LyrionVoiceMcp.Abstractions": "[0.1.0, )"
         }
       },
-      "lyrionvoicemcp.persistence": {
-        "type": "Project",
-        "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "Microsoft.Data.Sqlite": "[10.0.11, )"
-        }
-      },
       "lyrionvoicemcp.search": {
         "type": "Project",
         "dependencies": {

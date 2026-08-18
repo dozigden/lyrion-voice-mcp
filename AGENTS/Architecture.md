@@ -11,7 +11,6 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
 - `LyrionVoiceMcp.Ef.Abstractions`: EF-facing scope, entity, and repository contracts, kept separate from transport-neutral application abstractions.
 - `LyrionVoiceMcp.Ef`: the EF Core application database, context/scoping infrastructure, repository base, entity configurations, and generated migrations.
-- `LyrionVoiceMcp.Persistence`: dormant handwritten SQLite catalogue and operational stores plus the read-only legacy search-observation importer, retained until cleanup. Runtime application persistence no longer uses the handwritten stores.
 - `LyrionVoiceMcp.Search`: the production catalogue-backed resolver, production-neutral resolver and diagnostic contracts, bounded index construction, scoring, diagnostics and safe artifact publication. It depends only on storage-neutral abstractions.
 - `LyrionVoiceMcp.Evaluation`: the executable private-corpus validator, LMS baseline, and resolver-neutral benchmark runner. It consumes production-neutral Search contracts and is never a deployed runtime dependency.
 - `LyrionVoiceMcp.Web`: Vue administration and review UI.
@@ -20,9 +19,9 @@ Read this before adding projects, dependencies, storage, or new integration boun
 ## Dependency rules
 
 - Contracts and general Abstractions have no project references. `LyrionVoiceMcp.Ef.Abstractions` references EF Core because its scope and repository contracts are explicitly persistence-facing.
-- Services, Lms, and Persistence may depend on Abstractions. Services may additionally depend on `LyrionVoiceMcp.Ef.Abstractions` for repository contracts and persistence entities, but not on the EF implementation.
+- Services and Lms may depend on Abstractions. Services may additionally depend on `LyrionVoiceMcp.Ef.Abstractions` for repository contracts and persistence entities, but not on the EF implementation.
 - `LyrionVoiceMcp.Ef` depends only on `LyrionVoiceMcp.Ef.Abstractions`. Application services may depend on `LyrionVoiceMcp.Ef.Abstractions` as entities are migrated, but must not reference the EF implementation or a concrete DbContext.
-- Search depends only on Abstractions. Evaluation depends on Abstractions, Lms, and Search. Api composes Contracts, Abstractions, Services, Lms, Persistence, EF, and Search; it must not reference the executable Evaluation project.
+- Search depends only on Abstractions. Evaluation depends on Abstractions, Lms, and Search. Api composes Contracts, Abstractions, Services, Lms, EF, and Search; it must not reference the executable Evaluation project.
 - Api alone owns ASP.NET, MCP SDK transport wiring, and the deployed production-search diagnostic service. Evaluation remains transport-neutral; do not add HTTP or MCP dependencies to it or move deployed runtime services into it.
 - Endpoint and MCP handlers stay thin and delegate behaviour to Services.
 - Services must not depend on ASP.NET, MCP SDK types, Vue, or a concrete future search engine.
@@ -41,7 +40,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - Jobs are the standard boundary for inspectable or scheduled background work. Handlers are typed, cancellation-aware application services; the runner alone owns lifecycle transitions and unexpected-exception logging.
 - Production search-index builds are typed durable jobs. Services owns enqueue policy and catalogue validation through `ISearchIndexService`; Search implements bounded construction, validation, atomic publication, opening, and diagnostics. MCP and diagnostic HTTP search read only the published compatible generation.
 - MCP media and browse references use a bounded singleton in-memory handle registry in Services. The registry deliberately remains process-local because the runtime is one application server and handle invalidation on restart is part of the contract; do not move these ephemeral hand-off values into operational persistence.
-- The EF application database is authoritative for catalogue, search-observation, and operational data. The legacy observation database remains a read-only startup import source; legacy catalogue and operations databases are deliberately unused and untouched.
+- The EF application database is authoritative for catalogue, search-observation, and operational data. Legacy database paths are not configured or read; old files are left untouched for manual disposal.
 
 ## Planned boundaries
 
