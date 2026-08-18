@@ -38,6 +38,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IQueueService, QueueService>();
         services.AddTransient<IQueueManagementService, QueueManagementService>();
         services.AddTransient<SearchObservationRecorder>();
+        services.AddTransient<ISearchObservationStore, EfSearchObservationStore>();
         services.AddTransient<ISearchService, SearchService>();
         services.AddTransient<ISearchObservationReviewService, SearchObservationReviewService>();
         services.AddSingleton<ReferenceHandleRegistry>();

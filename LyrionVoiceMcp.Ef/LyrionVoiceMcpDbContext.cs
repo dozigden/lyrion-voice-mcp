@@ -7,6 +7,21 @@ namespace LyrionVoiceMcp.Ef;
 public sealed class LyrionVoiceMcpDbContext(
     DbContextOptions<LyrionVoiceMcpDbContext> options) : DbContext(options)
 {
+    public DbSet<EntitySearchObservation> SearchObservations =>
+        Set<EntitySearchObservation>();
+
+    public DbSet<EntitySearchObservationRequest> SearchObservationRequests =>
+        Set<EntitySearchObservationRequest>();
+
+    public DbSet<EntitySearchObservationCandidate> SearchObservationCandidates =>
+        Set<EntitySearchObservationCandidate>();
+
+    public DbSet<EntitySearchObservationSelection> SearchObservationSelections =>
+        Set<EntitySearchObservationSelection>();
+
+    public DbSet<EntitySearchObservationReview> SearchObservationReviews =>
+        Set<EntitySearchObservationReview>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(LyrionVoiceMcpDbContext).Assembly);

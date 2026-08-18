@@ -9,7 +9,7 @@ Read this before adding application data, entities, repositories, scopes, or mig
 - The application database uses SQLite, foreign keys, a five-second busy timeout, and WAL mode. Keep contexts short-lived and do not hold them across slow LMS, HTTP, or search-index work.
 - The production search index remains a separate, disposable derived artifact. Do not model it as application persistence or put its tables in the EF context.
 
-The EF database currently contains only its migration history. The existing handwritten observation, catalogue, and operational stores remain authoritative until their individual migration stories cut them over.
+Search observations are authoritative in the EF application database. At startup, retained rows are copied in bounded batches from the legacy observation database; the importer is idempotent and opens that database read-only. The existing handwritten catalogue and operational stores remain authoritative until their individual migration stories cut them over.
 
 ## Service and repository responsibilities
 
@@ -53,7 +53,7 @@ The EF database currently contains only its migration history. The existing hand
 
 ## Legacy cutover policy
 
-- Migrate search observations by copying the retained data during their dedicated cutover, then retire the legacy observations database.
+- Search observations have been cut over by copying retained data into EF at startup. Keep the legacy observation file and read-only importer in place until the dedicated cleanup story removes them; never write new observations to that file.
 - Reset disposable operational history when jobs, schedules, errors, and tool calls move to EF; do not build an importer for that history.
 - Rebuild catalogue data from LMS when the catalogue moves to EF; do not copy the legacy catalogue database.
 - Keep each legacy store operating until its own cutover is complete. Do not add a general automatic importer or attempt an all-at-once migration.

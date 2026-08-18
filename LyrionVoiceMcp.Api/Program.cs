@@ -70,8 +70,10 @@ var searchSettings = ProductionSearchSettings.FromValues(
 
 builder.Services.AddSingleton(buildInfo);
 builder.Services.AddSingleton(lmsSettings);
+builder.Services.AddSingleton(new SearchObservationRetentionPolicy(
+    observationSettings.RetentionDays));
 builder.Services.AddLyrionVoiceMcpEf(applicationDatabaseSettings);
-builder.Services.AddSearchObservationPersistence(observationSettings);
+builder.Services.AddLegacySearchObservationPersistence(observationSettings);
 builder.Services.AddCataloguePersistence(catalogueSettings);
 builder.Services.AddOperationalPersistence(operationalSettings, operationalSchedules);
 builder.Services.AddSingleton(searchSettings);

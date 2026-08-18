@@ -16,5 +16,6 @@
     <ProjectReference Include="..\LyrionVoiceMcp.Ef\LyrionVoiceMcp.Ef.csproj" />
     <ProjectReference Include="..\LyrionVoiceMcp.Ef.Abstractions\LyrionVoiceMcp.Ef.Abstractions.csproj" />
     <ProjectReference Include="..\LyrionVoiceMcp.Persistence\LyrionVoiceMcp.Persistence.csproj" />
+    <ProjectReference Include="..\LyrionVoiceMcp.Services\LyrionVoiceMcp.Services.csproj" />
   </ItemGroup>
 </Project>

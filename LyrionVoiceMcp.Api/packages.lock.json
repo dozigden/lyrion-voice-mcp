@@ -211,7 +211,8 @@
         "type": "Project",
         "dependencies": {
           "Cronos": "[0.13.0, )",
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )"
+          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Ef.Abstractions": "[0.1.0, )"
         }
       }
     }

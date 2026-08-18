@@ -78,7 +78,8 @@ for (const project of [
 assertProjectReferences('LyrionVoiceMcp.Contracts/LyrionVoiceMcp.Contracts.csproj', []);
 assertProjectReferences('LyrionVoiceMcp.Abstractions/LyrionVoiceMcp.Abstractions.csproj', []);
 assertProjectReferences('LyrionVoiceMcp.Services/LyrionVoiceMcp.Services.csproj', [
-  'LyrionVoiceMcp.Abstractions'
+  'LyrionVoiceMcp.Abstractions',
+  'LyrionVoiceMcp.Ef.Abstractions'
 ]);
 assertProjectReferences('LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj', [
   'LyrionVoiceMcp.Abstractions'
@@ -96,7 +97,8 @@ assertProjectReferences('LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.c
 assertProjectReferences('LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj', [
   'LyrionVoiceMcp.Ef',
   'LyrionVoiceMcp.Ef.Abstractions',
-  'LyrionVoiceMcp.Persistence'
+  'LyrionVoiceMcp.Persistence',
+  'LyrionVoiceMcp.Services'
 ]);
 assertProjectReferences('LyrionVoiceMcp.Search/LyrionVoiceMcp.Search.csproj', [
   'LyrionVoiceMcp.Abstractions'

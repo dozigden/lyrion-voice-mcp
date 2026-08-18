@@ -38,12 +38,12 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddSearchObservationPersistence(
+    public static IServiceCollection AddLegacySearchObservationPersistence(
         this IServiceCollection services,
         SearchObservationSettings settings)
     {
         services.AddSingleton(settings);
-        services.AddSingleton<ISearchObservationStore, SqliteSearchObservationStore>();
+        services.AddSingleton<ILegacySearchObservationSource, LegacySearchObservationSource>();
         return services;
     }
 }

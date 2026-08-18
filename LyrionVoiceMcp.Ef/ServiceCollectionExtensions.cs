@@ -2,6 +2,8 @@ using System.Data.Common;
 using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
 using LyrionVoiceMcp.Ef.Context;
 using LyrionVoiceMcp.Ef.Scope;
+using LyrionVoiceMcp.Ef.Repositories;
+using LyrionVoiceMcp.Ef.Abstractions.SearchObservations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,6 +19,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDbContextFactory, LyrionVoiceMcpDbContextFactory>();
         services.AddTransient<IDbContextScopeFactory, DbContextScopeFactory>();
         services.AddTransient<IAmbientDbContextLocator, AmbientDbContextLocator>();
+        services.AddTransient<ISearchObservationRepository, SearchObservationRepository>();
         return services;
     }
 

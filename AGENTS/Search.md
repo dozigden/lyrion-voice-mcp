@@ -16,7 +16,7 @@ Read this before changing search contracts, ranking, observation capture, catalo
 - Build in a job-specific staging generation, validate it, move it into place, and atomically replace the small current-generation pointer. Continue serving the previous compatible generation throughout a rebuild.
 - If no compatible published generation exists, return an explicit unavailable error. Do not build lazily and do not fall back to LMS artist, album, or track search.
 - A successful catalogue refresh queues exactly one production index rebuild. Manual rebuild is a REST/UI administration action, not an MCP tool.
-- The operational observation store records original and trimmed query, resolver/version, retrieval sources, timings, ordered candidates, zero-result searches, failures, later successful selections, and human reviews.
+- The EF-backed operational observation store records original and trimmed query, resolver/version, retrieval sources, timings, ordered candidates, zero-result searches, failures, later successful selections, and human reviews. Services owns its scopes, model/entity mapping, retention, and bounded idempotent legacy import; EF repositories own its queries.
 - `SearchObservationRecorder` owns observation lifecycle metadata, DTO construction, source evidence, and best-effort persistence. Keep `SearchService` focused on validation, concurrent retrieval, candidate ordering, correlation, references, and the public outcome.
 - If playlist retrieval fails, retain catalogue candidates and per-source failure evidence while failing the public search call. Treat failed searches separately from completed searches with no results.
 - Observation recording is best effort and must not fail search, playback, or queue operations.

@@ -27,6 +27,11 @@
           "xunit.v3.mtp-v1": "[3.2.2]"
         }
       },
+      "Cronos": {
+        "type": "Transitive",
+        "resolved": "0.13.0",
+        "contentHash": "Nkve+Yi0+ol3ntSBRHeW0ka9cJQ8vndSUvvkXqF9LVqwpoqWueyxu/HS275r98RDOmF7/mzRnZW5XXUBXob+TA=="
+      },
       "Microsoft.ApplicationInsights": {
         "type": "Transitive",
         "resolved": "2.23.0",
@@ -165,6 +170,35 @@
         "type": "Transitive",
         "resolved": "10.0.11",
         "contentHash": "PJPtFYsZ+r+uz9qqXWUTEyKeJ1EiBGIJtqavkg9ZXijjGSFAk4Fgi5sqIxj+uAyLZwEKgexDUQXhWhvU6l3+og=="
+      },
+      "Microsoft.Extensions.Diagnostics.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "se7Kx8QpJEt+nf26L4qIVAofGTDr1wbexxsh/Fm3Xc04xUkqUXK06KUS7FLwSQYSjqb7q9n+T7MEcXYBhI1Y5g==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11",
+          "Microsoft.Extensions.Options": "10.0.11"
+        }
+      },
+      "Microsoft.Extensions.FileProviders.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "JOjac6SQQgZmdmB8WGEw61/7siqMZoWJMkmq2p1goJGxqI59lO6oB4bOl0jNsbaPBdYy5Mlkb+6U7T4+CjnD8Q==",
+        "dependencies": {
+          "Microsoft.Extensions.Primitives": "10.0.11"
+        }
+      },
+      "Microsoft.Extensions.Hosting.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "pwtpF7iF/NNaOBcX+pvMZ7y2+JAVbH5KkNrH9uMZtuVxVJsFTDiWiCR7Tk3HVptsAijaetipUZVRVK2LLq+nvA==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.11",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11",
+          "Microsoft.Extensions.Diagnostics.Abstractions": "10.0.11",
+          "Microsoft.Extensions.FileProviders.Abstractions": "10.0.11",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.11"
+        }
       },
       "Microsoft.Extensions.Logging": {
         "type": "Transitive",
@@ -364,6 +398,17 @@
           "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.10, )"
+        }
+      },
+      "lyrionvoicemcp.services": {
+        "type": "Project",
+        "dependencies": {
+          "Cronos": "[0.13.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Ef.Abstractions": "[0.1.0, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
+          "Microsoft.Extensions.Hosting.Abstractions": "[10.0.11, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )"
         }
       }
     }
