@@ -31,6 +31,7 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(result);
         Assert.Equal("ok", result.Status);
+        Assert.True(File.Exists(factory.ApplicationDatabasePath));
     }
 
     [Fact]

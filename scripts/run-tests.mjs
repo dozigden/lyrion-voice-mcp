@@ -91,10 +91,10 @@ function resolveLanes(selectedMode, lane) {
   }
 
   const web = changed.some(path => path.startsWith('LyrionVoiceMcp.Web/'));
-  const api = changed.some(path => path.startsWith('LyrionVoiceMcp.Api') || path.startsWith('LyrionVoiceMcp.Contracts') || path.startsWith('LyrionVoiceMcp.Evaluation') || path.startsWith('LyrionVoiceMcp.Search'));
+  const api = changed.some(path => path.startsWith('LyrionVoiceMcp.Api') || path.startsWith('LyrionVoiceMcp.Contracts') || path.startsWith('LyrionVoiceMcp.Ef') || path.startsWith('LyrionVoiceMcp.Evaluation') || path.startsWith('LyrionVoiceMcp.Search'));
   const services = changed.some(path => path.startsWith('LyrionVoiceMcp.Services') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const lms = changed.some(path => path.startsWith('LyrionVoiceMcp.Lms') || path.startsWith('LyrionVoiceMcp.Abstractions'));
-  const persistence = changed.some(path => path.startsWith('LyrionVoiceMcp.Persistence') || path.startsWith('LyrionVoiceMcp.Abstractions'));
+  const persistence = changed.some(path => path.startsWith('LyrionVoiceMcp.Persistence') || path.startsWith('LyrionVoiceMcp.Ef') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const search = changed.some(path => path.startsWith('LyrionVoiceMcp.Search') || path.startsWith('LyrionVoiceMcp.Abstractions'));
   const dev = changed.some(path => path.startsWith('LyrionVoiceMcp.Dev'));
   const evaluation = changed.some(path => path.startsWith('LyrionVoiceMcp.Evaluation') || path.startsWith('LyrionVoiceMcp.Search') || path.startsWith('LyrionVoiceMcp.Lms') || path.startsWith('LyrionVoiceMcp.Abstractions'));

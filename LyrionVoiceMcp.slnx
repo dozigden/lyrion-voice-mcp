@@ -5,6 +5,8 @@
   <Project Path="LyrionVoiceMcp.Contracts/LyrionVoiceMcp.Contracts.csproj" />
   <Project Path="LyrionVoiceMcp.Dev/LyrionVoiceMcp.Dev.csproj" />
   <Project Path="LyrionVoiceMcp.Dev.Tests/LyrionVoiceMcp.Dev.Tests.csproj" />
+  <Project Path="LyrionVoiceMcp.Ef/LyrionVoiceMcp.Ef.csproj" />
+  <Project Path="LyrionVoiceMcp.Ef.Abstractions/LyrionVoiceMcp.Ef.Abstractions.csproj" />
   <Project Path="LyrionVoiceMcp.Evaluation/LyrionVoiceMcp.Evaluation.csproj" />
   <Project Path="LyrionVoiceMcp.Evaluation.Tests/LyrionVoiceMcp.Evaluation.Tests.csproj" />
   <Project Path="LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj" />

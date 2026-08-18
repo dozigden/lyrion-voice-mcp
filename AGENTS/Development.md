@@ -21,7 +21,7 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 ## Containers
 
 - The Docker image is the production-shaped deployment unit and serves API, MCP, and Vue on port 5600.
-- Container search observations, the canonical catalogue database, the operational database, and the disposable production search index live under `/data`; keep that path on a persistent volume.
+- The EF application database, transitional search observations, transitional canonical catalogue database, transitional operational database, and disposable production search index live under `/data`; keep that path on a persistent volume.
 - Supported architectures are `linux/amd64` and `linux/arm64` only.
 - Do not bake LMS environment addresses or local credentials into an image.
 - The current CI builds and smoke-tests images but does not publish them.
@@ -33,6 +33,7 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 - Compose maps `LVM_LMS_SERVER_ID`, `LVM_LMS_BASE_URL`, and optional `LVM_LMS_REQUEST_TIMEOUT_SECONDS` into the container.
 - Compose accepts optional `LVM_SEARCH_RETENTION_DAYS`; operational search history defaults to 90 days.
 - The operational database uses `LyrionVoiceMcpOperations:DatabasePath`, defaults to `.data/operations.db`, and is `/data/operations.db` in the container. Job, error, and MCP-call retention and schedule settings live below `LyrionVoiceMcpOperations`; catalogue automatic scheduling is disabled by default.
+- The EF application database uses `LyrionVoiceMcpPersistence:DatabasePath`, defaults to `.data/lyrion-voice-mcp.db`, and is `/data/lyrion-voice-mcp.db` in the container. It is migrated at startup and currently runs alongside the legacy stores while their data is moved in separate stories.
 - Catalogue storage uses `LyrionVoiceMcpCatalogue:DatabasePath`, defaults to `.data/catalogue.db` in local development, and is fixed to `/data/catalogue.db` in the container. It is intentionally separate from observations and the production search index.
 - Production search uses `LyrionVoiceMcpSearch:IndexDirectoryPath`, defaults to `.data/search-index`, and is `/data/search-index` in the container. Generation directories contain the index and manifest; the current pointer selects the published generation and job-specific staging is disposable.
 - Do not commit environment-specific LMS values. An unconfigured runtime is valid and reports `not_configured` from `/api/lms`.

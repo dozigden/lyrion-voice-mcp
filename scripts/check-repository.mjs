@@ -3,6 +3,7 @@ import process from 'node:process';
 
 const requiredPaths = [
   'LyrionVoiceMcp.slnx',
+  '.config/dotnet-tools.json',
   'MCP_CONTRACT.md',
   'LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj',
   'LyrionVoiceMcp.Contracts/LyrionVoiceMcp.Contracts.csproj',
@@ -10,6 +11,8 @@ const requiredPaths = [
   'LyrionVoiceMcp.Services/LyrionVoiceMcp.Services.csproj',
   'LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj',
   'LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj',
+  'LyrionVoiceMcp.Ef/LyrionVoiceMcp.Ef.csproj',
+  'LyrionVoiceMcp.Ef.Abstractions/LyrionVoiceMcp.Ef.Abstractions.csproj',
   'LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj',
   'LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj',
   'LyrionVoiceMcp.Search/LyrionVoiceMcp.Search.csproj',
@@ -22,6 +25,7 @@ const requiredPaths = [
   'scripts/test-full.sh',
   'Dockerfile',
   'THIRD-PARTY-NOTICES.md',
+  'third-party-licenses/EntityFrameworkCore-LICENSE.txt',
   'compose.yml'
 ];
 
@@ -58,6 +62,8 @@ for (const project of [
   'LyrionVoiceMcp.Abstractions',
   'LyrionVoiceMcp.Services',
   'LyrionVoiceMcp.Lms',
+  'LyrionVoiceMcp.Ef',
+  'LyrionVoiceMcp.Ef.Abstractions',
   'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Search',
   'LyrionVoiceMcp.Evaluation',
@@ -80,10 +86,16 @@ assertProjectReferences('LyrionVoiceMcp.Lms/LyrionVoiceMcp.Lms.csproj', [
 assertProjectReferences('LyrionVoiceMcp.Lms.Tests/LyrionVoiceMcp.Lms.Tests.csproj', [
   'LyrionVoiceMcp.Lms'
 ]);
+assertProjectReferences('LyrionVoiceMcp.Ef.Abstractions/LyrionVoiceMcp.Ef.Abstractions.csproj', []);
+assertProjectReferences('LyrionVoiceMcp.Ef/LyrionVoiceMcp.Ef.csproj', [
+  'LyrionVoiceMcp.Ef.Abstractions'
+]);
 assertProjectReferences('LyrionVoiceMcp.Persistence/LyrionVoiceMcp.Persistence.csproj', [
   'LyrionVoiceMcp.Abstractions'
 ]);
 assertProjectReferences('LyrionVoiceMcp.Persistence.Tests/LyrionVoiceMcp.Persistence.Tests.csproj', [
+  'LyrionVoiceMcp.Ef',
+  'LyrionVoiceMcp.Ef.Abstractions',
   'LyrionVoiceMcp.Persistence'
 ]);
 assertProjectReferences('LyrionVoiceMcp.Search/LyrionVoiceMcp.Search.csproj', [
@@ -104,6 +116,7 @@ assertProjectReferences('LyrionVoiceMcp.Evaluation.Tests/LyrionVoiceMcp.Evaluati
 assertProjectReferences('LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj', [
   'LyrionVoiceMcp.Abstractions',
   'LyrionVoiceMcp.Contracts',
+  'LyrionVoiceMcp.Ef',
   'LyrionVoiceMcp.Lms',
   'LyrionVoiceMcp.Persistence',
   'LyrionVoiceMcp.Search',

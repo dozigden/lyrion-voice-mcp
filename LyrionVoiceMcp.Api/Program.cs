@@ -4,6 +4,7 @@ using LyrionVoiceMcp.Api.Endpoints;
 using LyrionVoiceMcp.Api.Tools;
 using LyrionVoiceMcp.Api;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Ef;
 using LyrionVoiceMcp.Lms;
 using LyrionVoiceMcp.Persistence;
 using LyrionVoiceMcp.Search;
@@ -36,6 +37,9 @@ var lmsSettings = LmsConnectionSettings.FromValues(
     builder.Configuration["LyrionVoiceMcpLms:ServerId"],
     builder.Configuration["LyrionVoiceMcpLms:BaseUrl"],
     builder.Configuration["LyrionVoiceMcpLms:RequestTimeoutSeconds"]);
+var applicationDatabaseSettings = ApplicationDatabaseSettings.FromValues(
+    builder.Environment.ContentRootPath,
+    builder.Configuration["LyrionVoiceMcpPersistence:DatabasePath"]);
 var observationSettings = SearchObservationSettings.FromValues(
     builder.Environment.ContentRootPath,
     builder.Configuration["LyrionVoiceMcpObservations:DatabasePath"],
@@ -66,6 +70,7 @@ var searchSettings = ProductionSearchSettings.FromValues(
 
 builder.Services.AddSingleton(buildInfo);
 builder.Services.AddSingleton(lmsSettings);
+builder.Services.AddLyrionVoiceMcpEf(applicationDatabaseSettings);
 builder.Services.AddSearchObservationPersistence(observationSettings);
 builder.Services.AddCataloguePersistence(catalogueSettings);
 builder.Services.AddOperationalPersistence(operationalSettings, operationalSchedules);
@@ -117,6 +122,7 @@ builder.Services
 
 var app = builder.Build();
 
+await app.Services.InitialiseLyrionVoiceMcpEfAsync(CancellationToken.None);
 await app.Services.GetRequiredService<ISearchObservationStore>()
     .InitialiseAsync(CancellationToken.None);
 await app.Services.GetRequiredService<IMediaCatalogueStore>()

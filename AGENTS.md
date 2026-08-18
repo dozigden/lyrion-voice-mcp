@@ -5,6 +5,7 @@ Read the relevant area guidance before changing that part of the system:
 - [AGENTS/Architecture.md](AGENTS/Architecture.md) - project boundaries and dependency direction
 - [AGENTS/Catalogue.md](AGENTS/Catalogue.md) - canonical media ingestion and refresh rules
 - [AGENTS/CSharpCodingConventions.md](AGENTS/CSharpCodingConventions.md)
+- [AGENTS/Database.md](AGENTS/Database.md) - EF application database, scopes, repositories, and migrations
 - [AGENTS/Development.md](AGENTS/Development.md) - local orchestration, ports, Docker, and build metadata
 - [AGENTS/Evaluation.md](AGENTS/Evaluation.md) - private corpus boundary and benchmark rules
 - [AGENTS/Frontend.md](AGENTS/Frontend.md)

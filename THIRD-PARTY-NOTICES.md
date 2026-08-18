@@ -16,6 +16,10 @@ The production image includes its licence at `/app/licenses/Cronos-LICENSE.txt`.
 
 > Copyright (c) 2017 Hangfire OÜ
 
+The application persistence foundation uses Microsoft Entity Framework Core
+10.0.11 packages under the MIT licence. The production image includes the
+Microsoft licence at `/app/licenses/EntityFrameworkCore-LICENSE.txt`.
+
 ## Lucene.Net notice
 
 > Apache Lucene.Net  

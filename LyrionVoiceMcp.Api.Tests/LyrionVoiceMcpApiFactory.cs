@@ -11,11 +11,15 @@ public sealed class LyrionVoiceMcpApiFactory : WebApplicationFactory<Program>
         $"lyrion-voice-mcp-api-tests-{Guid.NewGuid():N}");
 
     public string CataloguePath => Path.Combine(directory, "catalogue.db");
+    public string ApplicationDatabasePath => Path.Combine(directory, "lyrion-voice-mcp.db");
     public string SearchIndexDirectoryPath => Path.Combine(directory, "search-index");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Directory.CreateDirectory(directory);
+        builder.UseSetting(
+            "LyrionVoiceMcpPersistence:DatabasePath",
+            ApplicationDatabasePath);
         builder.UseSetting(
             "LyrionVoiceMcpObservations:DatabasePath",
             Path.Combine(directory, "search-observations.db"));

@@ -13,6 +13,8 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\LyrionVoiceMcp.Ef\LyrionVoiceMcp.Ef.csproj" />
+    <ProjectReference Include="..\LyrionVoiceMcp.Ef.Abstractions\LyrionVoiceMcp.Ef.Abstractions.csproj" />
     <ProjectReference Include="..\LyrionVoiceMcp.Persistence\LyrionVoiceMcp.Persistence.csproj" />
   </ItemGroup>
 </Project>

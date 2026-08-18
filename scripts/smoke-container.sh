@@ -62,6 +62,8 @@ curl --fail --silent "$base_url/api/search/index" \
 docker exec "$container_name" test -r /app/licenses/Apache-2.0.txt
 docker exec "$container_name" test -r /app/licenses/Lucene.Net-NOTICE.txt
 docker exec "$container_name" test -r /app/licenses/Cronos-LICENSE.txt
+docker exec "$container_name" test -r /app/licenses/EntityFrameworkCore-LICENSE.txt
+docker exec "$container_name" test -r /data/lyrion-voice-mcp.db
 curl --fail --silent "$base_url/" | grep --quiet 'Lyrion Voice MCP'
 
 mcp_status="$(curl --silent --output /tmp/lyrion-voice-mcp-smoke-mcp-$$.json --write-out '%{http_code}' \

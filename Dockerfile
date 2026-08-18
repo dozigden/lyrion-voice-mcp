@@ -21,6 +21,8 @@ COPY LyrionVoiceMcp.Api.Tests/ LyrionVoiceMcp.Api.Tests/
 COPY LyrionVoiceMcp.Contracts/ LyrionVoiceMcp.Contracts/
 COPY LyrionVoiceMcp.Dev/ LyrionVoiceMcp.Dev/
 COPY LyrionVoiceMcp.Dev.Tests/ LyrionVoiceMcp.Dev.Tests/
+COPY LyrionVoiceMcp.Ef/ LyrionVoiceMcp.Ef/
+COPY LyrionVoiceMcp.Ef.Abstractions/ LyrionVoiceMcp.Ef.Abstractions/
 COPY LyrionVoiceMcp.Evaluation/ LyrionVoiceMcp.Evaluation/
 COPY LyrionVoiceMcp.Lms/ LyrionVoiceMcp.Lms/
 COPY LyrionVoiceMcp.Persistence/ LyrionVoiceMcp.Persistence/
@@ -44,11 +46,13 @@ COPY --from=frontend-build /src/LyrionVoiceMcp.Web/dist ./wwwroot
 COPY --from=backend-build /root/.nuget/packages/lucene.net/4.8.0-beta00018/LICENSE.txt ./licenses/Apache-2.0.txt
 COPY --from=backend-build /root/.nuget/packages/lucene.net/4.8.0-beta00018/NOTICE.txt ./licenses/Lucene.Net-NOTICE.txt
 COPY --from=backend-build /root/.nuget/packages/cronos/0.13.0/LICENSE ./licenses/Cronos-LICENSE.txt
+COPY third-party-licenses/EntityFrameworkCore-LICENSE.txt ./licenses/EntityFrameworkCore-LICENSE.txt
 ENV ASPNETCORE_URLS=http://0.0.0.0:5600
 ENV LyrionVoiceMcpBuild__Version=$LVM_VERSION
 ENV LyrionVoiceMcpBuild__Channel=$LVM_CHANNEL
 ENV LyrionVoiceMcpBuild__Build=$LVM_BUILD
 ENV LyrionVoiceMcpBuild__Commit=$LVM_COMMIT
+ENV LyrionVoiceMcpPersistence__DatabasePath=/data/lyrion-voice-mcp.db
 ENV LyrionVoiceMcpObservations__DatabasePath=/data/search-observations.db
 ENV LyrionVoiceMcpCatalogue__DatabasePath=/data/catalogue.db
 ENV LyrionVoiceMcpOperations__DatabasePath=/data/operations.db
