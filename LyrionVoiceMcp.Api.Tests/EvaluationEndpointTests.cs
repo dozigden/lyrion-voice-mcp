@@ -1,8 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Contracts;
-using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace LyrionVoiceMcp.Api.Tests;
 
@@ -103,25 +104,39 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
 
     private async Task SeedCatalogueAsync()
     {
-        await using var connection = new SqliteConnection($"Data Source={factory.CataloguePath}");
-        await connection.OpenAsync(TestContext.Current.CancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO catalogue_state (
-                id, refresh_id, refresh_status, refresh_started_at, refresh_completed_at,
-                source_id, source_provider, source_version, source_revision,
-                captured_at, source_last_scan_at, refreshed_at, artist_count,
-                album_count, genre_count, track_count, virtual_library_count, warning_count)
-            VALUES (
-                1, 'refresh-1', 'succeeded', '2026-08-15T12:00:00Z', '2026-08-15T12:00:01Z',
-                'fictional', 'lms', '1.0', 'revision-1',
-                '2026-08-15T12:00:00Z', NULL, '2026-08-15T12:00:01Z',
-                1, 0, 0, 0, 0, 0);
-
-            INSERT INTO catalogue_artists (source_id, name, external_id, seen_refresh_id)
-            VALUES ('artist-1', 'Knight', NULL, 'refresh-1');
-            """;
-        await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        using var scope = factory.Services.CreateScope();
+        var lifecycle = scope.ServiceProvider.GetRequiredService<ICatalogueLifecycleService>();
+        var writer = scope.ServiceProvider.GetRequiredService<ICatalogueImportWriter>();
+        var startedAt = DateTimeOffset.Parse("2026-08-15T12:00:00Z");
+        await lifecycle.BeginRefreshAsync(
+            "refresh-1",
+            startedAt,
+            TestContext.Current.CancellationToken);
+        await writer.WriteAlbumsAsync(
+            "refresh-1",
+            [new CatalogueImportAlbum(
+                "album-1", "Fictional Night", "artist-1", 2026, 1, false,
+                null, null, null)],
+            TestContext.Current.CancellationToken);
+        await writer.WriteArtistsAsync(
+            "refresh-1",
+            [new CatalogueImportArtist("artist-1", "Knight", null)],
+            TestContext.Current.CancellationToken);
+        await lifecycle.CompleteRefreshAsync(
+            "refresh-1",
+            new CatalogueSourceReadResult(
+                new CatalogueImportSource("fictional", "lms", "1.0", "revision-1"),
+                startedAt,
+                null,
+                1,
+                1,
+                0,
+                0,
+                0,
+                []),
+            startedAt.AddSeconds(1),
+            0,
+            TestContext.Current.CancellationToken);
     }
 
     private static async Task WaitForJobAsync(HttpClient client, long jobId)

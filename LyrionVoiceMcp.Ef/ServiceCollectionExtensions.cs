@@ -1,5 +1,6 @@
 using System.Data.Common;
 using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
+using LyrionVoiceMcp.Ef.Abstractions.Catalogue;
 using LyrionVoiceMcp.Ef.Context;
 using LyrionVoiceMcp.Ef.Scope;
 using LyrionVoiceMcp.Ef.Repositories;
@@ -28,6 +29,16 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IScheduledJobStateRepository, ScheduledJobStateRepository>();
         services.AddTransient<IErrorLogRepository, ErrorLogRepository>();
         services.AddTransient<IToolCallRepository, ToolCallRepository>();
+        services.AddTransient<ICatalogueStateRepository, CatalogueStateRepository>();
+        services.AddTransient<ICatalogueArtistRepository, CatalogueArtistRepository>();
+        services.AddTransient<ICatalogueAlbumRepository, CatalogueAlbumRepository>();
+        services.AddTransient<ICatalogueGenreRepository, CatalogueGenreRepository>();
+        services.AddTransient<ICatalogueTrackRepository, CatalogueTrackRepository>();
+        services.AddTransient<ICatalogueVirtualLibraryRepository,
+            CatalogueVirtualLibraryRepository>();
+        services.AddTransient<ICatalogueValidationRepository,
+            CatalogueValidationRepository>();
+        services.AddTransient<ICatalogueProjectionRepository, CatalogueProjectionRepository>();
         return services;
     }
 

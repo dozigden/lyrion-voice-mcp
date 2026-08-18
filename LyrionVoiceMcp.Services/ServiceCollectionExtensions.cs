@@ -9,6 +9,9 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton<IOperationalStatusService, OperationalStatusService>();
         services.AddTransient<ICatalogueRefreshService, CatalogueRefreshService>();
+        services.AddTransient<ICatalogueLifecycleService, CatalogueLifecycleService>();
+        services.AddTransient<ICatalogueImportWriter, CatalogueImportWriter>();
+        services.AddSingleton<ICatalogueSearchDocumentSource, CatalogueSearchDocumentSource>();
         services.AddTransient<ISearchIndexService, SearchIndexService>();
         services.AddSingleton<IJobLifecycleGate, JobLifecycleGate>();
         services.AddSingleton<IJobCancellationRegistry, JobCancellationRegistry>();

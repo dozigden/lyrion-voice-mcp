@@ -7,7 +7,7 @@ namespace LyrionVoiceMcp.Services;
 
 public sealed class SearchIndexService(
     ISearchIndexBuilder builder,
-    IMediaCatalogueStore catalogueStore,
+    ICatalogueLifecycleService catalogue,
     IDbContextScopeFactory scopeFactory,
     IJobRepository jobRepository,
     IJobService jobService,
@@ -28,10 +28,10 @@ public sealed class SearchIndexService(
                     "The catalogue is currently being refreshed.");
             }
 
-            var catalogue = await catalogueStore.GetStateAsync(token);
-            if (catalogue is null
-                || catalogue.Status != CatalogueStateStatus.Succeeded
-                || catalogue.Summary is null)
+            var state = await catalogue.GetStateAsync(token);
+            if (state is null
+                || state.Status != CatalogueStateStatus.Succeeded
+                || state.Summary is null)
             {
                 return new SearchIndexRebuildRejected(
                     "The catalogue has not completed successfully.");
@@ -44,7 +44,7 @@ public sealed class SearchIndexService(
             }
 
             var outcome = await EnqueueAsync(
-                catalogue.RefreshId,
+                state.RefreshId,
                 $"search-index:production:manual:{Guid.NewGuid():N}",
                 token);
             if (outcome is not JobEnqueued enqueued)

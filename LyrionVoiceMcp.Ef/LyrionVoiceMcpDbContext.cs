@@ -17,6 +17,34 @@ public sealed class LyrionVoiceMcpDbContext(
 
     public DbSet<EntityToolCall> ToolCalls => Set<EntityToolCall>();
 
+    public DbSet<EntityCatalogueState> CatalogueStates => Set<EntityCatalogueState>();
+
+    public DbSet<EntityCatalogueArtist> CatalogueArtists => Set<EntityCatalogueArtist>();
+
+    public DbSet<EntityCatalogueArtistLookup> CatalogueArtistLookups =>
+        Set<EntityCatalogueArtistLookup>();
+
+    public DbSet<EntityCatalogueAlbum> CatalogueAlbums => Set<EntityCatalogueAlbum>();
+
+    public DbSet<EntityCatalogueGenre> CatalogueGenres => Set<EntityCatalogueGenre>();
+
+    public DbSet<EntityCatalogueTrack> CatalogueTracks => Set<EntityCatalogueTrack>();
+
+    public DbSet<EntityCatalogueTrackArtist> CatalogueTrackArtists =>
+        Set<EntityCatalogueTrackArtist>();
+
+    public DbSet<EntityCatalogueTrackGenre> CatalogueTrackGenres =>
+        Set<EntityCatalogueTrackGenre>();
+
+    public DbSet<EntityCatalogueTrackStatistic> CatalogueTrackStatistics =>
+        Set<EntityCatalogueTrackStatistic>();
+
+    public DbSet<EntityCatalogueVirtualLibrary> CatalogueVirtualLibraries =>
+        Set<EntityCatalogueVirtualLibrary>();
+
+    public DbSet<EntityCatalogueVirtualLibraryTrack> CatalogueVirtualLibraryTracks =>
+        Set<EntityCatalogueVirtualLibraryTrack>();
+
     public DbSet<EntitySearchObservation> SearchObservations =>
         Set<EntitySearchObservation>();
 

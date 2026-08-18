@@ -452,9 +452,10 @@ public sealed class JobArchitectureTests : IDisposable
         }
     }
 
-    private sealed class TestCatalogueStore(CatalogueState state) : IMediaCatalogueStore
+    private sealed class TestCatalogueStore(CatalogueState state) : ICatalogueLifecycleService
     {
-        public Task InitialiseAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task RecoverInterruptedRefreshAsync(CancellationToken cancellationToken) =>
+            Task.CompletedTask;
         public Task<CatalogueState?> GetStateAsync(CancellationToken cancellationToken) =>
             Task.FromResult<CatalogueState?>(state);
         public Task<CatalogueSummary?> GetSummaryAsync(CancellationToken cancellationToken) =>
@@ -464,18 +465,6 @@ public sealed class JobArchitectureTests : IDisposable
         public Task<CatalogueRefreshCompletion> CompleteRefreshAsync(string refreshId, CatalogueSourceReadResult source, DateTimeOffset completedAt, int existingWarningCount, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
         public Task FinishRefreshAsync(string refreshId, CatalogueStateStatus status, DateTimeOffset completedAt, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task WriteAlbumsAsync(string refreshId, IReadOnlyList<CatalogueImportAlbum> albums, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task WriteGenresAsync(string refreshId, IReadOnlyList<CatalogueImportGenre> genres, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task WriteTracksAsync(string refreshId, IReadOnlyList<CatalogueImportTrack> tracks, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task WriteArtistsAsync(string refreshId, IReadOnlyList<CatalogueImportArtist> artists, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task WriteVirtualLibrariesAsync(string refreshId, IReadOnlyList<CatalogueImportVirtualLibrary> libraries, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task WriteVirtualLibraryTracksAsync(string refreshId, string librarySourceId, IReadOnlyList<string> trackSourceIds, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 }

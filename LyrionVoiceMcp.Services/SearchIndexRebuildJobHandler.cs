@@ -4,7 +4,7 @@ using LyrionVoiceMcp.Abstractions;
 namespace LyrionVoiceMcp.Services;
 
 public sealed class SearchIndexRebuildJobHandler(
-    IMediaCatalogueStore catalogueStore,
+    ICatalogueLifecycleService catalogue,
     ISearchIndexBuilder builder,
     IJobLogWriter logs) : JobHandlerBase<SearchIndexRebuildPayload>
 {
@@ -15,17 +15,17 @@ public sealed class SearchIndexRebuildJobHandler(
         SearchIndexRebuildPayload payload,
         CancellationToken cancellationToken)
     {
-        var catalogue = await catalogueStore.GetStateAsync(cancellationToken);
-        if (catalogue is null
-            || catalogue.Status != CatalogueStateStatus.Succeeded
-            || catalogue.Summary is null)
+        var state = await catalogue.GetStateAsync(cancellationToken);
+        if (state is null
+            || state.Status != CatalogueStateStatus.Succeeded
+            || state.Summary is null)
         {
             return JobHandlerResult.Failed(
                 "The catalogue has not completed successfully.");
         }
 
         if (!string.Equals(
-                catalogue.RefreshId,
+                state.RefreshId,
                 payload.CatalogueRefreshId,
                 StringComparison.Ordinal))
         {

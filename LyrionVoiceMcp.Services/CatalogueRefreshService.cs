@@ -5,14 +5,14 @@ using LyrionVoiceMcp.Ef.Abstractions.Jobs;
 namespace LyrionVoiceMcp.Services;
 
 public sealed class CatalogueRefreshService(
-    IMediaCatalogueStore catalogueStore,
+    ICatalogueLifecycleService catalogue,
     IDbContextScopeFactory scopeFactory,
     IJobRepository jobRepository,
     IJobService jobService,
     TimeProvider timeProvider) : ICatalogueRefreshService
 {
     public async Task<CatalogueStatus> GetStatusAsync(CancellationToken cancellationToken) => new(
-        await catalogueStore.GetSummaryAsync(cancellationToken),
+        await catalogue.GetSummaryAsync(cancellationToken),
         await GetLatestAsync(cancellationToken));
 
     public async Task<CatalogueRefreshOutcome> RefreshAsync(CancellationToken cancellationToken)

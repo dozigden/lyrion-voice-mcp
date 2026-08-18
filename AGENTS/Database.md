@@ -9,7 +9,7 @@ Read this before adding application data, entities, repositories, scopes, or mig
 - The application database uses SQLite, foreign keys, a five-second busy timeout, and WAL mode. Keep contexts short-lived and do not hold them across slow LMS, HTTP, or search-index work.
 - The production search index remains a separate, disposable derived artifact. Do not model it as application persistence or put its tables in the EF context.
 
-Search observations and operational jobs, schedules, errors, and MCP tool-call history are authoritative in the EF application database. At startup, retained search-observation rows are copied in bounded batches from the legacy observation database; the importer is idempotent and opens that database read-only. Operational history starts clean in EF and is not imported from the legacy operations database. The handwritten catalogue store remains authoritative until its migration story cuts it over.
+Catalogue data, search observations, and operational jobs, schedules, errors, and MCP tool-call history are authoritative in the EF application database. At startup, retained search-observation rows are copied in bounded batches from the legacy observation database; the importer is idempotent and opens that database read-only. Operational history starts clean in EF and is not imported from the legacy operations database. Catalogue data is rebuilt from LMS rather than imported from the legacy catalogue database.
 
 ## Service and repository responsibilities
 
@@ -55,5 +55,5 @@ Search observations and operational jobs, schedules, errors, and MCP tool-call h
 
 - Search observations have been cut over by copying retained data into EF at startup. Keep the legacy observation file and read-only importer in place until the dedicated cleanup story removes them; never write new observations to that file.
 - Operational history has been reset and cut over to EF. Keep the legacy operations file and dormant store code untouched until the dedicated cleanup story; do not initialise, read, write, import, or automatically delete that file.
-- Rebuild catalogue data from LMS when the catalogue moves to EF; do not copy the legacy catalogue database.
+- Catalogue data has been cut over to EF. Keep the legacy catalogue file, settings, and dormant store code untouched until the dedicated cleanup story; do not initialise, read, write, import, or automatically delete that file.
 - Keep each legacy store operating until its own cutover is complete. Do not add a general automatic importer or attempt an all-at-once migration.

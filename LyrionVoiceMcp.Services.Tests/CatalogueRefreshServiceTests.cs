@@ -19,6 +19,7 @@ public sealed class CatalogueRefreshServiceTests
         var handler = new CatalogueRefreshJobHandler(
             new RecordingCatalogueReader(),
             store,
+            store,
             searchIndexes,
             logs,
             new FixedTimeProvider(summary.RefreshedAt));
@@ -48,6 +49,7 @@ public sealed class CatalogueRefreshServiceTests
         var store = new RecordingCatalogueStore(summary);
         var handler = new CatalogueRefreshJobHandler(
             new ThrowingCatalogueReader(),
+            store,
             store,
             new RecordingSearchIndexService(),
             new RecordingJobLogWriter(),
@@ -95,11 +97,14 @@ public sealed class CatalogueRefreshServiceTests
             throw new InvalidOperationException("Fictional read failure.");
     }
 
-    private sealed class RecordingCatalogueStore(CatalogueSummary summary) : IMediaCatalogueStore
+    private sealed class RecordingCatalogueStore(CatalogueSummary summary) :
+        ICatalogueLifecycleService,
+        ICatalogueImportWriter
     {
         public string? RefreshId { get; private set; }
         public CatalogueStateStatus? TerminalStatus { get; private set; }
-        public Task InitialiseAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task RecoverInterruptedRefreshAsync(CancellationToken cancellationToken) =>
+            Task.CompletedTask;
         public Task<CatalogueState?> GetStateAsync(CancellationToken cancellationToken) =>
             Task.FromResult<CatalogueState?>(new CatalogueState(
                 RefreshId ?? "previous",

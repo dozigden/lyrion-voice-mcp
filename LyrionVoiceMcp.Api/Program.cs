@@ -44,9 +44,6 @@ var observationSettings = SearchObservationSettings.FromValues(
     builder.Environment.ContentRootPath,
     builder.Configuration["LyrionVoiceMcpObservations:DatabasePath"],
     builder.Configuration["LyrionVoiceMcpObservations:RetentionDays"]);
-var catalogueSettings = CatalogueSettings.FromValues(
-    builder.Environment.ContentRootPath,
-    builder.Configuration["LyrionVoiceMcpCatalogue:DatabasePath"]);
 var operationalSettings = OperationalSettings.FromValues(
     builder.Environment.ContentRootPath,
     builder.Configuration["LyrionVoiceMcpOperations:DatabasePath"],
@@ -74,7 +71,6 @@ builder.Services.AddSingleton(new SearchObservationRetentionPolicy(
     observationSettings.RetentionDays));
 builder.Services.AddLyrionVoiceMcpEf(applicationDatabaseSettings);
 builder.Services.AddLegacySearchObservationPersistence(observationSettings);
-builder.Services.AddCataloguePersistence(catalogueSettings);
 builder.Services.AddOperationalPersistence(operationalSettings, operationalSchedules);
 builder.Services.AddSingleton(searchSettings);
 builder.Services.AddSingleton<ProductionCatalogueSearchService>();
@@ -127,8 +123,8 @@ var app = builder.Build();
 await app.Services.InitialiseLyrionVoiceMcpEfAsync(CancellationToken.None);
 await app.Services.GetRequiredService<ISearchObservationStore>()
     .InitialiseAsync(CancellationToken.None);
-await app.Services.GetRequiredService<IMediaCatalogueStore>()
-    .InitialiseAsync(CancellationToken.None);
+await app.Services.GetRequiredService<ICatalogueLifecycleService>()
+    .RecoverInterruptedRefreshAsync(CancellationToken.None);
 await app.Services.GetRequiredService<IToolCallHistoryService>()
     .MarkRunningInterruptedAsync(CancellationToken.None);
 

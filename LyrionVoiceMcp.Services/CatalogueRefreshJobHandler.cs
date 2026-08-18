@@ -5,7 +5,8 @@ namespace LyrionVoiceMcp.Services;
 
 public sealed class CatalogueRefreshJobHandler(
     ICatalogueSourceReader sourceReader,
-    IMediaCatalogueStore store,
+    ICatalogueLifecycleService catalogue,
+    ICatalogueImportWriter writer,
     ISearchIndexService searchIndexes,
     IJobLogWriter logs,
     TimeProvider timeProvider) : JobHandlerBase<CatalogueRefreshJobHandler.Payload>
@@ -23,7 +24,7 @@ public sealed class CatalogueRefreshJobHandler(
         var refreshStarted = false;
         try
         {
-            await store.BeginRefreshAsync(
+            await catalogue.BeginRefreshAsync(
                 refreshId,
                 timeProvider.GetUtcNow(),
                 cancellationToken);
@@ -36,10 +37,10 @@ public sealed class CatalogueRefreshJobHandler(
                 cancellationToken);
             var source = await sourceReader.ReadAsync(
                 refreshId,
-                store,
+                writer,
                 sink,
                 cancellationToken);
-            completion = await store.CompleteRefreshAsync(
+            completion = await catalogue.CompleteRefreshAsync(
                 refreshId,
                 source,
                 timeProvider.GetUtcNow(),
@@ -49,7 +50,7 @@ public sealed class CatalogueRefreshJobHandler(
         catch (OperationCanceledException) when (
             refreshStarted && cancellationToken.IsCancellationRequested)
         {
-            await store.FinishRefreshAsync(
+            await catalogue.FinishRefreshAsync(
                 refreshId,
                 CatalogueStateStatus.Cancelled,
                 timeProvider.GetUtcNow(),
@@ -58,7 +59,7 @@ public sealed class CatalogueRefreshJobHandler(
         }
         catch when (refreshStarted)
         {
-            await store.FinishRefreshAsync(
+            await catalogue.FinishRefreshAsync(
                 refreshId,
                 CatalogueStateStatus.Failed,
                 timeProvider.GetUtcNow(),

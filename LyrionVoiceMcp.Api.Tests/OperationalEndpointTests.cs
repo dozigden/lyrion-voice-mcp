@@ -30,6 +30,18 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
     }
 
     [Fact]
+    public async Task StartupShouldNotCreateTheLegacyCatalogueDatabase()
+    {
+        using var client = factory.CreateClient();
+        using var response = await client.GetAsync(
+            "/api/health",
+            TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        Assert.False(File.Exists(factory.CataloguePath));
+    }
+
+    [Fact]
     public async Task HealthShouldReportOk()
     {
         // Arrange
