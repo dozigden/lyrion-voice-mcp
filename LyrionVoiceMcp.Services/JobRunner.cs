@@ -1,10 +1,15 @@
 using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
+using LyrionVoiceMcp.Ef.Abstractions.Entities;
+using LyrionVoiceMcp.Ef.Abstractions.Jobs;
 
 namespace LyrionVoiceMcp.Services;
 
 public sealed class JobRunner(
-    IJobStore store,
+    IDbContextScopeFactory scopeFactory,
+    IJobRepository jobRepository,
+    IJobLogRepository jobLogRepository,
     IEnumerable<IJobHandler> handlers,
     IJobCancellationRegistry cancellationRegistry,
     IJobLifecycleGate lifecycleGate,
@@ -15,48 +20,88 @@ public sealed class JobRunner(
         .GroupBy(handler => handler.Type, StringComparer.Ordinal)
         .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
 
-    public async Task MarkRunningJobsFailedAsync(CancellationToken cancellationToken)
-    {
-        const string message = "Job was interrupted by server startup.";
-        await lifecycleGate.ExecuteAsync(
-            token => store.MarkRunningInterruptedAsync(
-                timeProvider.GetUtcNow(),
-                message,
-                token),
-            cancellationToken);
-    }
+    public Task MarkRunningJobsFailedAsync(CancellationToken cancellationToken) =>
+        lifecycleGate.ExecuteAsync(async token =>
+        {
+            using var scope = scopeFactory.Create();
+            var running = await jobRepository.ListRunningForUpdateAsync(token);
+            if (running.Count == 0)
+            {
+                return;
+            }
+
+            const string message = "Job was interrupted by server startup.";
+            var nowUtc = OperationalEntityMapper.ToUtcDateTime(timeProvider.GetUtcNow());
+            foreach (var job in running)
+            {
+                job.Status = EntityJobStatus.Failed;
+                job.ErrorMessage = message;
+                job.ResultJson = JsonSerializer.Serialize(new { errorMessage = message });
+                job.CompletedAtUtc = nowUtc;
+                AddLog(
+                    job.Id,
+                    EntityJobLogLevel.Error,
+                    "Job interrupted by server startup.",
+                    null,
+                    nowUtc);
+            }
+
+            await scope.SaveChangesAsync(token);
+        }, cancellationToken);
 
     public async Task<bool> RunNextDueAsync(CancellationToken cancellationToken)
     {
         Exception? registrationException = null;
-        Job? failedRegistrationJob = null;
+        EntityJob? failedRegistrationJob = null;
         var startedJob = await lifecycleGate.ExecuteAsync(async token =>
         {
-            var job = await store.TryStartNextDueAsync(timeProvider.GetUtcNow(), token);
+            using var scope = scopeFactory.Create();
+            var nowUtc = OperationalEntityMapper.ToUtcDateTime(timeProvider.GetUtcNow());
+            var job = await jobRepository.FindNextDueAsync(nowUtc, token);
             if (job is null)
             {
                 return null;
             }
 
+            CancellationToken jobCancellationToken;
             try
             {
-                return new StartedJob(
-                    job,
-                    cancellationRegistry.Register(job.Id, cancellationToken));
+                jobCancellationToken = cancellationRegistry.Register(job.Id, cancellationToken);
             }
             catch (Exception exception)
             {
                 registrationException = exception;
                 failedRegistrationJob = job;
-                await store.FailAsync(
-                    job.Id,
-                    "The job cancellation scope could not be registered.",
-                    "{}",
-                    timeProvider.GetUtcNow(),
-                    token);
+                job.Status = EntityJobStatus.Failed;
+                job.ErrorMessage = "The job cancellation scope could not be registered.";
+                job.ResultJson = "{}";
+                job.CompletedAtUtc = nowUtc;
+                AddLog(job.Id, EntityJobLogLevel.Error, "Job failed.", JsonSerializer.Serialize(new
+                {
+                    errorMessage = job.ErrorMessage
+                }), nowUtc);
+                await scope.SaveChangesAsync(token);
                 return null;
             }
+
+            try
+            {
+                job.Status = EntityJobStatus.Running;
+                job.StartedAtUtc ??= nowUtc;
+                job.ErrorMessage = null;
+                AddLog(job.Id, EntityJobLogLevel.Information, "Job started.", null, nowUtc);
+                await scope.SaveChangesAsync(token);
+                return new StartedJob(
+                    new JobContext(job.Id, job.Type, job.PayloadJson),
+                    jobCancellationToken);
+            }
+            catch
+            {
+                cancellationRegistry.Unregister(job.Id);
+                throw;
+            }
         }, cancellationToken);
+
         if (registrationException is not null)
         {
             await errorLogService.LogExceptionAsync(
@@ -79,15 +124,14 @@ public sealed class JobRunner(
             return false;
         }
 
-        var job = startedJob.Job;
-        var jobCancellationToken = startedJob.CancellationToken;
+        var context = startedJob.Context;
         try
         {
-            if (!handlersByType.TryGetValue(job.Type, out var handler))
+            if (!handlersByType.TryGetValue(context.Type, out var handler))
             {
                 await MarkFailedAsync(
-                    job.Id,
-                    $"No job handler is registered for type '{job.Type}'.",
+                    context.JobId,
+                    $"No job handler is registered for type '{context.Type}'.",
                     "{}",
                     cancellationToken);
                 return true;
@@ -96,15 +140,13 @@ public sealed class JobRunner(
             JobHandlerResult result;
             try
             {
-                result = await handler.HandleAsync(
-                    new JobContext(job.Id, job.Type, job.PayloadJson),
-                    jobCancellationToken);
+                result = await handler.HandleAsync(context, startedJob.CancellationToken);
             }
             catch (OperationCanceledException) when (
-                cancellationRegistry.IsCancellationRequested(job.Id)
+                cancellationRegistry.IsCancellationRequested(context.JobId)
                 && !cancellationToken.IsCancellationRequested)
             {
-                await MarkCancelledAsync(job.Id, JobStatus.Running, cancellationToken);
+                await MarkCancelledAsync(context.JobId, EntityJobStatus.Running, cancellationToken);
                 return true;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -118,45 +160,43 @@ public sealed class JobRunner(
                     new ErrorLogContext(
                         ErrorLogSources.Backend,
                         ErrorLogAreas.JobRunner,
-                        JobId: job.Id,
-                        ContextJson: JsonSerializer.Serialize(new { job.Id, job.Type })),
+                        JobId: context.JobId,
+                        ContextJson: JsonSerializer.Serialize(new { context.JobId, context.Type })),
                     cancellationToken);
                 result = JobHandlerResult.Failed(exception.Message);
             }
 
             if (!result.ShouldFinalise)
             {
-                if (cancellationRegistry.IsCancellationRequested(job.Id))
+                if (cancellationRegistry.IsCancellationRequested(context.JobId))
                 {
-                    await MarkCancelledAsync(job.Id, JobStatus.Running, cancellationToken);
+                    await MarkCancelledAsync(context.JobId, EntityJobStatus.Running, cancellationToken);
                     return true;
                 }
 
-                await lifecycleGate.ExecuteAsync(
-                    token => store.RequeueAsync(
-                        job.Id,
-                        NormaliseJson(result.ResultJson),
-                        result.RunAfter ?? timeProvider.GetUtcNow(),
-                        timeProvider.GetUtcNow(),
-                        token),
+                await RequeueAsync(
+                    context.JobId,
+                    NormaliseJson(result.ResultJson),
+                    result.RunAfter ?? timeProvider.GetUtcNow(),
                     cancellationToken);
                 return true;
             }
 
             if (result.Success)
             {
-                await lifecycleGate.ExecuteAsync(
-                    token => store.CompleteAsync(
-                        job.Id,
-                        NormaliseJson(result.ResultJson),
-                        timeProvider.GetUtcNow(),
-                        token),
+                await FinaliseAsync(
+                    context.JobId,
+                    EntityJobStatus.Completed,
+                    NormaliseJson(result.ResultJson),
+                    null,
+                    EntityJobLogLevel.Information,
+                    "Job completed.",
                     cancellationToken);
                 return true;
             }
 
             await MarkFailedAsync(
-                job.Id,
+                context.JobId,
                 result.ErrorMessage ?? "Job failed.",
                 result.ResultJson,
                 cancellationToken);
@@ -164,7 +204,7 @@ public sealed class JobRunner(
         }
         finally
         {
-            cancellationRegistry.Unregister(job.Id);
+            cancellationRegistry.Unregister(context.JobId);
         }
     }
 
@@ -172,28 +212,121 @@ public sealed class JobRunner(
         long jobId,
         string errorMessage,
         string resultJson,
-        CancellationToken cancellationToken) =>
-        lifecycleGate.ExecuteAsync(
-            token => store.FailAsync(
-                jobId,
-                errorMessage,
-                NormaliseJson(resultJson),
-                timeProvider.GetUtcNow(),
-                token),
+        CancellationToken cancellationToken) => FinaliseAsync(
+            jobId,
+            EntityJobStatus.Failed,
+            NormaliseJson(resultJson),
+            errorMessage,
+            EntityJobLogLevel.Error,
+            "Job failed.",
             cancellationToken);
 
     private Task MarkCancelledAsync(
         long jobId,
-        JobStatus expectedStatus,
+        EntityJobStatus expectedStatus,
         CancellationToken cancellationToken) =>
-        lifecycleGate.ExecuteAsync(
-            token => store.CancelAsync(
-                jobId,
-                expectedStatus,
-                JsonSerializer.Serialize(new { message = "Job cancelled." }),
-                timeProvider.GetUtcNow(),
-                token),
-            cancellationToken);
+        lifecycleGate.ExecuteAsync(async token =>
+        {
+            if (!OperationalEntityMapper.TryGetEntityId(jobId, out var id))
+            {
+                return;
+            }
+
+            using var scope = scopeFactory.Create();
+            var job = await jobRepository.GetForUpdateAsync(id, token);
+            if (job is null || job.Status != expectedStatus)
+            {
+                return;
+            }
+
+            var nowUtc = OperationalEntityMapper.ToUtcDateTime(timeProvider.GetUtcNow());
+            job.Status = EntityJobStatus.Cancelled;
+            job.ResultJson = JsonSerializer.Serialize(new { message = "Job cancelled." });
+            job.ErrorMessage = null;
+            job.CompletedAtUtc = nowUtc;
+            AddLog(job.Id, EntityJobLogLevel.Warning, "Job cancelled.", job.ResultJson, nowUtc);
+            await scope.SaveChangesAsync(token);
+        }, cancellationToken);
+
+    private Task FinaliseAsync(
+        long jobId,
+        EntityJobStatus status,
+        string resultJson,
+        string? errorMessage,
+        EntityJobLogLevel logLevel,
+        string logMessage,
+        CancellationToken cancellationToken) =>
+        lifecycleGate.ExecuteAsync(async token =>
+        {
+            if (!OperationalEntityMapper.TryGetEntityId(jobId, out var id))
+            {
+                return;
+            }
+
+            using var scope = scopeFactory.Create();
+            var job = await jobRepository.GetForUpdateAsync(id, token);
+            if (job is null || job.Status != EntityJobStatus.Running)
+            {
+                return;
+            }
+
+            var nowUtc = OperationalEntityMapper.ToUtcDateTime(timeProvider.GetUtcNow());
+            job.Status = status;
+            job.ResultJson = resultJson;
+            job.ErrorMessage = errorMessage;
+            job.CompletedAtUtc = nowUtc;
+            AddLog(
+                job.Id,
+                logLevel,
+                logMessage,
+                errorMessage is null
+                    ? resultJson
+                    : JsonSerializer.Serialize(new { errorMessage }),
+                nowUtc);
+            await scope.SaveChangesAsync(token);
+        }, cancellationToken);
+
+    private Task RequeueAsync(
+        long jobId,
+        string resultJson,
+        DateTimeOffset runAfter,
+        CancellationToken cancellationToken) =>
+        lifecycleGate.ExecuteAsync(async token =>
+        {
+            if (!OperationalEntityMapper.TryGetEntityId(jobId, out var id))
+            {
+                return;
+            }
+
+            using var scope = scopeFactory.Create();
+            var job = await jobRepository.GetForUpdateAsync(id, token);
+            if (job is null || job.Status != EntityJobStatus.Running)
+            {
+                return;
+            }
+
+            var nowUtc = OperationalEntityMapper.ToUtcDateTime(timeProvider.GetUtcNow());
+            job.Status = EntityJobStatus.Pending;
+            job.ResultJson = resultJson;
+            job.RunAfterUtc = OperationalEntityMapper.ToUtcDateTime(runAfter);
+            job.ErrorMessage = null;
+            AddLog(job.Id, EntityJobLogLevel.Information, "Job requeued.", resultJson, nowUtc);
+            await scope.SaveChangesAsync(token);
+        }, cancellationToken);
+
+    private void AddLog(
+        int jobId,
+        EntityJobLogLevel level,
+        string message,
+        string? dataJson,
+        DateTime loggedAtUtc) => jobLogRepository.Add(new EntityJobLog
+    {
+        JobId = jobId,
+        Level = level,
+        Message = message,
+        DataJson = dataJson,
+        LoggedAtUtc = loggedAtUtc
+    });
 
     private static string NormaliseJson(string? value)
     {
@@ -213,5 +346,5 @@ public sealed class JobRunner(
         }
     }
 
-    private sealed record StartedJob(Job Job, CancellationToken CancellationToken);
+    private sealed record StartedJob(JobContext Context, CancellationToken CancellationToken);
 }

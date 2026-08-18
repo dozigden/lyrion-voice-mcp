@@ -129,8 +129,8 @@ await app.Services.GetRequiredService<ISearchObservationStore>()
     .InitialiseAsync(CancellationToken.None);
 await app.Services.GetRequiredService<IMediaCatalogueStore>()
     .InitialiseAsync(CancellationToken.None);
-await app.Services.GetRequiredService<IOperationalStoreInitialiser>()
-    .InitialiseAsync(CancellationToken.None);
+await app.Services.GetRequiredService<IToolCallHistoryService>()
+    .MarkRunningInterruptedAsync(CancellationToken.None);
 
 app.Logger.LogWarning(
     "Lyrion Voice MCP is unauthenticated trusted-LAN software. Do not expose this service to untrusted networks.");

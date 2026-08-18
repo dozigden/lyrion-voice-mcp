@@ -1,10 +1,15 @@
 using System.Globalization;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
+using LyrionVoiceMcp.Ef.Abstractions.Entities;
+using LyrionVoiceMcp.Ef.Abstractions.Jobs;
 
 namespace LyrionVoiceMcp.Services;
 
 public sealed class ScheduledJobService(
-    IJobStore store,
+    IDbContextScopeFactory scopeFactory,
+    IJobRepository jobRepository,
+    IScheduledJobStateRepository stateRepository,
     IJobService jobService,
     IEnumerable<IScheduledJobDefinition> schedules,
     ICronOccurrenceCalculator cronOccurrenceCalculator,
@@ -20,16 +25,14 @@ public sealed class ScheduledJobService(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var configuration = await schedule.GetConfigurationAsync(cancellationToken);
-            var state = await store.GetScheduledJobStateAsync(
-                schedule.SchedulerStateName,
-                cancellationToken);
+            var state = await GetStateAsync(schedule.SchedulerStateName, cancellationToken);
             var scheduledPrefix = $"scheduled:{schedule.Name}:";
             var adHocPrefix = $"adhoc:{schedule.Name}:";
-            var current = await store.GetLatestActiveByCorrelationPrefixesAsync(
+            var current = await GetLatestActiveAsync(
                 scheduledPrefix,
                 adHocPrefix,
                 cancellationToken);
-            var lastStarted = await store.GetLatestStartedByCorrelationPrefixesAsync(
+            var lastStarted = await GetLatestStartedAsync(
                 scheduledPrefix,
                 adHocPrefix,
                 cancellationToken);
@@ -104,9 +107,7 @@ public sealed class ScheduledJobService(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var configuration = await schedule.GetConfigurationAsync(cancellationToken);
-            var state = await store.GetScheduledJobStateAsync(
-                schedule.SchedulerStateName,
-                cancellationToken);
+            var state = await GetStateAsync(schedule.SchedulerStateName, cancellationToken);
             if (state is null && (!configuration.Enabled || !configuration.RunOnInitialisation))
             {
                 await UpdateStateAsync(schedule.SchedulerStateName, now, cancellationToken);
@@ -135,7 +136,7 @@ public sealed class ScheduledJobService(
             var occurrences = await schedule.CreateOccurrencesAsync(dueAt.Value, cancellationToken);
             foreach (var occurrence in occurrences)
             {
-                if (await store.ExistsByCorrelationIdAsync(occurrence.CorrelationId, cancellationToken))
+                if (await JobExistsAsync(occurrence.CorrelationId, cancellationToken))
                 {
                     results.Add(new ScheduledJobEnqueueResult(
                         schedule.Name,
@@ -176,13 +177,82 @@ public sealed class ScheduledJobService(
         return results;
     }
 
-    private Task UpdateStateAsync(
+    private async Task<ScheduledJobState?> GetStateAsync(
+        string name,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateReadOnly();
+        var state = await stateRepository.GetByNameAsync(name, cancellationToken);
+        return state is null
+            ? null
+            : new ScheduledJobState(
+                state.Name,
+                new DateTimeOffset(DateTime.SpecifyKind(state.LastRunAtUtc, DateTimeKind.Utc)),
+                state.LastEvaluatedAtUtc is null
+                    ? null
+                    : new DateTimeOffset(DateTime.SpecifyKind(
+                        state.LastEvaluatedAtUtc.Value,
+                        DateTimeKind.Utc)));
+    }
+
+    private async Task<bool> JobExistsAsync(
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateReadOnly();
+        return await jobRepository.ExistsByCorrelationIdAsync(correlationId, cancellationToken);
+    }
+
+    private async Task<Job?> GetLatestActiveAsync(
+        string firstPrefix,
+        string secondPrefix,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateReadOnly();
+        var job = await jobRepository.GetLatestActiveByCorrelationPrefixesAsync(
+            firstPrefix,
+            secondPrefix,
+            cancellationToken);
+        return job is null ? null : OperationalEntityMapper.ToModel(job);
+    }
+
+    private async Task<Job?> GetLatestStartedAsync(
+        string firstPrefix,
+        string secondPrefix,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateReadOnly();
+        var job = await jobRepository.GetLatestStartedByCorrelationPrefixesAsync(
+            firstPrefix,
+            secondPrefix,
+            cancellationToken);
+        return job is null ? null : OperationalEntityMapper.ToModel(job);
+    }
+
+    private async Task UpdateStateAsync(
         string name,
         DateTimeOffset now,
-        CancellationToken cancellationToken) =>
-        store.UpsertScheduledJobStateAsync(
-            new ScheduledJobState(name, now, now),
-            cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.Create();
+        var state = await stateRepository.GetByNameAsync(name, cancellationToken);
+        if (state is null)
+        {
+            stateRepository.Add(new EntityScheduledJobState
+            {
+                Name = name,
+                LastRunAtUtc = OperationalEntityMapper.ToUtcDateTime(now),
+                LastEvaluatedAtUtc = OperationalEntityMapper.ToUtcDateTime(now)
+            });
+        }
+        else
+        {
+            state.LastRunAtUtc = OperationalEntityMapper.ToUtcDateTime(now);
+            state.LastEvaluatedAtUtc = OperationalEntityMapper.ToUtcDateTime(now);
+        }
+
+        await scope.SaveChangesAsync(cancellationToken);
+    }
 
     private static ScheduledJobRun? ToRun(Job? job) => job is null
         ? null

@@ -109,6 +109,8 @@ public interface IToolCallHistoryService
         long? errorLogId,
         CancellationToken cancellationToken);
 
+    Task MarkRunningInterruptedAsync(CancellationToken cancellationToken);
+
     Task<ToolCallPage> BrowseAsync(ToolCallQuery query, CancellationToken cancellationToken);
 
     Task<ToolCall?> GetAsync(string id, CancellationToken cancellationToken);

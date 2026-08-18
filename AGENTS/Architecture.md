@@ -11,7 +11,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
 - `LyrionVoiceMcp.Ef.Abstractions`: EF-facing scope, entity, and repository contracts, kept separate from transport-neutral application abstractions.
 - `LyrionVoiceMcp.Ef`: the EF Core application database, context/scoping infrastructure, repository base, entity configurations, and generated migrations.
-- `LyrionVoiceMcp.Persistence`: transitional handwritten SQLite-backed catalogue and operational jobs/errors/tool-call stores, plus the read-only legacy search-observation importer. Each handwritten store remains authoritative until its dedicated EF cutover.
+- `LyrionVoiceMcp.Persistence`: the authoritative transitional handwritten SQLite catalogue store, the read-only legacy search-observation importer, and dormant legacy operational-store code retained until cleanup. Runtime operational persistence no longer uses the handwritten store.
 - `LyrionVoiceMcp.Search`: the production catalogue-backed resolver, production-neutral resolver and diagnostic contracts, bounded index construction, scoring, diagnostics and safe artifact publication. It depends only on storage-neutral abstractions.
 - `LyrionVoiceMcp.Evaluation`: the executable private-corpus validator, LMS baseline, and resolver-neutral benchmark runner. It consumes production-neutral Search contracts and is never a deployed runtime dependency.
 - `LyrionVoiceMcp.Web`: Vue administration and review UI.
@@ -37,11 +37,11 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - LMS connectivity is reported separately by `/api/lms`; an unavailable LMS must not make `/api/health` fail.
 - Operational search observations use the EF application database through `ISearchObservationStore`. Services owns the unit of work and maps transport-neutral observation models to EF entities; repository queries remain behind `ISearchObservationRepository`. Do not expose EF types through the application or HTTP contracts, or reuse the application database as the catalogue or search index.
 - The canonical catalogue uses its own SQLite database through `IMediaCatalogueStore`. `ICatalogueImportWriter` is the bounded ingestion boundary, and `ICatalogueSearchDocumentSource` is the bounded production-index read boundary.
-- Durable jobs, schedules, application errors, and MCP tool-call history share the operational SQLite database through separate abstraction interfaces. Services owns job execution and scheduling policy; Api owns their REST/UI and MCP filter integration. Do not move background workflows back into bespoke in-memory queues.
+- Durable jobs, schedules, application errors, and MCP tool-call history use focused EF repositories in the application database. Services owns scopes, lifecycle coordination, job execution, scheduling policy, retention, and entity-to-domain mapping; Api owns their REST/UI and MCP filter integration. Do not move background workflows back into bespoke in-memory queues.
 - Jobs are the standard boundary for inspectable or scheduled background work. Handlers are typed, cancellation-aware application services; the runner alone owns lifecycle transitions and unexpected-exception logging.
 - Production search-index builds are typed durable jobs. Services owns enqueue policy and catalogue validation through `ISearchIndexService`; Search implements bounded construction, validation, atomic publication, opening, and diagnostics. MCP and diagnostic HTTP search read only the published compatible generation.
 - MCP media and browse references use a bounded singleton in-memory handle registry in Services. The registry deliberately remains process-local because the runtime is one application server and handle invalidation on restart is part of the contract; do not move these ephemeral hand-off values into operational persistence.
-- The EF application database provides the migration and unit-of-work foundation and is authoritative for search observations. The legacy observation database is a read-only startup import source until cleanup; catalogue and operational data still use their transitional stores.
+- The EF application database is authoritative for search observations and operational data. The legacy observation database remains a read-only startup import source, the legacy operations database is deliberately unused and untouched, and catalogue data still uses its transitional store.
 
 ## Planned boundaries
 

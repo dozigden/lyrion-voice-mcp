@@ -1,7 +1,13 @@
 using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
-using LyrionVoiceMcp.Persistence;
+using LyrionVoiceMcp.Ef;
+using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
+using LyrionVoiceMcp.Ef.Abstractions.Entities;
+using LyrionVoiceMcp.Ef.Abstractions.ErrorLogs;
+using LyrionVoiceMcp.Ef.Abstractions.Jobs;
 using LyrionVoiceMcp.Services;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LyrionVoiceMcp.Services.Tests;
@@ -14,20 +20,27 @@ public sealed class JobArchitectureTests : IDisposable
         $"lyrion-job-architecture-{Guid.NewGuid():N}");
     private readonly FixedTimeProvider timeProvider = new(Now);
     private readonly OperationalPolicy policy = new(90, 90, 30, 4096, TimeZoneInfo.Utc);
-    private readonly SqliteOperationalStore store;
+    private readonly ServiceProvider serviceProvider;
+    private readonly IDbContextScopeFactory scopeFactory;
+    private readonly IJobRepository jobRepository;
+    private readonly IJobLogRepository jobLogRepository;
+    private readonly IScheduledJobStateRepository stateRepository;
+    private readonly IErrorLogRepository errorLogRepository;
 
     public JobArchitectureTests()
     {
-        store = new SqliteOperationalStore(
-            new OperationalSettings(
-                Path.Combine(directory, "operations.db"),
-                90,
-                90,
-                30,
-                4096,
-                "UTC"),
-            timeProvider);
-        store.InitialiseAsync(CancellationToken.None).GetAwaiter().GetResult();
+        var services = new ServiceCollection();
+        services.AddLyrionVoiceMcpEf(new ApplicationDatabaseSettings(
+            Path.Combine(directory, "application.db")));
+        serviceProvider = services.BuildServiceProvider();
+        serviceProvider.InitialiseLyrionVoiceMcpEfAsync(CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        scopeFactory = serviceProvider.GetRequiredService<IDbContextScopeFactory>();
+        jobRepository = serviceProvider.GetRequiredService<IJobRepository>();
+        jobLogRepository = serviceProvider.GetRequiredService<IJobLogRepository>();
+        stateRepository = serviceProvider.GetRequiredService<IScheduledJobStateRepository>();
+        errorLogRepository = serviceProvider.GetRequiredService<IErrorLogRepository>();
     }
 
     [Fact]
@@ -58,7 +71,7 @@ public sealed class JobArchitectureTests : IDisposable
         await run;
 
         Assert.IsType<JobCancellationAccepted>(cancellation);
-        var details = await store.GetAsync(
+        var details = await service.GetAsync(
             enqueued.Job.Id,
             TestContext.Current.CancellationToken);
         Assert.Equal(JobStatus.Cancelled, details?.Job.Status);
@@ -82,10 +95,10 @@ public sealed class JobArchitectureTests : IDisposable
 
         Assert.True(await runner.RunNextDueAsync(TestContext.Current.CancellationToken));
 
-        var details = await store.GetAsync(
+        var details = await service.GetAsync(
             enqueued.Job.Id,
             TestContext.Current.CancellationToken);
-        var errors = await store.BrowseAsync(
+        var errors = await CreateErrorLogService().BrowseAsync(
             new ErrorLogQuery(Area: ErrorLogAreas.JobRunner),
             TestContext.Current.CancellationToken);
         var error = Assert.Single(errors.Items);
@@ -97,11 +110,11 @@ public sealed class JobArchitectureTests : IDisposable
     [Fact]
     public async Task StartupRecoveryShouldFailAndLogEveryAbandonedRunningJob()
     {
-        var job = await store.CreateAsync(
+        var service = CreateJobService(new JobCancellationRegistry(), new JobLifecycleGate());
+        var job = Assert.IsType<JobEnqueued>(await service.EnqueueAsync(
             new CreateJob("test.interrupted", "{}", Now, null),
-            Now,
-            TestContext.Current.CancellationToken);
-        await store.TryStartNextDueAsync(Now, TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken));
+        await MarkRunningAsync(job.Job.Id);
         var runner = CreateRunner(
             new DelegatingHandler("test.interrupted", (_, _) =>
                 Task.FromResult(JobHandlerResult.Succeeded())),
@@ -110,7 +123,7 @@ public sealed class JobArchitectureTests : IDisposable
 
         await runner.MarkRunningJobsFailedAsync(TestContext.Current.CancellationToken);
 
-        var details = await store.GetAsync(job.Id, TestContext.Current.CancellationToken);
+        var details = await service.GetAsync(job.Job.Id, TestContext.Current.CancellationToken);
         Assert.Equal(JobStatus.Failed, details?.Job.Status);
         Assert.Equal("Job was interrupted by server startup.", details?.Job.ErrorMessage);
         Assert.Contains(details!.Logs, log => log.Message == "Job interrupted by server startup.");
@@ -124,20 +137,18 @@ public sealed class JobArchitectureTests : IDisposable
             new CreateJob("test.missing", "{}", Now, null),
             TestContext.Current.CancellationToken));
         var runner = new JobRunner(
-            store,
+            scopeFactory,
+            jobRepository,
+            jobLogRepository,
             [],
             new JobCancellationRegistry(),
             new JobLifecycleGate(),
-            new ErrorLogService(
-                store,
-                policy,
-                timeProvider,
-                NullLogger<ErrorLogService>.Instance),
+            CreateErrorLogService(),
             timeProvider);
 
         Assert.True(await runner.RunNextDueAsync(TestContext.Current.CancellationToken));
 
-        var details = await store.GetAsync(
+        var details = await service.GetAsync(
             enqueued.Job.Id,
             TestContext.Current.CancellationToken);
         Assert.Equal(JobStatus.Failed, details?.Job.Status);
@@ -151,13 +162,15 @@ public sealed class JobArchitectureTests : IDisposable
         var service = CreateJobService(new JobCancellationRegistry(), lifecycleGate);
         var schedule = new TestSchedule();
         var scheduledJobs = new ScheduledJobService(
-            store,
+            scopeFactory,
+            jobRepository,
+            stateRepository,
             service,
             [schedule],
             new CronOccurrenceCalculator(),
             policy,
             timeProvider);
-        await store.UpsertScheduledJobStateAsync(
+        await SaveScheduledStateAsync(
             new ScheduledJobState(schedule.SchedulerStateName, Now.AddDays(-1), Now.AddDays(-1)),
             TestContext.Current.CancellationToken);
 
@@ -165,7 +178,7 @@ public sealed class JobArchitectureTests : IDisposable
             TestContext.Current.CancellationToken);
         var second = await scheduledJobs.EnqueueDueJobsAsync(
             TestContext.Current.CancellationToken);
-        var jobs = await store.BrowseAsync(
+        var jobs = await service.BrowseAsync(
             new JobQuery(Type: "test.scheduled"),
             TestContext.Current.CancellationToken);
 
@@ -179,11 +192,7 @@ public sealed class JobArchitectureTests : IDisposable
     [Fact]
     public async Task ErrorLogShouldRetainBoundedDiagnosticTextAndStructuredContext()
     {
-        var service = new ErrorLogService(
-            store,
-            policy,
-            timeProvider,
-            NullLogger<ErrorLogService>.Instance);
+        var service = CreateErrorLogService();
 
         var errorId = await service.LogExceptionAsync(
             new InvalidOperationException("Request failed token=message-secret"),
@@ -193,7 +202,7 @@ public sealed class JobArchitectureTests : IDisposable
                 ContextJson: """{"token":"context-secret","nested":{"authorization":"Bearer nested-secret"},"safe":"retained"}"""),
             TestContext.Current.CancellationToken);
 
-        var error = await store.GetErrorLogAsync(
+        var error = await service.GetAsync(
             errorId!.Value,
             TestContext.Current.CancellationToken);
         Assert.Contains("message-secret", error!.Message, StringComparison.Ordinal);
@@ -212,7 +221,8 @@ public sealed class JobArchitectureTests : IDisposable
         var service = new SearchIndexService(
             builder,
             catalogue,
-            store,
+            scopeFactory,
+            jobRepository,
             CreateJobService(new JobCancellationRegistry(), lifecycleGate),
             lifecycleGate,
             timeProvider);
@@ -227,11 +237,12 @@ public sealed class JobArchitectureTests : IDisposable
         // Assert
         Assert.Equal(builder.Descriptor.Name, status.Resolver);
         Assert.NotNull(jobId);
-        var jobs = await store.BrowseAsync(
+        var jobService = CreateJobService(new JobCancellationRegistry(), lifecycleGate);
+        var jobs = await jobService.BrowseAsync(
             new JobQuery(Type: JobTypes.SearchIndexRebuild),
             TestContext.Current.CancellationToken);
         Assert.Equal(1, jobs.Total);
-        var job = (await store.GetAsync(jobId.Value, TestContext.Current.CancellationToken))!.Job;
+        var job = (await jobService.GetAsync(jobId.Value, TestContext.Current.CancellationToken))!.Job;
         var payload = JsonSerializer.Deserialize<SearchIndexRebuildPayload>(job.PayloadJson);
         Assert.NotNull(payload);
         Assert.Equal("job-42", payload.CatalogueRefreshId);
@@ -265,6 +276,8 @@ public sealed class JobArchitectureTests : IDisposable
 
     public void Dispose()
     {
+        serviceProvider.Dispose();
+        SqliteConnection.ClearAllPools();
         if (Directory.Exists(directory))
         {
             Directory.Delete(directory, recursive: true);
@@ -274,23 +287,62 @@ public sealed class JobArchitectureTests : IDisposable
     private JobService CreateJobService(
         IJobCancellationRegistry cancellationRegistry,
         IJobLifecycleGate lifecycleGate) =>
-        new(store, cancellationRegistry, lifecycleGate, policy, timeProvider);
+        new(
+            scopeFactory,
+            jobRepository,
+            jobLogRepository,
+            cancellationRegistry,
+            lifecycleGate,
+            policy,
+            timeProvider);
 
     private JobRunner CreateRunner(
         IJobHandler handler,
         IJobCancellationRegistry cancellationRegistry,
         IJobLifecycleGate lifecycleGate) =>
         new(
-            store,
+            scopeFactory,
+            jobRepository,
+            jobLogRepository,
             [handler],
             cancellationRegistry,
             lifecycleGate,
-            new ErrorLogService(
-                store,
-                policy,
-                timeProvider,
-                NullLogger<ErrorLogService>.Instance),
+            CreateErrorLogService(),
             timeProvider);
+
+    private ErrorLogService CreateErrorLogService() => new(
+        scopeFactory,
+        errorLogRepository,
+        policy,
+        timeProvider,
+        NullLogger<ErrorLogService>.Instance);
+
+    private async Task MarkRunningAsync(long jobId)
+    {
+        Assert.True(jobId <= int.MaxValue);
+        using var scope = scopeFactory.Create();
+        var job = await jobRepository.GetForUpdateAsync(
+            (int)jobId,
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(job);
+        job.Status = EntityJobStatus.Running;
+        job.StartedAtUtc = Now.UtcDateTime;
+        await scope.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    private async Task SaveScheduledStateAsync(
+        ScheduledJobState state,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.Create();
+        stateRepository.Add(new EntityScheduledJobState
+        {
+            Name = state.Name,
+            LastRunAtUtc = state.LastRunAt.UtcDateTime,
+            LastEvaluatedAtUtc = state.LastEvaluatedAt?.UtcDateTime
+        });
+        await scope.SaveChangesAsync(cancellationToken);
+    }
 
     private sealed class DelegatingHandler(
         string type,

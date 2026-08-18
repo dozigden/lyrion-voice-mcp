@@ -1,10 +1,15 @@
 using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
+using LyrionVoiceMcp.Ef.Abstractions.Entities;
+using LyrionVoiceMcp.Ef.Abstractions.Jobs;
 
 namespace LyrionVoiceMcp.Services;
 
 public sealed class JobService(
-    IJobStore store,
+    IDbContextScopeFactory scopeFactory,
+    IJobRepository jobRepository,
+    IJobLogRepository jobLogRepository,
     IJobCancellationRegistry cancellationRegistry,
     IJobLifecycleGate lifecycleGate,
     OperationalPolicy policy,
@@ -17,11 +22,38 @@ public sealed class JobService(
 
     public int RetentionDays => policy.JobRetentionDays;
 
-    public Task<JobPage> BrowseAsync(JobQuery query, CancellationToken cancellationToken) =>
-        store.BrowseAsync(query, cancellationToken);
+    public async Task<JobPage> BrowseAsync(JobQuery query, CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateReadOnly();
+        var page = await jobRepository.BrowseAsync(
+            new EntityJobQuery(
+                query.Offset,
+                query.Limit,
+                query.Type,
+                query.Status is null ? null : OperationalEntityMapper.ToEntity(query.Status.Value)),
+            cancellationToken);
+        return new JobPage(
+            page.Items.Select(OperationalEntityMapper.ToModel).ToArray(),
+            page.Total,
+            page.Offset,
+            page.Limit);
+    }
 
-    public Task<JobDetails?> GetAsync(long id, CancellationToken cancellationToken) =>
-        store.GetAsync(id, cancellationToken);
+    public async Task<JobDetails?> GetAsync(long id, CancellationToken cancellationToken)
+    {
+        if (!OperationalEntityMapper.TryGetEntityId(id, out var entityId))
+        {
+            return null;
+        }
+
+        using var scope = scopeFactory.CreateReadOnly();
+        var entity = await jobRepository.GetWithLogsAsync(entityId, cancellationToken);
+        return entity is null
+            ? null
+            : new JobDetails(
+                OperationalEntityMapper.ToModel(entity),
+                entity.Logs.Select(OperationalEntityMapper.ToModel).ToArray());
+    }
 
     public async Task<JobEnqueueOutcome> EnqueueAsync(
         CreateJob request,
@@ -39,20 +71,41 @@ public sealed class JobService(
             PayloadJson = NormaliseJson(request.PayloadJson),
             CorrelationId = NormaliseOptional(request.CorrelationId)
         };
-        if (normalised.CorrelationId is { } correlationId
-            && await store.ExistsByCorrelationIdAsync(correlationId, cancellationToken))
+        if (normalised.CorrelationId is { } correlationId)
         {
-            return new JobEnqueueRejected("A job with that correlation already exists.");
+            using var readScope = scopeFactory.CreateReadOnly();
+            if (await jobRepository.ExistsByCorrelationIdAsync(correlationId, cancellationToken))
+            {
+                return new JobEnqueueRejected("A job with that correlation already exists.");
+            }
         }
+
+        var nowUtc = OperationalEntityMapper.ToUtcDateTime(timeProvider.GetUtcNow());
+        using var scope = scopeFactory.Create();
+        var entity = new EntityJob
+        {
+            Type = normalised.Type,
+            Status = EntityJobStatus.Pending,
+            RunAfterUtc = OperationalEntityMapper.ToUtcDateTime(normalised.RunAfter),
+            PayloadJson = normalised.PayloadJson,
+            ResultJson = "{}",
+            CorrelationId = normalised.CorrelationId
+        };
+        jobRepository.Add(entity);
+        jobLogRepository.Add(new EntityJobLog
+        {
+            Job = entity,
+            Level = EntityJobLogLevel.Information,
+            Message = "Job enqueued.",
+            LoggedAtUtc = nowUtc
+        });
 
         try
         {
-            return new JobEnqueued(await store.CreateAsync(
-                normalised,
-                timeProvider.GetUtcNow(),
-                cancellationToken));
+            await scope.SaveChangesAsync(cancellationToken);
+            return new JobEnqueued(OperationalEntityMapper.ToModel(entity));
         }
-        catch (JobConflictException)
+        catch (PersistenceConflictException)
         {
             return new JobEnqueueRejected("A conflicting job is already queued or running.");
         }
@@ -63,44 +116,47 @@ public sealed class JobService(
         CancellationToken cancellationToken) =>
         lifecycleGate.ExecuteAsync<JobCancellationOutcome>(async gateCancellationToken =>
         {
-            var details = await store.GetAsync(id, gateCancellationToken);
-            if (details is null)
+            if (!OperationalEntityMapper.TryGetEntityId(id, out var entityId))
             {
                 return new JobCancellationRejected("Job not found.");
             }
 
-            if (details.Job.Status == JobStatus.Pending)
+            using var scope = scopeFactory.Create();
+            var job = await jobRepository.GetForUpdateAsync(entityId, gateCancellationToken);
+            if (job is null)
             {
-                var now = timeProvider.GetUtcNow();
-                var cancelled = await store.CancelAsync(
-                    id,
-                    JobStatus.Pending,
-                    JsonSerializer.Serialize(new { message = "Job cancelled before it started." }),
-                    now,
-                    gateCancellationToken);
-                if (!cancelled)
-                {
-                    return new JobCancellationRejected("Job is no longer cancellable.");
-                }
-
-                return new JobCancellationAccepted(
-                    (await store.GetAsync(id, gateCancellationToken))!.Job);
+                return new JobCancellationRejected("Job not found.");
             }
 
-            if (details.Job.Status != JobStatus.Running
-                || !cancellationRegistry.RequestCancellation(id))
+            var nowUtc = OperationalEntityMapper.ToUtcDateTime(timeProvider.GetUtcNow());
+            if (job.Status == EntityJobStatus.Pending)
+            {
+                job.Status = EntityJobStatus.Cancelled;
+                job.ResultJson = JsonSerializer.Serialize(new
+                {
+                    message = "Job cancelled before it started."
+                });
+                job.ErrorMessage = null;
+                job.CompletedAtUtc = nowUtc;
+                AddLog(job.Id, EntityJobLogLevel.Warning, "Job cancelled.", job.ResultJson, nowUtc);
+                await scope.SaveChangesAsync(gateCancellationToken);
+                return new JobCancellationAccepted(OperationalEntityMapper.ToModel(job));
+            }
+
+            if (job.Status != EntityJobStatus.Running
+                || !cancellationRegistry.RequestCancellation(job.Id))
             {
                 return new JobCancellationRejected("Job is not cancellable.");
             }
 
-            await store.AppendLogAsync(
-                id,
-                JobLogLevel.Warning,
+            AddLog(
+                job.Id,
+                EntityJobLogLevel.Warning,
                 "Job cancellation requested.",
                 null,
-                timeProvider.GetUtcNow(),
-                gateCancellationToken);
-            return new JobCancellationAccepted(details.Job);
+                nowUtc);
+            await scope.SaveChangesAsync(gateCancellationToken);
+            return new JobCancellationAccepted(OperationalEntityMapper.ToModel(job));
         }, cancellationToken);
 
     public static string? ValidateQuery(JobQuery query)
@@ -117,6 +173,20 @@ public sealed class JobService(
 
         return null;
     }
+
+    private void AddLog(
+        int jobId,
+        EntityJobLogLevel level,
+        string message,
+        string? dataJson,
+        DateTime loggedAtUtc) => jobLogRepository.Add(new EntityJobLog
+    {
+        JobId = jobId,
+        Level = level,
+        Message = message,
+        DataJson = dataJson,
+        LoggedAtUtc = loggedAtUtc
+    });
 
     private static string? Validate(CreateJob request)
     {

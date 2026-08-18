@@ -1,6 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
+using LyrionVoiceMcp.Ef.Abstractions.Jobs;
+using System.Data;
 
 namespace LyrionVoiceMcp.Services;
 
@@ -45,7 +48,8 @@ public sealed class ToolCallHistoryPurgeJobHandler(
 }
 
 public sealed class JobHistoryPurgeJobHandler(
-    IJobStore store,
+    IDbContextScopeFactory scopeFactory,
+    IJobRepository repository,
     OperationalPolicy policy,
     TimeProvider timeProvider) : JobHandlerBase<RetentionPayload>
 {
@@ -60,13 +64,20 @@ public sealed class JobHistoryPurgeJobHandler(
         var retentionDays = payload.RetentionDays ?? policy.JobRetentionDays;
         var cutoff = timeProvider.GetUtcNow().AddDays(-retentionDays);
         var deleted = 0;
+        if (!OperationalEntityMapper.TryGetEntityId(context.JobId, out var currentJobId))
+        {
+            return JobHandlerResult.Failed("The current job identity is invalid.");
+        }
+
         while (true)
         {
-            var count = await store.DeleteTerminalBatchBeforeAsync(
-                cutoff,
-                context.JobId,
+            using var scope = scopeFactory.CreateWithTransaction(IsolationLevel.Serializable);
+            var count = await repository.DeleteTerminalBatchBeforeAsync(
+                OperationalEntityMapper.ToUtcDateTime(cutoff),
+                currentJobId,
                 BatchSize,
                 cancellationToken);
+            await scope.SaveChangesAsync(cancellationToken);
             deleted += count;
             if (count < BatchSize)
             {

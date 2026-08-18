@@ -4,6 +4,9 @@ using LyrionVoiceMcp.Ef.Context;
 using LyrionVoiceMcp.Ef.Scope;
 using LyrionVoiceMcp.Ef.Repositories;
 using LyrionVoiceMcp.Ef.Abstractions.SearchObservations;
+using LyrionVoiceMcp.Ef.Abstractions.ErrorLogs;
+using LyrionVoiceMcp.Ef.Abstractions.Jobs;
+using LyrionVoiceMcp.Ef.Abstractions.ToolCalls;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -20,6 +23,11 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IDbContextScopeFactory, DbContextScopeFactory>();
         services.AddTransient<IAmbientDbContextLocator, AmbientDbContextLocator>();
         services.AddTransient<ISearchObservationRepository, SearchObservationRepository>();
+        services.AddTransient<IJobRepository, JobRepository>();
+        services.AddTransient<IJobLogRepository, JobLogRepository>();
+        services.AddTransient<IScheduledJobStateRepository, ScheduledJobStateRepository>();
+        services.AddTransient<IErrorLogRepository, ErrorLogRepository>();
+        services.AddTransient<IToolCallRepository, ToolCallRepository>();
         return services;
     }
 

@@ -1,10 +1,15 @@
+using System.Data;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
+using LyrionVoiceMcp.Ef.Abstractions.Entities;
+using LyrionVoiceMcp.Ef.Abstractions.ErrorLogs;
 using Microsoft.Extensions.Logging;
 
 namespace LyrionVoiceMcp.Services;
 
 public sealed class ErrorLogService(
-    IErrorLogStore store,
+    IDbContextScopeFactory scopeFactory,
+    IErrorLogRepository repository,
     OperationalPolicy policy,
     TimeProvider timeProvider,
     ILogger<ErrorLogService> logger) : IErrorLogService
@@ -22,13 +27,36 @@ public sealed class ErrorLogService(
 
     public int RetentionDays => policy.ErrorRetentionDays;
 
-    public Task<ErrorLogPage> BrowseAsync(
+    public async Task<ErrorLogPage> BrowseAsync(
         ErrorLogQuery query,
-        CancellationToken cancellationToken) =>
-        store.BrowseAsync(query, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateReadOnly();
+        var page = await repository.BrowseAsync(
+            new EntityErrorLogQuery(
+                query.Offset,
+                query.Limit,
+                query.Source,
+                query.Area),
+            cancellationToken);
+        return new ErrorLogPage(
+            page.Items.Select(OperationalEntityMapper.ToModel).ToArray(),
+            page.Total,
+            page.Offset,
+            page.Limit);
+    }
 
-    public Task<ErrorLog?> GetAsync(long id, CancellationToken cancellationToken) =>
-        store.GetErrorLogAsync(id, cancellationToken);
+    public async Task<ErrorLog?> GetAsync(long id, CancellationToken cancellationToken)
+    {
+        if (!OperationalEntityMapper.TryGetEntityId(id, out var entityId))
+        {
+            return null;
+        }
+
+        using var scope = scopeFactory.CreateReadOnly();
+        var entity = await repository.GetAsync(entityId, cancellationToken);
+        return entity is null ? null : OperationalEntityMapper.ToModel(entity);
+    }
 
     public async Task<long?> LogExceptionAsync(
         Exception exception,
@@ -40,25 +68,40 @@ public sealed class ErrorLogService(
 
         try
         {
+            using var suppression = scopeFactory.SuppressAmbientContext();
+            using var scope = scopeFactory.Create(DbContextScopeOption.ForceCreateNew);
             if (context.ReportId is { } reportId
-                && await store.ReportExistsAsync(reportId, cancellationToken))
+                && await repository.ReportExistsAsync(reportId, cancellationToken))
             {
                 return null;
             }
 
-            return await store.AddAsync(new ErrorLogEntry(
-                context.ReportId,
-                timeProvider.GetUtcNow(),
-                TruncateRequired(context.Source.Trim(), SourceMaximumLength),
-                TruncateRequired(context.Area.Trim(), AreaMaximumLength),
-                TruncateRequired(exception.GetType().FullName ?? exception.GetType().Name, ExceptionTypeMaximumLength),
-                TruncateRequired(exception.Message, MessageMaximumLength),
-                Truncate(exception.ToString(), StackTraceMaximumLength),
-                Truncate(context.TraceIdentifier, TraceIdentifierMaximumLength),
-                Truncate(context.RequestMethod, RequestMethodMaximumLength),
-                Truncate(context.RequestPath, RequestPathMaximumLength),
-                context.JobId,
-                Truncate(context.ContextJson, ContextJsonMaximumLength)), cancellationToken);
+            var entity = new EntityErrorLog
+            {
+                ReportId = context.ReportId,
+                OccurredAtUtc = OperationalEntityMapper.ToUtcDateTime(timeProvider.GetUtcNow()),
+                Source = TruncateRequired(context.Source.Trim(), SourceMaximumLength),
+                Area = TruncateRequired(context.Area.Trim(), AreaMaximumLength),
+                ExceptionType = TruncateRequired(
+                    exception.GetType().FullName ?? exception.GetType().Name,
+                    ExceptionTypeMaximumLength),
+                Message = TruncateRequired(exception.Message, MessageMaximumLength),
+                StackTrace = Truncate(exception.ToString(), StackTraceMaximumLength),
+                TraceIdentifier = Truncate(context.TraceIdentifier, TraceIdentifierMaximumLength),
+                RequestMethod = Truncate(context.RequestMethod, RequestMethodMaximumLength),
+                RequestPath = Truncate(context.RequestPath, RequestPathMaximumLength),
+                JobId = OperationalEntityMapper.TryGetEntityId(context.JobId ?? 0, out var jobId)
+                    ? jobId
+                    : null,
+                ContextJson = Truncate(context.ContextJson, ContextJsonMaximumLength)
+            };
+            repository.Add(entity);
+            await scope.SaveChangesAsync(cancellationToken);
+            return entity.Id;
+        }
+        catch (PersistenceConflictException) when (context.ReportId is not null)
+        {
+            return null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -79,10 +122,12 @@ public sealed class ErrorLogService(
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var deleted = await store.DeleteOlderThanAsync(
-                cutoff,
+            using var scope = scopeFactory.CreateWithTransaction(IsolationLevel.Serializable);
+            var deleted = await repository.DeleteOlderThanBatchAsync(
+                OperationalEntityMapper.ToUtcDateTime(cutoff),
                 DeleteBatchSize,
                 cancellationToken);
+            await scope.SaveChangesAsync(cancellationToken);
             total += deleted;
             if (deleted < DeleteBatchSize)
             {
@@ -96,5 +141,4 @@ public sealed class ErrorLogService(
 
     private static string? Truncate(string? value, int maximumLength) =>
         value is null || value.Length <= maximumLength ? value : value[..maximumLength];
-
 }

@@ -1,6 +1,7 @@
 using System.Data;
 using System.Runtime.CompilerServices;
 using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace LyrionVoiceMcp.Ef.Scope;
@@ -238,6 +239,10 @@ internal class DbContextScope : IDbContextScopeBase
         {
             throw new ConcurrencyException(exception.Message, exception);
         }
+        catch (DbUpdateException exception) when (IsPersistenceConflict(exception))
+        {
+            throw new PersistenceConflictException(exception.Message, exception);
+        }
     }
 
     private async Task<int> CommitInternalAsync(CancellationToken cancellationToken)
@@ -250,7 +255,17 @@ internal class DbContextScope : IDbContextScopeBase
         {
             throw new ConcurrencyException(exception.Message, exception);
         }
+        catch (DbUpdateException exception) when (IsPersistenceConflict(exception))
+        {
+            throw new PersistenceConflictException(exception.Message, exception);
+        }
     }
+
+    private static bool IsPersistenceConflict(DbUpdateException exception) =>
+        exception.InnerException is SqliteException
+        {
+            SqliteExtendedErrorCode: 1555 or 2067
+        };
 
     private sealed class InstanceIdentifier : MarshalByRefObject
     {

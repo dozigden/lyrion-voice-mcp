@@ -7,6 +7,16 @@ namespace LyrionVoiceMcp.Ef;
 public sealed class LyrionVoiceMcpDbContext(
     DbContextOptions<LyrionVoiceMcpDbContext> options) : DbContext(options)
 {
+    public DbSet<EntityJob> Jobs => Set<EntityJob>();
+
+    public DbSet<EntityJobLog> JobLogs => Set<EntityJobLog>();
+
+    public DbSet<EntityScheduledJobState> ScheduledJobStates => Set<EntityScheduledJobState>();
+
+    public DbSet<EntityErrorLog> ErrorLogs => Set<EntityErrorLog>();
+
+    public DbSet<EntityToolCall> ToolCalls => Set<EntityToolCall>();
+
     public DbSet<EntitySearchObservation> SearchObservations =>
         Set<EntitySearchObservation>();
 

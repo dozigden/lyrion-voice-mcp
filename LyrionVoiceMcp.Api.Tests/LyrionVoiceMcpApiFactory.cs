@@ -13,6 +13,7 @@ public sealed class LyrionVoiceMcpApiFactory : WebApplicationFactory<Program>
     public string CataloguePath => Path.Combine(directory, "catalogue.db");
     public string ApplicationDatabasePath => Path.Combine(directory, "lyrion-voice-mcp.db");
     public string SearchIndexDirectoryPath => Path.Combine(directory, "search-index");
+    public string LegacyOperationsPath => Path.Combine(directory, "operations.db");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -28,7 +29,7 @@ public sealed class LyrionVoiceMcpApiFactory : WebApplicationFactory<Program>
             CataloguePath);
         builder.UseSetting(
             "LyrionVoiceMcpOperations:DatabasePath",
-            Path.Combine(directory, "operations.db"));
+            LegacyOperationsPath);
         builder.UseSetting(
             "LyrionVoiceMcpSearch:IndexDirectoryPath",
             SearchIndexDirectoryPath);
