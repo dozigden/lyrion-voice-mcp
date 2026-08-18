@@ -61,35 +61,14 @@ var searchSettings = ProductionSearchSettings.FromValues(
     builder.Configuration["LyrionVoiceMcpSearch:IndexDirectoryPath"]);
 
 builder.Services.AddSingleton(buildInfo);
-builder.Services.AddSingleton(lmsSettings);
 builder.Services.AddSingleton(new SearchObservationRetentionPolicy(
     observationSettings.RetentionDays));
 builder.Services.AddLyrionVoiceMcpEf(applicationDatabaseSettings);
 builder.Services.AddSingleton(operationalSettings.ToPolicy());
 builder.Services.AddSingleton(operationalSchedules);
-builder.Services.AddSingleton(searchSettings);
-builder.Services.AddSingleton<ProductionCatalogueSearchService>();
-builder.Services.AddSingleton<ISearchIndexBuilder>(provider =>
-    provider.GetRequiredService<ProductionCatalogueSearchService>());
-builder.Services.AddSingleton<ICatalogueSearchResolver>(provider =>
-    provider.GetRequiredService<ProductionCatalogueSearchService>());
-builder.Services.AddSingleton<IDiagnosticSearchResolver>(provider =>
-    provider.GetRequiredService<ProductionCatalogueSearchService>());
+builder.Services.AddLyrionVoiceMcpLms(lmsSettings, buildInfo.Version);
+builder.Services.AddLyrionVoiceMcpProductionSearch(searchSettings);
 builder.Services.AddSingleton<ProductionSearchDiagnosticService>();
-builder.Services.AddHttpClient<LmsJsonRpcClient>(client =>
-{
-    client.Timeout = lmsSettings.RequestTimeout;
-    client.DefaultRequestHeaders.UserAgent.ParseAdd($"LyrionVoiceMcp/{buildInfo.Version}");
-});
-builder.Services.AddTransient<ILmsConnectionProbe, LmsConnectionProbe>();
-builder.Services.AddTransient<ICatalogueSourceReader, LmsCatalogueReader>();
-builder.Services.AddTransient<ILmsBrowseClient, LmsBrowseClient>();
-builder.Services.AddTransient<ILmsPlaybackClient, LmsPlaybackClient>();
-builder.Services.AddTransient<ILmsPlayerControlClient, LmsPlayerControlClient>();
-builder.Services.AddTransient<ILmsPlayerClient, LmsPlayerClient>();
-builder.Services.AddTransient<ILmsQueueClient, LmsQueueClient>();
-builder.Services.AddTransient<ILmsSearchClient, LmsSearchClient>();
-builder.Services.AddTransient<ILmsPlaylistSearchClient, LmsSearchClient>();
 builder.Services.AddLyrionVoiceMcpServices();
 builder.Services
     .AddMcpServer(options =>

@@ -23,6 +23,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Ef` depends only on `LyrionVoiceMcp.Ef.Abstractions`. Application services may depend on `LyrionVoiceMcp.Ef.Abstractions` as entities are migrated, but must not reference the EF implementation or a concrete DbContext.
 - Search depends only on Abstractions. Evaluation depends on Abstractions, Lms, and Search. Api composes Contracts, Abstractions, Services, Lms, EF, and Search; it must not reference the executable Evaluation project.
 - Api alone owns ASP.NET, MCP SDK transport wiring, and the deployed production-search diagnostic service. Evaluation remains transport-neutral; do not add HTTP or MCP dependencies to it or move deployed runtime services into it.
+- Implementation projects own cohesive service-registration extensions for their runtime adapters. Api binds environment configuration and calls those extensions from the composition root; keep ASP.NET- and transport-specific registrations in Api.
 - Endpoint and MCP handlers stay thin and delegate behaviour to Services.
 - Services must not depend on ASP.NET, MCP SDK types, Vue, or a concrete future search engine.
 - MCP tools must not call raw LMS JSON-RPC directly.

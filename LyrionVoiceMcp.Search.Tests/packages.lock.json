@@ -99,6 +99,11 @@
           "Microsoft.Extensions.Primitives": "8.0.0"
         }
       },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "/a1aJz4m7ylhEDf25ugQChLQoN5XwoGjWw/BoR/ZWWKsO1v4DdJElS1uyngahz4B/eOzjFk1KNTkarRLE5wsIg=="
+      },
       "Microsoft.Extensions.Primitives": {
         "type": "Transitive",
         "resolved": "8.0.0",
@@ -254,7 +259,8 @@
         "dependencies": {
           "Lucene.Net.Analysis.Phonetic": "[4.8.0-beta00018, )",
           "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "Microsoft.Data.Sqlite": "[10.0.11, )"
+          "Microsoft.Data.Sqlite": "[10.0.11, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )"
         }
       }
     }

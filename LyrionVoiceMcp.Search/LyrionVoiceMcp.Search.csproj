@@ -8,6 +8,7 @@
   <ItemGroup>
     <PackageReference Include="Lucene.Net.Analysis.Phonetic" Version="4.8.0-beta00018" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LyrionVoiceMcp.Abstractions\LyrionVoiceMcp.Abstractions.csproj" />
