@@ -4,30 +4,35 @@ using System.Text.Json.Serialization;
 
 namespace LyrionVoiceMcp.Contracts;
 
-[JsonConverter(typeof(JsonStringEnumConverter<SearchEntityKind>))]
-public enum SearchEntityKind
-{
-    Artist,
-    Album,
-    Track,
-    Playlist
-}
-
 public sealed record SearchRequest(string Query);
 
-public sealed record SearchCandidate(
-    string Reference,
-    SearchEntityKind Kind,
+public sealed record SearchArtist(string Name, string BrowseRef);
+
+public sealed record SearchAlbum(
     string Title,
     string? Artist,
-    string? Album)
-{
-    [Description("For tracks, a numeric 0 to 5 star rating such as 4.5. Omitted for other result kinds.")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public decimal? Rating { get; init; }
-}
+    string BrowseRef,
+    string PlayRef);
 
-public sealed record SearchResponse(IReadOnlyList<SearchCandidate> Results);
+public sealed record SearchTrack(
+    string Title,
+    string? Artist,
+    string? Album,
+    [property: Description("The track's numeric 0 to 5 star rating, including decimals such as 4.5.")]
+    decimal Rating,
+    string PlayRef);
+
+public sealed record SearchPlaylist(
+    string Title,
+    string BrowseRef,
+    string PlayRef);
+
+public sealed record SearchResponse(
+    string Guidance,
+    IReadOnlyList<SearchArtist> Artists,
+    IReadOnlyList<SearchAlbum> Albums,
+    IReadOnlyList<SearchTrack> Tracks,
+    IReadOnlyList<SearchPlaylist> Playlists);
 
 [JsonConverter(typeof(JsonStringEnumConverter<BrowseEntityKind>))]
 public enum BrowseEntityKind
@@ -46,18 +51,22 @@ public enum BrowseEntityKind
 }
 
 public sealed record BrowseResponse(
+    string Guidance,
     IReadOnlyList<BrowseItem> Items,
-    string? Continuation);
+    string? NextBrowseRef);
 
 public sealed record BrowseItem(
-    string Reference,
     BrowseEntityKind Kind,
     string Title,
     string? Artist,
-    string? Album,
-    bool Browsable,
-    bool Playable)
+    string? Album)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BrowseRef { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PlayRef { get; init; }
+
     [Description("For tracks returned from rating browse, the numeric 0 to 5 rating. Omitted otherwise.")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? Rating { get; init; }

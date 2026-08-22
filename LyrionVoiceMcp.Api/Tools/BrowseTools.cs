@@ -13,6 +13,9 @@ namespace LyrionVoiceMcp.Api.Tools;
 [McpServerToolType]
 public sealed class BrowseTools(IBrowseService browseService)
 {
+    private const string ReferenceGuidance =
+        "Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating.";
+
     [McpServerTool(
         Name = "browse",
         Title = "Browse the Lyrion music library",
@@ -22,17 +25,18 @@ public sealed class BrowseTools(IBrowseService browseService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(BrowseResponse))]
-    [Description("Browse the configured Lyrion Music Server's local library. Omit the reference to list the browse roots, or pass a browsable search or browse reference to descend.")]
+    [Description("Browse the configured Lyrion Music Server's local-library tree. Omit browseRef to list its roots, including Ratings, or pass a browseRef returned by search or browse to descend.")]
     public async Task<CallToolResult> BrowseAsync(
-        [Description("An opaque browsable result or continuation reference returned by search or browse. Omit it to list the browse roots.")] string? reference = null,
+        [Description("An opaque browseRef returned by search or browse. Omit it to list the browse roots; pass returned browseRefs back to browse to continue through the tree.")] string? browseRef = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var outcome = await browseService.BrowseAsync(reference, cancellationToken);
+            var outcome = await browseService.BrowseAsync(browseRef, cancellationToken);
             return outcome switch
             {
                 BrowseSucceeded succeeded => SuccessResult(new BrowseResponse(
+                    ReferenceGuidance,
                     succeeded.Items.Select(MapItem).ToArray(),
                     succeeded.Continuation)),
                 BrowseRejected rejected => ErrorResult(rejected.Message),
@@ -66,7 +70,6 @@ public sealed class BrowseTools(IBrowseService browseService)
     private static ContractBrowseItem MapItem(BrowseItemResult item)
     {
         var result = new ContractBrowseItem(
-            item.Reference,
             item.Kind switch
             {
                 BrowseItemKind.Category => ContractBrowseEntityKind.Category,
@@ -82,9 +85,11 @@ public sealed class BrowseTools(IBrowseService browseService)
             },
             item.Title,
             item.Artist,
-            item.Album,
-            item.Browsable,
-            item.Playable);
+            item.Album)
+        {
+            BrowseRef = item.HasBrowseReference ? item.Reference : null,
+            PlayRef = item.HasPlayReference ? item.Reference : null
+        };
 
         return item.NativeRating is null
             ? result

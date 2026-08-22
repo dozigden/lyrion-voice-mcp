@@ -38,8 +38,15 @@ internal sealed class SearchService(
         }
 
         var normalisedQuery = query.Trim();
-        if (SearchQueryPolicy.CountNormalisedTokens(normalisedQuery)
-            > SearchQueryPolicy.MaximumTokenCount)
+        var tokenCount = SearchQueryPolicy.CountNormalisedTokens(normalisedQuery);
+        if (tokenCount == 0)
+        {
+            return new SearchRejected(
+                SearchRejectionReason.InvalidQuery,
+                "The search query must include a media name; '*' is not a wildcard. For rating-only exploration, use browse and open Ratings.");
+        }
+
+        if (tokenCount > SearchQueryPolicy.MaximumTokenCount)
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
@@ -119,8 +126,20 @@ internal sealed class SearchService(
             throw new UnreachableException();
         }
 
-        var candidates = catalogueResponse!.Candidates
-            .Take(20)
+        var catalogueCandidates = criteria.RatingConstraint is null
+            ? catalogueResponse!.Candidates
+            : catalogueResponse!.Candidates
+                .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Track)
+                .ToArray();
+        var candidates = catalogueCandidates
+            .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Artist)
+            .Take(SearchResultPolicy.ArtistLimit)
+            .Concat(catalogueCandidates
+                .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Album)
+                .Take(SearchResultPolicy.AlbumLimit))
+            .Concat(catalogueCandidates
+                .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Track)
+                .Take(SearchResultPolicy.TrackLimit))
             .Select(candidate => new Candidate(
                 candidate.Identity,
                 candidate.Title,
@@ -129,7 +148,7 @@ internal sealed class SearchService(
                 candidate.NativeRating))
             .Concat((playlistResponse?.Candidates ?? [])
                 .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Playlist)
-                .Take(20)
+                .Take(SearchResultPolicy.PlaylistLimit)
                 .Select(candidate => new Candidate(
                     candidate.Identity,
                     candidate.Title,
@@ -180,9 +199,12 @@ internal sealed class SearchService(
             cancellationToken);
 
         logger.LogInformation(
-            "Media search for {Query} returned {ResultCount} candidates in {ElapsedMilliseconds} ms.",
+            "Media search for {Query} returned {ArtistCount} artists, {AlbumCount} albums, {TrackCount} tracks, and {PlaylistCount} playlists in {ElapsedMilliseconds} ms.",
             normalisedQuery,
-            results.Length,
+            results.Count(result => result.Kind == MediaEntityKind.Artist),
+            results.Count(result => result.Kind == MediaEntityKind.Album),
+            results.Count(result => result.Kind == MediaEntityKind.Track),
+            results.Count(result => result.Kind == MediaEntityKind.Playlist),
             stopwatch.ElapsedMilliseconds);
         return new SearchSucceeded(results);
     }

@@ -381,6 +381,35 @@ public sealed class QueueManagementServiceTests
     }
 
     [Fact]
+    public async Task ArtistReferenceShouldRejectBeforeAnyLmsCall()
+    {
+        var codecs = new ReferenceCodecTestContext();
+        var playerClient = new StubPlayerClient(Player());
+        var playbackClient = new StubPlaybackClient();
+        var service = CreateService(
+            playbackClient,
+            codecs,
+            playerClient);
+        var artistReference = Reference(
+            codecs.Search,
+            new MediaIdentity(MediaEntityKind.Artist, "artist-51"),
+            0);
+
+        var outcome = await service.ManageAsync(
+            PlayerId,
+            QueueManagementCommand.Append,
+            [artistReference],
+            TestContext.Current.CancellationToken);
+
+        var rejected = Assert.IsType<QueueManagementRejected>(outcome);
+        Assert.Equal(QueueManagementRejectionReason.NoUsableItems, rejected.Reason);
+        Assert.Contains("invalid_reference", rejected.Message, StringComparison.Ordinal);
+        Assert.Equal(0, playerClient.CallCount);
+        Assert.Empty(playbackClient.CheckedItems);
+        Assert.Empty(playbackClient.Mutations);
+    }
+
+    [Fact]
     public async Task MissingPlayerShouldRejectBeforeReadingOrMutatingTheQueue()
     {
         // Arrange

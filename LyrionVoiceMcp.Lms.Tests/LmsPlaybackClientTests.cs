@@ -20,9 +20,6 @@ public sealed class LmsPlaybackClientTests
         // Act
         var results = await Task.WhenAll(
             client.GetPlayableItemCountAsync(
-                new PlayableMedia(new MediaIdentity(MediaEntityKind.Artist, "11")),
-                TestContext.Current.CancellationToken),
-            client.GetPlayableItemCountAsync(
                 new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "22")),
                 TestContext.Current.CancellationToken),
             client.GetPlayableItemCountAsync(
@@ -35,8 +32,6 @@ public sealed class LmsPlaybackClientTests
         // Assert
         Assert.All(results, count => Assert.Equal(3, count));
         Assert.Contains(handler.Requests, request =>
-            request.CommandJson == "[\"titles\",0,1,\"artist_id:11\",\"tags:i\"]");
-        Assert.Contains(handler.Requests, request =>
             request.CommandJson == "[\"titles\",0,1,\"album_id:22\",\"tags:i\"]");
         Assert.Contains(handler.Requests, request =>
             request.CommandJson == "[\"titles\",0,1,\"track_id:33\",\"tags:i\"]");
@@ -45,37 +40,24 @@ public sealed class LmsPlaybackClientTests
     }
 
     [Fact]
-    public async Task AlbumArtistSelectionShouldConstrainBothPreflightAndPlayback()
+    public async Task ArtistPlaybackShouldBeRejectedBeforeAnLmsRequest()
     {
         // Arrange
         var handler = new StubHttpMessageHandler(_ =>
             JsonResponse("""{"id":1,"result":{"count":3}}"""));
         using var httpClient = new HttpClient(handler);
         var client = CreateClient(httpClient);
-        var media = new PlayableMedia(
-            new MediaIdentity(MediaEntityKind.Artist, "11"),
-            ArtistSelectionScope.AlbumArtist);
+        var media = new PlayableMedia(new MediaIdentity(MediaEntityKind.Artist, "11"));
 
         // Act
-        var count = await client.GetPlayableItemCountAsync(
-            media,
-            TestContext.Current.CancellationToken);
-        await client.LoadAsync(
-            "00:11:22:33:44:55",
-            media,
-            TestContext.Current.CancellationToken);
+        var exception = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.GetPlayableItemCountAsync(
+                media,
+                TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Equal(3, count);
-        Assert.Collection(
-            handler.Requests,
-            request => Assert.Equal(
-                "[\"titles\",0,1,\"artist_id:11\",\"role_id:ALBUMARTIST\",\"tags:i\"]",
-                request.CommandJson),
-            request => AssertRequest(
-                request,
-                "00:11:22:33:44:55",
-                "[\"playlistcontrol\",\"cmd:load\",\"artist_id:11\",\"role_id:ALBUMARTIST\"]"));
+        Assert.Equal("media", exception.ParamName);
+        Assert.Empty(handler.Requests);
     }
 
     [Fact]
@@ -116,10 +98,6 @@ public sealed class LmsPlaybackClientTests
             TestContext.Current.CancellationToken);
         await client.AddAsync(
             "00:11:22:33:44:55",
-            new PlayableMedia(new MediaIdentity(MediaEntityKind.Artist, "11")),
-            TestContext.Current.CancellationToken);
-        await client.AddAsync(
-            "00:11:22:33:44:55",
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Track, "33")),
             TestContext.Current.CancellationToken);
 
@@ -134,10 +112,6 @@ public sealed class LmsPlaybackClientTests
                 request,
                 "00:11:22:33:44:55",
                 "[\"playlistcontrol\",\"cmd:add\",\"playlist_id:44\"]"),
-            request => AssertRequest(
-                request,
-                "00:11:22:33:44:55",
-                "[\"playlistcontrol\",\"cmd:add\",\"artist_id:11\"]"),
             request => AssertRequest(
                 request,
                 "00:11:22:33:44:55",

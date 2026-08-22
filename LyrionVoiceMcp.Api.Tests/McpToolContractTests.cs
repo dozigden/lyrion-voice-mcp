@@ -5,23 +5,38 @@ namespace LyrionVoiceMcp.Api.Tests;
 public sealed class McpToolContractTests
 {
     [Fact]
-    public void SearchCandidateShouldUseOneOpaqueReferenceWithoutASearchId()
+    public void SearchResultsShouldExposeReferencesByCapability()
     {
         // Arrange
-        var candidate = new SearchCandidate(
-            "opaque-reference",
-            SearchEntityKind.Artist,
+        var artist = new SearchArtist("The Copper Lines", "browse-reference");
+        var album = new SearchAlbum(
+            "Lantern Signals",
             "The Copper Lines",
-            null,
-            null);
+            "browse-reference",
+            "play-reference");
+        var track = new SearchTrack(
+            "Ninety Point Signal",
+            "The Copper Lines",
+            "Lantern Signals",
+            4.5m,
+            "play-reference");
 
         // Act
-        var properties = typeof(SearchCandidate).GetProperties();
+        var artistProperties = typeof(SearchArtist).GetProperties();
+        var albumProperties = typeof(SearchAlbum).GetProperties();
+        var trackProperties = typeof(SearchTrack).GetProperties();
 
         // Assert
-        Assert.Equal("opaque-reference", candidate.Reference);
-        Assert.DoesNotContain(properties, property =>
-            string.Equals(property.Name, "SearchId", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(["BrowseRef", "Name"], artistProperties.Select(item => item.Name).Order());
+        Assert.Equal(
+            ["Artist", "BrowseRef", "PlayRef", "Title"],
+            albumProperties.Select(item => item.Name).Order());
+        Assert.Equal(
+            ["Album", "Artist", "PlayRef", "Rating", "Title"],
+            trackProperties.Select(item => item.Name).Order());
+        Assert.Equal("browse-reference", artist.BrowseRef);
+        Assert.Equal("play-reference", album.PlayRef);
+        Assert.Equal(4.5m, track.Rating);
     }
 
     [Fact]

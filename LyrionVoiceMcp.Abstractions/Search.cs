@@ -148,6 +148,14 @@ public static class SearchQueryPolicy
     }
 }
 
+public static class SearchResultPolicy
+{
+    public const int ArtistLimit = 5;
+    public const int AlbumLimit = 5;
+    public const int TrackLimit = 30;
+    public const int PlaylistLimit = 5;
+}
+
 public sealed record SearchCandidateResult(
     string Reference,
     MediaEntityKind Kind,

@@ -132,7 +132,6 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
     {
         var identityParameter = media.Identity.Kind switch
         {
-            MediaEntityKind.Artist => $"artist_id:{media.Identity.Id}",
             MediaEntityKind.Album => $"album_id:{media.Identity.Id}",
             MediaEntityKind.Track => $"track_id:{media.Identity.Id}",
             MediaEntityKind.Playlist => $"playlist_id:{media.Identity.Id}",
@@ -140,16 +139,6 @@ public sealed class LmsPlaybackClient(LmsJsonRpcClient jsonRpcClient) : ILmsPlay
                 nameof(media),
                 $"Unsupported media entity kind {media.Identity.Kind}.")
         };
-
-        return media.ArtistScope switch
-        {
-            null => [identityParameter],
-            ArtistSelectionScope.AlbumArtist
-                when media.Identity.Kind == MediaEntityKind.Artist =>
-                [identityParameter, "role_id:ALBUMARTIST"],
-            _ => throw new ArgumentException(
-                "The artist selection scope is not valid for this media identity.",
-                nameof(media))
-        };
+        return [identityParameter];
     }
 }

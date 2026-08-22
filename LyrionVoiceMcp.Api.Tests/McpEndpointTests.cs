@@ -47,19 +47,19 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Treat search and browse references as opaque",
+            "Treat all references as opaque",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "All search result references are playable",
+            "Search results are separated into artists, albums, tracks, and playlists",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "track search result references cannot",
+            "Pass browseRef values to browse",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "For browse results, use the browsable and playable flags",
+            "at_least includes that rating and higher ratings",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -102,18 +102,36 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             ["exact", "at_least"],
             searchInputProperties.GetProperty("ratingMatch").GetProperty("enum")
                 .EnumerateArray().Select(value => value.GetString()));
-        var candidateSchema = searchTool
+        var trackSchema = searchTool
             .GetProperty("outputSchema")
             .GetProperty("properties")
-            .GetProperty("results")
+            .GetProperty("tracks")
             .GetProperty("items");
-        var ratingTypes = candidateSchema.GetProperty("properties").GetProperty("rating")
-            .GetProperty("type").EnumerateArray();
-        Assert.Contains(ratingTypes, type => type.GetString() == "number");
-        Assert.DoesNotContain(
-            candidateSchema.GetProperty("required").EnumerateArray(),
+        Assert.Equal(
+            "number",
+            trackSchema.GetProperty("properties").GetProperty("rating")
+                .GetProperty("type").GetString());
+        Assert.Contains(
+            trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
+        Assert.Contains(
+            "rating-only exploration",
+            searchTool.GetProperty("description").GetString(),
+            StringComparison.Ordinal);
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
+        var browseTool = Assert.Single(
+            document.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray(),
+            tool => tool.GetProperty("name").GetString() == "browse");
+        Assert.True(
+            browseTool.GetProperty("inputSchema").GetProperty("properties")
+                .TryGetProperty("browseRef", out _));
+        var browseItemRequired = browseTool.GetProperty("outputSchema")
+            .GetProperty("properties").GetProperty("items").GetProperty("items")
+            .GetProperty("required").EnumerateArray().ToArray();
+        Assert.DoesNotContain(browseItemRequired, property =>
+            property.GetString() == "browseRef");
+        Assert.DoesNotContain(browseItemRequired, property =>
+            property.GetString() == "playRef");
         Assert.Contains("\"name\":\"get_player_status\"", body, StringComparison.Ordinal);
         Assert.Contains("\"name\":\"control_player\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"player\",\"action\"]", body, StringComparison.Ordinal);
@@ -236,38 +254,44 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"structuredContent\"", body, StringComparison.Ordinal);
         Assert.Contains("opaque-reference", body, StringComparison.Ordinal);
         Assert.Contains("The Copper Lines", body, StringComparison.Ordinal);
-        Assert.Contains("\"artist\":null", body, StringComparison.Ordinal);
-        Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
         using var document = ParseJsonRpcResponse(body);
-        var results = document.RootElement
+        var structuredContent = document.RootElement
             .GetProperty("result")
-            .GetProperty("structuredContent")
-            .GetProperty("results")
-            .EnumerateArray()
-            .ToArray();
-        var artist = Assert.Single(results, result =>
-            result.GetProperty("title").GetString() == "The Copper Lines");
-        Assert.False(artist.TryGetProperty("rating", out _));
+            .GetProperty("structuredContent");
+        var artist = Assert.Single(structuredContent.GetProperty("artists").EnumerateArray());
+        Assert.Equal("The Copper Lines", artist.GetProperty("name").GetString());
+        Assert.Equal("opaque-reference", artist.GetProperty("browseRef").GetString());
+        Assert.False(artist.TryGetProperty("playRef", out _));
+        var album = Assert.Single(structuredContent.GetProperty("albums").EnumerateArray());
+        Assert.Equal("Copper Signals", album.GetProperty("title").GetString());
+        Assert.Equal("album-reference", album.GetProperty("browseRef").GetString());
+        Assert.Equal("album-reference", album.GetProperty("playRef").GetString());
+        var playlist = Assert.Single(
+            structuredContent.GetProperty("playlists").EnumerateArray());
+        Assert.Equal("playlist-reference", playlist.GetProperty("browseRef").GetString());
+        Assert.Equal("playlist-reference", playlist.GetProperty("playRef").GetString());
+        var tracks = structuredContent.GetProperty("tracks").EnumerateArray().ToArray();
         Assert.Equal(
             4.5m,
-            Assert.Single(results, result =>
+            Assert.Single(tracks, result =>
                 result.GetProperty("title").GetString() == "Ninety Point Signal")
                 .GetProperty("rating").GetDecimal());
         Assert.Equal(
             3.35m,
-            Assert.Single(results, result =>
+            Assert.Single(tracks, result =>
                 result.GetProperty("title").GetString() == "Odd Point Signal")
                 .GetProperty("rating").GetDecimal());
         Assert.Equal(
             0m,
-            Assert.Single(results, result =>
+            Assert.Single(tracks, result =>
                 result.GetProperty("title").GetString() == "Missing Rating Signal")
                 .GetProperty("rating").GetDecimal());
         Assert.Equal(
             0m,
-            Assert.Single(results, result =>
+            Assert.Single(tracks, result =>
                 result.GetProperty("title").GetString() == "Zero Rating Signal")
                 .GetProperty("rating").GetDecimal());
+        Assert.Contains("Pass a browseRef", structuredContent.GetProperty("guidance").GetString());
         Assert.DoesNotContain("confidence", body, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("succeeded", recorded!.Status);
         Assert.Contains("copper lines", recorded.ArgumentsJson, StringComparison.Ordinal);
@@ -414,10 +438,27 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("album_artist", body, StringComparison.Ordinal);
         Assert.Contains("\"artist\":null", body, StringComparison.Ordinal);
         Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
-        Assert.Contains("\"browsable\":true", body, StringComparison.Ordinal);
-        Assert.Contains("\"playable\":true", body, StringComparison.Ordinal);
+        Assert.Contains("\"browseRef\":\"browse-album-artists\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"browsable\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"playable\"", body, StringComparison.Ordinal);
         Assert.Contains("\"rating\":4.5", body, StringComparison.Ordinal);
-        Assert.Contains("browse-next", body, StringComparison.Ordinal);
+        Assert.Contains("\"nextBrowseRef\":\"browse-next\"", body, StringComparison.Ordinal);
+        Assert.Contains("Pass a browseRef", body, StringComparison.Ordinal);
+        using var document = ParseJsonRpcResponse(body);
+        var items = document.RootElement.GetProperty("result")
+            .GetProperty("structuredContent").GetProperty("items")
+            .EnumerateArray().ToArray();
+        var albumArtist = Assert.Single(items, item =>
+            item.GetProperty("kind").GetString() == "album_artist");
+        Assert.True(albumArtist.TryGetProperty("browseRef", out _));
+        Assert.False(albumArtist.TryGetProperty("playRef", out _));
+        var track = Assert.Single(items, item =>
+            string.Equals(
+                item.GetProperty("kind").GetString(),
+                "Track",
+                StringComparison.OrdinalIgnoreCase));
+        Assert.False(track.TryGetProperty("browseRef", out _));
+        Assert.True(track.TryGetProperty("playRef", out _));
     }
 
     [Fact]
@@ -438,7 +479,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             9,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"browse","arguments":{"reference":"invalid"}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"browse","arguments":{"browseRef":"invalid"}}
             """,
             "browse");
 
@@ -1050,6 +1091,12 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     null,
                     null),
                 new(
+                    "album-reference",
+                    MediaEntityKind.Album,
+                    "Copper Signals",
+                    "The Copper Lines",
+                    null),
+                new(
                     "rated-reference",
                     MediaEntityKind.Track,
                     "Ninety Point Signal",
@@ -1075,7 +1122,13 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     "Zero Rating Signal",
                     "The Copper Lines",
                     "Copper Signals",
-                    0)
+                    0),
+                new(
+                    "playlist-reference",
+                    MediaEntityKind.Playlist,
+                    "Copper Evenings",
+                    null,
+                    null)
             ]));
         }
     }
@@ -1133,7 +1186,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     null,
                     null,
                     true,
-                    true),
+                    false),
                 new BrowseItemResult(
                     "rated-track",
                     BrowseItemKind.Track,

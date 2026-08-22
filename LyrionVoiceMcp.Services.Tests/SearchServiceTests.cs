@@ -79,9 +79,74 @@ public sealed class SearchServiceTests
     }
 
     [Fact]
+    public async Task SearchShouldApplyIndependentTuneableLimitsByMediaKind()
+    {
+        var catalogueCandidates = Enumerable.Range(1, 6)
+            .Select(index => new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Artist, $"artist-{index}"),
+                $"Signal Artist {index}",
+                null,
+                null,
+                1_000 - index))
+            .Concat(Enumerable.Range(1, 6).Select(index => new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Album, $"album-{index}"),
+                $"Signal Album {index}",
+                "The Imaginaries",
+                null,
+                900 - index)))
+            .Concat(Enumerable.Range(1, 31).Select(index => new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, $"track-{index}"),
+                $"Signal Track {index}",
+                "The Imaginaries",
+                "Imaginary Signals",
+                800 - index)))
+            .ToArray();
+        var playlistCandidates = Enumerable.Range(1, 6)
+            .Select(index => new LmsSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Playlist, $"playlist-{index}"),
+                $"Signal Playlist {index}",
+                null,
+                null))
+            .ToArray();
+        var service = CreateService(
+            new StubCatalogueSearch(catalogueCandidates),
+            new StubPlaylistSearch(playlistCandidates),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var outcome = await service.SearchAsync(
+            "signal",
+            TestContext.Current.CancellationToken);
+
+        var results = Assert.IsType<SearchSucceeded>(outcome).Results;
+        Assert.Equal(SearchResultPolicy.ArtistLimit, results.Count(item =>
+            item.Kind == MediaEntityKind.Artist));
+        Assert.Equal(SearchResultPolicy.AlbumLimit, results.Count(item =>
+            item.Kind == MediaEntityKind.Album));
+        Assert.Equal(SearchResultPolicy.TrackLimit, results.Count(item =>
+            item.Kind == MediaEntityKind.Track));
+        Assert.Equal(SearchResultPolicy.PlaylistLimit, results.Count(item =>
+            item.Kind == MediaEntityKind.Playlist));
+        Assert.Equal(
+            [
+                MediaEntityKind.Artist,
+                MediaEntityKind.Album,
+                MediaEntityKind.Track,
+                MediaEntityKind.Playlist
+            ],
+            results.Select(item => item.Kind).Distinct());
+    }
+
+    [Fact]
     public async Task RatingSearchShouldConstrainCatalogueTracksAndSkipPlaylists()
     {
         var catalogue = new StubCatalogueSearch([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Artist, "artist-1"),
+                "Rated Copper Artist",
+                null,
+                null,
+                1_050),
             new CatalogueSearchCandidate(
                 new MediaIdentity(MediaEntityKind.Track, "track-90"),
                 "Rated Copper Signal",
@@ -159,6 +224,32 @@ public sealed class SearchServiceTests
         Assert.Equal(
             SearchRejectionReason.InvalidQuery,
             Assert.IsType<SearchRejected>(outcome).Reason);
+        Assert.Null(catalogue.Query);
+        Assert.Null(playlists.Query);
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("---")]
+    public async Task SearchShouldRejectQueriesWithoutSearchableTextBeforeRetrieval(
+        string query)
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var playlists = new StubPlaylistSearch([]);
+        var service = CreateService(
+            catalogue,
+            playlists,
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var outcome = await service.SearchAsync(
+            query,
+            TestContext.Current.CancellationToken);
+
+        var rejected = Assert.IsType<SearchRejected>(outcome);
+        Assert.Equal(SearchRejectionReason.InvalidQuery, rejected.Reason);
+        Assert.Contains("not a wildcard", rejected.Message, StringComparison.Ordinal);
+        Assert.Contains("Ratings", rejected.Message, StringComparison.Ordinal);
         Assert.Null(catalogue.Query);
         Assert.Null(playlists.Query);
     }

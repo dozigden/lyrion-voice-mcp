@@ -5,14 +5,15 @@ using LyrionVoiceMcp.Contracts;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ContractSearchCandidate = LyrionVoiceMcp.Contracts.SearchCandidate;
-using ContractSearchEntityKind = LyrionVoiceMcp.Contracts.SearchEntityKind;
 
 namespace LyrionVoiceMcp.Api.Tools;
 
 [McpServerToolType]
 public sealed class SearchTools(ISearchService searchService)
 {
+    private const string ReferenceGuidance =
+        "Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating.";
+
     [McpServerTool(
         Name = "search",
         Title = "Search the Lyrion music library",
@@ -22,11 +23,11 @@ public sealed class SearchTools(ISearchService searchService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(SearchResponse))]
-    [Description("Search the whole configured Lyrion Music Server library. Optionally constrain track results by an exact or minimum numeric 0 to 5 rating.")]
+    [Description("Search for named artists, albums, tracks, or playlists. To constrain matching tracks by rating, supply both rating and ratingMatch. For rating-only exploration, use browse and open Ratings; '*' is not a wildcard.")]
     public async Task<CallToolResult> SearchAsync(
-        [Description("The artist, album, track, or playlist text to search for, up to 500 characters and 20 words.")] string query,
-        [Description("Optional numeric track rating from 0 to 5. Supply together with ratingMatch.")] decimal? rating = null,
-        [Description("Optional rating comparison: exact or at_least. Supply together with rating.")] string? ratingMatch = null,
+        [Description("Meaningful artist, album, track, or playlist name text to search for, up to 500 characters and 20 words. Wildcards are not supported.")] string query,
+        [Description("Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch.")] decimal? rating = null,
+        [Description("Optional rating comparison supplied with rating. Use exact for exactly that rating. Use at_least for that rating or higher; rating 4 with at_least means 4+.")] string? ratingMatch = null,
         CancellationToken cancellationToken = default)
     {
         var constraint = CreateRatingConstraint(rating, ratingMatch);
@@ -42,8 +43,7 @@ public sealed class SearchTools(ISearchService searchService)
                 cancellationToken);
             return outcome switch
             {
-                SearchSucceeded succeeded => SuccessResult(
-                    new SearchResponse(succeeded.Results.Select(MapCandidate).ToArray())),
+                SearchSucceeded succeeded => SuccessResult(MapResponse(succeeded.Results)),
                 SearchRejected rejected => ErrorResult(rejected.Message),
                 _ => throw new UnreachableException(
                     $"Unsupported search outcome {outcome.GetType().Name}.")
@@ -72,27 +72,40 @@ public sealed class SearchTools(ISearchService searchService)
             IsError = true
         };
 
-    private static ContractSearchCandidate MapCandidate(SearchCandidateResult candidate)
-    {
-        var result = new ContractSearchCandidate(
-            candidate.Reference,
-            candidate.Kind switch
-            {
-                MediaEntityKind.Artist => ContractSearchEntityKind.Artist,
-                MediaEntityKind.Album => ContractSearchEntityKind.Album,
-                MediaEntityKind.Track => ContractSearchEntityKind.Track,
-                MediaEntityKind.Playlist => ContractSearchEntityKind.Playlist,
-                _ => throw new InvalidOperationException(
-                    $"Unsupported search entity kind {candidate.Kind}.")
-            },
-            candidate.Title,
-            candidate.Artist,
-            candidate.Album);
-
-        return candidate.Kind == MediaEntityKind.Track
-            ? result with { Rating = candidate.NativeRating / 20m }
-            : result;
-    }
+    private static SearchResponse MapResponse(
+        IReadOnlyList<SearchCandidateResult> candidates) =>
+        new(
+            ReferenceGuidance,
+            candidates
+                .Where(candidate => candidate.Kind == MediaEntityKind.Artist)
+                .Select(candidate => new SearchArtist(
+                    candidate.Title,
+                    candidate.Reference))
+                .ToArray(),
+            candidates
+                .Where(candidate => candidate.Kind == MediaEntityKind.Album)
+                .Select(candidate => new SearchAlbum(
+                    candidate.Title,
+                    candidate.Artist,
+                    candidate.Reference,
+                    candidate.Reference))
+                .ToArray(),
+            candidates
+                .Where(candidate => candidate.Kind == MediaEntityKind.Track)
+                .Select(candidate => new SearchTrack(
+                    candidate.Title,
+                    candidate.Artist,
+                    candidate.Album,
+                    candidate.NativeRating / 20m,
+                    candidate.Reference))
+                .ToArray(),
+            candidates
+                .Where(candidate => candidate.Kind == MediaEntityKind.Playlist)
+                .Select(candidate => new SearchPlaylist(
+                    candidate.Title,
+                    candidate.Reference,
+                    candidate.Reference))
+                .ToArray());
 
     private static (RatingSearchConstraint? Value, string? Error) CreateRatingConstraint(
         decimal? rating,

@@ -91,7 +91,14 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             captureDiagnostics: false,
             cancellationToken);
         var candidates = execution.Ranked
-            .Take(20)
+            .Where(result => result.Candidate.Source.Value.Kind == MediaEntityKind.Artist)
+            .Take(SearchResultPolicy.ArtistLimit)
+            .Concat(execution.Ranked
+                .Where(result => result.Candidate.Source.Value.Kind == MediaEntityKind.Album)
+                .Take(SearchResultPolicy.AlbumLimit))
+            .Concat(execution.Ranked
+                .Where(result => result.Candidate.Source.Value.Kind == MediaEntityKind.Track)
+                .Take(SearchResultPolicy.TrackLimit))
             .Select(result =>
             {
                 var value = result.Candidate.Source.Value;

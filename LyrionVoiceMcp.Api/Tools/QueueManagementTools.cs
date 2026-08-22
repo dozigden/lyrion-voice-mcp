@@ -21,11 +21,11 @@ public sealed class QueueManagementTools(
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(ManageQueueResponse))]
-    [Description("Clear a player's queue, or add the usable subset of a media batch and report skipped items.")]
+    [Description("Clear a player's queue, or add the usable subset of a playRef batch and report skipped items. Do not append items immediately before passing the same items to play, because play replaces the queue.")]
     public async Task<CallToolResult> ManageAsync(
         [Description("A raw LMS player ID or exact unique player name returned by get_player_status.")] string player,
         [Description("Clear, append, or insert items to play next.")] ManageQueueAction action,
-        [Description("Opaque playable references returned by search or browse; required for append and insert_next.")] IReadOnlyList<string>? items = null,
+        [Description("Opaque playRef values returned by search or browse; required for append and insert_next.")] IReadOnlyList<string>? items = null,
         CancellationToken cancellationToken = default)
     {
         var command = MapAction(action);

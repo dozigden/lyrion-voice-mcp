@@ -4,23 +4,23 @@ This documents the currently implemented public tools. It does not limit the ser
 
 ## Tool flow
 
-1. `search` returns ranked media candidates.
-2. `browse` returns local-library roots or descends through an opaque reference returned by an earlier browse call.
+1. `search` returns separately ranked artist, album, track, and playlist candidates with capability-specific references.
+2. `browse` returns local-library roots or descends through an opaque `browseRef` returned by search or an earlier browse call.
 3. `get_player_status` discovers LMS players and their voice-relevant state.
 4. The caller can pass one discovered LMS player ID or exact unique player name and an action to `control_player`.
 5. The caller can pass one discovered LMS player ID or exact unique player name to `get_queue`.
-6. The caller can clear that player's queue or pass playable search or browse references to `manage_queue` for append or play-next placement.
-7. The caller passes one discovered LMS player ID or exact unique player name and one or more playable search or browse references to `play`.
+6. The caller can clear that player's queue or pass `playRef` values to `manage_queue` for append or play-next placement.
+7. The caller passes one discovered LMS player ID or exact unique player name and one or more `playRef` values to `play`.
 
 The current public MCP surface contains `search`, `browse`, `get_player_status`, `control_player`, `get_queue`, `manage_queue`, and `play`.
 
 Structured results conform to their advertised output schemas. Properties that are required but nullable are emitted explicitly as JSON `null` when no value is available rather than being omitted.
 
-During MCP initialisation, the server supplies concise agent guidance connecting these tools: discover players rather than inventing IDs or names, use a returned raw ID or exact unique name, choose search for named media and browse for exploration, keep references opaque, route search and browse references according to their actual capabilities, distinguish replace-and-start playback from queue addition and clearing, inspect partial batch results, and ask when player or media selection is genuinely ambiguous.
+During MCP initialisation, the server supplies concise agent guidance connecting these tools: discover players rather than inventing IDs or names, use search for named media and browse for exploration, pass `browseRef` values recursively through the browse tree, pass `playRef` values to playback or queue tools, distinguish exact ratings from inclusive `at_least` ratings, avoid redundant queue additions before `play`, inspect partial batch results, and ask when player or media selection is genuinely ambiguous.
 
 ## Result references
 
-Every candidate returned by `search` has one opaque result reference which the caller passes back unchanged.
+Every candidate returned by `search` has one opaque result handle which the caller passes back unchanged. The response exposes that handle as `browseRef`, `playRef`, or both according to the candidate's capabilities. An album or playlist uses the same handle for both fields.
 
 That single reference combines:
 
@@ -33,27 +33,31 @@ The reference is a short server-issued handle whose in-memory registry entry ret
 
 Its exact encoding is a private implementation detail.
 
-Every item returned by `browse` also has one opaque server-issued handle. Its registry entry can retain browse navigation, playback identity, or both. The caller passes the same handle to `browse` when `browsable` is true and to `play` or `manage_queue` when `playable` is true. Pure browse handles have no search correlation. When browse starts from a search result, descendants preserve that real candidate correlation so eventual playback or queue addition marks the originating search result selected; browsing alone does not.
+Every item returned by `browse` can contain a `browseRef`, a `playRef`, or both. A dual-purpose item uses the same opaque handle for both fields. Pure browse handles have no search correlation. When browse starts from a search result, descendants preserve that real candidate correlation so eventual playback or queue addition marks the originating search result selected; browsing alone does not. Artists and album artists are navigation only and never receive a `playRef`.
 
 ## `search`
 
 `search` resolves voice-derived text into ordered media candidates.
 
-The input has a required query of at most 500 characters and 20 words. Optional `rating` and `ratingMatch` fields must be supplied together. `rating` is a decimal number from 0 to 5; `ratingMatch` is `exact` or `at_least`. Without them, search uses the production catalogue resolver followed by isolated LMS playlist discovery. With them, search returns catalogue tracks only and does not query playlists.
+The input has a required meaningful media-name query of at most 500 characters and 20 words. Optional `rating` and `ratingMatch` fields must be supplied together. `rating` is a decimal number from 0 to 5; `ratingMatch` is `exact` for exactly that rating or `at_least` for that rating and higher, so rating 4 with `at_least` means 4+. Without them, search uses the production catalogue resolver followed by isolated LMS playlist discovery. With them, search returns catalogue tracks only and does not query playlists.
 
-Each ordered result carries its opaque candidate reference, media kind, and display information. Every track result additionally contains a numeric `rating` on the 0–5 scale, including decimals such as `4`, `4.5`, or `3.35`. Native LMS zero, including a missing rating normalised during import, is public rating `0`; there is no separate unrated value. The native LMS 0–100 value is not public. Artist, album, and playlist results omit `rating`. An empty list represents no match. Unconstrained searches return up to 20 ranked catalogue artists, albums, and tracks followed by up to 20 matching playlists in LMS order.
+The structured response contains concise recursive-browse guidance and four required lists. `artists` contain `name` and `browseRef`; `albums` contain title, nullable artist, `browseRef`, and `playRef`; `tracks` contain title, nullable artist and album, numeric 0–5 `rating`, and `playRef`; `playlists` contain title, `browseRef`, and `playRef`. Empty lists represent no matches.
+
+Search returns up to 5 artists, 5 albums, 30 tracks, and 5 playlists, ranked independently within each list; playlists preserve LMS order. These are central internal caps rather than request parameters and may be tuned without changing the response schema. Search has no continuation or caller-selected limit.
+
+Native LMS zero, including a missing rating normalised during import, is public rating `0`; there is no separate unrated value. The native LMS 0–100 value is not public.
 
 Exact matching scales the public value by 20 and requires that exact native integer, so exact `4` means native 80 and a value with no exact native representation matches nothing. At-least matching uses the smallest native integer at or above the scaled public value. Exact `0` selects native zero; at-least `0` selects every track. Rating constraints are applied inside retrieval before lane limits.
 
-The production catalogue resolver does not expose its ranking score as confidence. Playlist results follow catalogue results in LMS order. The server does not silently select or play a result.
+The production catalogue resolver does not expose its ranking score as confidence. The server does not silently select or play a result.
 
-Provider and collection scopes, kind filters, caller-selected result limits, match evidence, explicit rank, and public timing are not part of the first-pass contract. Observation timing and other diagnostic evidence remain internal concerns.
+Provider and collection scopes, caller-selected result limits, match evidence, explicit rank, and public timing are not part of the current contract. Observation timing and returned category counts remain internal concerns.
 
-Confidence may be reconsidered later alongside ranking calibration. An invalid query returns an MCP tool execution error with `isError: true`, rather than a protocol error or validation exception. Precise property names beyond the implemented first pass have not yet been agreed.
+Confidence may be reconsidered later alongside ranking calibration. A query must contain meaningful letter-or-digit media-name text; `*` and other wildcard-only input return a corrective MCP tool error directing rating-only exploration to Browse → Ratings.
 
 ## `browse`
 
-`browse` takes one optional opaque search or browse reference. Omitting it returns these fixed local-library roots in order: album artists, artists, albums, genres, playlists, ratings, recently added, and years. Tracks are deliberately not exposed at the root.
+`browse` takes one optional opaque `browseRef`. Omitting it returns these fixed local-library roots in order: album artists, artists, albums, genres, playlists, ratings, recently added, and years. Tracks are deliberately not exposed at the root.
 
 Passing a browsable item reference descends through the local library:
 
@@ -64,15 +68,13 @@ Passing a browsable item reference descends through the local library:
 - ratings lead to buckets `0`, `1`, `2`, `3`, `4`, and `5`, then to matching tracks;
 - recently added returns albums using LMS's native `sort:new` ordering, then those albums lead to tracks.
 
-Rating buckets floor the public decimal: native 0–19 appears under `0`, 20–39 under `1`, 40–59 under `2`, 60–79 under `3`, 80–99 under `4`, and 100 under `5`. Tracks within a bucket are ordered by native rating descending, then title, artist, album, and stable identity.
+Rating buckets floor the public decimal: native 0–19 appears under `0`, 20–39 under `1`, 40–59 under `2`, 60–79 under `3`, 80–99 under `4`, and 100 under `5`. Rating-only 4+ exploration therefore combines buckets 4 and 5. Tracks within a bucket are ordered by native rating descending, then title, artist, album, and stable identity.
 
-Artist, album, and playlist references returned by `search` can enter the same hierarchy directly. Artist search results lead to albums, album results lead to tracks, and playlist results lead to playlist tracks. Track search results are playable but not browsable. Search-derived descendants and continuations retain the originating candidate correlation until a playable result is used.
+Artist, album, and playlist `browseRef` values returned by `search` can enter the same hierarchy directly. Artist search results lead to albums, album results lead to tracks, and playlist results lead to playlist tracks. Track results contain only a `playRef`. Search-derived descendants and continuations retain the originating candidate correlation until a playable result is used.
 
-Pages use an internal 50-item size. The caller cannot select an offset, limit, filter, or sort order. When more results remain, the response contains an opaque `continuation` which is passed back as the next browse reference.
+Pages use an internal 50-item size. The caller cannot select an offset, limit, filter, or sort order. When more results remain, the response contains an opaque `nextBrowseRef` which is passed back to `browse`.
 
-Each item contains `reference`, `kind`, `title`, optional `artist`, optional `album`, `browsable`, and `playable`. Tracks returned from a rating bucket also contain their numeric 0–5 `rating`; other browse items omit it. The response contains `items` and nullable `continuation`. Album-artist, artist, album, playlist, and track items are playable; genres, years, and rating buckets are navigation only. Tracks are playable but not browsable.
-
-Playing or queueing an album-artist item retains LMS's album-artist selection constraint. It therefore selects the same album-artist catalogue represented by that browse item. This is a narrow LMS query scope, not a general contributor-role model; ordinary artist items remain unrestricted.
+Each item contains `kind`, `title`, optional `artist`, optional `album`, and whichever capability references apply. Categories, album artists, artists, genres, rating buckets, and years contain only `browseRef`; albums and playlists contain both `browseRef` and `playRef`; tracks contain only `playRef`. Tracks returned from a rating bucket also contain their numeric 0–5 `rating`; other browse items omit it. The response also contains generic recursive-browse guidance and nullable `nextBrowseRef`.
 
 The implemented first pass excludes LMS plugins and providers, virtual-library selection, subscriptions, and player-dependent browsing. Invalid references and attempts to browse a playable-only item return MCP tool execution errors with `isError: true`.
 
@@ -102,11 +104,11 @@ The response does not contain pagination, a duplicated count, queue revisions, s
 
 ## `play`
 
-`play` accepts an explicit raw LMS player ID or exact unique player name and a non-empty ordered list of opaque playable references returned by search or browse. It always replaces the current queue and starts playback.
+`play` accepts an explicit raw LMS player ID or exact unique player name and a non-empty ordered list of opaque `playRef` values returned by search or browse. It always replaces the current queue and starts playback. Callers should invoke it directly rather than first appending the same media through `manage_queue`.
 
 The player and every reference are inspected before mutation. Lightweight filtered LMS queries verify that each valid reference still resolves to playable media without materialising whole collections in this server. Invalid or unavailable references are skipped. If none remains, the tool returns an error without changing LMS. After successful preflight, the server powers on the target when necessary. A power-on failure must not mutate the queue.
 
-Tracks, artists, albums, and playlists are passed directly to LMS `playlistcontrol` by ID. LMS owns collection expansion and its internal track order. The first usable reference replaces the queue and starts playback; later usable references are added in relative caller order. Appending and play-next placement belong to `manage_queue` rather than `play`.
+Tracks, albums, and playlists are passed directly to LMS `playlistcontrol` by ID. Artists and album artists are rejected before any LMS mutation. LMS owns legitimate album and playlist expansion and their internal track order. The first usable reference replaces the queue and starts playback; later usable references are added in relative caller order. Appending and play-next placement belong to `manage_queue` rather than `play`.
 
 The result contains nullable refreshed player status, requested and completed reference counts, indexed skipped items, and a nullable state-refresh error. A normal successful refresh emits a player and an explicit `null` refresh error. Stable skipped-item reasons are `invalid_reference`, `media_unavailable`, `lms_error`, and `not_attempted`; queue-only `queue_capacity` is also part of the shared reason vocabulary.
 
@@ -116,9 +118,9 @@ Invalid requests, missing players, and stale or unplayable references return MCP
 
 ## `manage_queue`
 
-`manage_queue` accepts an explicit raw LMS player ID or exact unique player name, one action, and optional opaque playable references returned by search or browse. Its actions are `clear`, `append`, and `insert_next`.
+`manage_queue` accepts an explicit raw LMS player ID or exact unique player name, one action, and optional opaque `playRef` values returned by search or browse. Its actions are `clear`, `append`, and `insert_next`.
 
-`clear` accepts no items and empties the selected player's queue. `append` and `insert_next` require a non-empty ordered item list. They accept the same track, artist, album, and playlist references as `play`; LMS expands collections and preserves their internal ordering. Multiple references preserve caller order, including when they are inserted together as the next media to play.
+`clear` accepts no items and empties the selected player's queue. `append` and `insert_next` require a non-empty ordered item list. They accept the same track, album, and playlist references as `play`; artist identities are rejected. LMS expands legitimate collections and preserves their internal ordering. Multiple references preserve caller order, including when they are inserted together as the next media to play.
 
 The player and every supplied reference are inspected before mutation. Addition requests also resolve collection sizes and the current queue length. Invalid and unavailable items are skipped. Capacity is assigned greedily in input order up to the supported 300-item limit: an item that does not fit is reported as `queue_capacity`, while a later smaller item may still fit. If nothing can be added, the tool returns an error without mutation.
 

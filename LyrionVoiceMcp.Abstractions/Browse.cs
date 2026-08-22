@@ -124,8 +124,8 @@ public sealed record BrowseItemResult(
     string Title,
     string? Artist,
     string? Album,
-    bool Browsable,
-    bool Playable,
+    bool HasBrowseReference,
+    bool HasPlayReference,
     int? NativeRating = null);
 
 public enum BrowseRejectionReason

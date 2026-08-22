@@ -31,14 +31,7 @@ public sealed record PlaybackFailed(
     string? StateRefreshError,
     string Message) : PlaybackOutcome;
 
-public enum ArtistSelectionScope
-{
-    AlbumArtist
-}
-
-public sealed record PlayableMedia(
-    MediaIdentity Identity,
-    ArtistSelectionScope? ArtistScope = null);
+public sealed record PlayableMedia(MediaIdentity Identity);
 
 public interface ILmsPlaybackClient
 {

@@ -177,6 +177,41 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ProductionSearchShouldApplyIndependentResultLimitsByKind()
+    {
+        var documents = Enumerable.Range(1, 6)
+            .Select(index => new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Artist, $"artist-{index}"),
+                $"Bounded Signal Artist {index}",
+                null,
+                null))
+            .Concat(Enumerable.Range(1, 6).Select(index => new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, $"album-{index}"),
+                $"Bounded Signal Album {index}",
+                "The Imaginaries",
+                null)))
+            .Concat(Enumerable.Range(1, 31).Select(index => new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, $"track-{index}"),
+                $"Bounded Signal Track {index}",
+                "The Imaginaries",
+                "Imaginary Signals")))
+            .ToArray();
+        await using var service = CreateService(new DocumentSource(documents));
+        await RebuildAsync(service, "refresh-independent-limits", 48);
+
+        var response = await service.SearchAsync(
+            "bounded signal",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SearchResultPolicy.ArtistLimit, response.Candidates.Count(candidate =>
+            candidate.Identity.Kind == MediaEntityKind.Artist));
+        Assert.Equal(SearchResultPolicy.AlbumLimit, response.Candidates.Count(candidate =>
+            candidate.Identity.Kind == MediaEntityKind.Album));
+        Assert.Equal(SearchResultPolicy.TrackLimit, response.Candidates.Count(candidate =>
+            candidate.Identity.Kind == MediaEntityKind.Track));
+    }
+
+    [Fact]
     public async Task RatingConstraintShouldBeAppliedBeforeRetrievalLaneLimits()
     {
         var documents = Enumerable.Range(0, 81)

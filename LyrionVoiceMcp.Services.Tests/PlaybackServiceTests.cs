@@ -308,8 +308,8 @@ public sealed class PlaybackServiceTests
         var codec = codecs.Search;
         var identities = new[]
         {
-            new MediaIdentity(MediaEntityKind.Artist, "41"),
-            new MediaIdentity(MediaEntityKind.Album, "42")
+            new MediaIdentity(MediaEntityKind.Album, "41"),
+            new MediaIdentity(MediaEntityKind.Track, "42")
         };
         var playerClient = new StubPlayerClient(
             Player(false, PlayerPlaybackState.Stopped),
@@ -329,11 +329,11 @@ public sealed class PlaybackServiceTests
         Assert.True(player.PoweredOn);
         Assert.Equal(
             [
-                "check:Artist:41",
-                "check:Album:42",
+                "check:Album:41",
+                "check:Track:42",
                 "power-on",
-                "load:Artist:41",
-                "add:Album:42"
+                "load:Album:41",
+                "add:Track:42"
             ],
             playbackClient.Operations);
     }
@@ -476,6 +476,30 @@ public sealed class PlaybackServiceTests
             TestContext.Current.CancellationToken);
 
         // Assert
+        var rejection = Assert.IsType<PlaybackRejected>(outcome);
+        Assert.Equal(PlaybackRejectionReason.NoUsableItems, rejection.Reason);
+        Assert.Contains("invalid_reference", rejection.Message, StringComparison.Ordinal);
+        Assert.Equal(0, playerClient.CallCount);
+        Assert.Empty(playbackClient.Operations);
+    }
+
+    [Fact]
+    public async Task ArtistReferenceShouldFailBeforeAnyLmsCall()
+    {
+        var codecs = new ReferenceCodecTestContext();
+        var playerClient = new StubPlayerClient(Player(true, PlayerPlaybackState.Playing));
+        var playbackClient = new StubPlaybackClient();
+        var service = CreateService(playerClient, playbackClient, codecs);
+        var artistReference = Reference(
+            codecs.Search,
+            new MediaIdentity(MediaEntityKind.Artist, "artist-51"),
+            0);
+
+        var outcome = await service.PlayAsync(
+            PlayerId,
+            [artistReference],
+            TestContext.Current.CancellationToken);
+
         var rejection = Assert.IsType<PlaybackRejected>(outcome);
         Assert.Equal(PlaybackRejectionReason.NoUsableItems, rejection.Reason);
         Assert.Contains("invalid_reference", rejection.Message, StringComparison.Ordinal);
@@ -738,9 +762,7 @@ public sealed class PlaybackServiceTests
         }
 
         private static string Describe(PlayableMedia media) =>
-            media.ArtistScope is { } scope
-                ? $"{media.Identity.Kind}:{media.Identity.Id}:{scope}"
-                : $"{media.Identity.Kind}:{media.Identity.Id}";
+            $"{media.Identity.Kind}:{media.Identity.Id}";
 
     }
 }

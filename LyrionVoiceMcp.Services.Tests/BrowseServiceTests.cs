@@ -39,8 +39,8 @@ public sealed class BrowseServiceTests
         Assert.All(result.Items, item =>
         {
             Assert.Equal(BrowseItemKind.Category, item.Kind);
-            Assert.True(item.Browsable);
-            Assert.False(item.Playable);
+            Assert.True(item.HasBrowseReference);
+            Assert.False(item.HasPlayReference);
             Assert.NotNull(codec.TryDecode(item.Reference)?.Target);
         });
         Assert.Null(result.Continuation);
@@ -74,8 +74,8 @@ public sealed class BrowseServiceTests
         Assert.All(result.Items, item =>
         {
             Assert.Equal(BrowseItemKind.Category, item.Kind);
-            Assert.True(item.Browsable);
-            Assert.False(item.Playable);
+            Assert.True(item.HasBrowseReference);
+            Assert.False(item.HasPlayReference);
             Assert.Equal(
                 BrowseTargetKind.RatingTracks,
                 codec.TryDecode(item.Reference)?.Target?.Kind);
@@ -113,8 +113,8 @@ public sealed class BrowseServiceTests
         var result = Assert.IsType<BrowseSucceeded>(outcome);
         var item = Assert.Single(result.Items);
         Assert.Equal(90, item.NativeRating);
-        Assert.True(item.Playable);
-        Assert.False(item.Browsable);
+        Assert.True(item.HasPlayReference);
+        Assert.False(item.HasBrowseReference);
         Assert.Equal(
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Track, "track-90")),
             codec.TryDecode(item.Reference)?.Media);
@@ -170,14 +170,14 @@ public sealed class BrowseServiceTests
         Assert.Equal(
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "201")),
             firstReference?.Media);
-        Assert.True(result.Items[0].Browsable);
-        Assert.True(result.Items[0].Playable);
+        Assert.True(result.Items[0].HasBrowseReference);
+        Assert.True(result.Items[0].HasPlayReference);
         Assert.Equal(50, lmsClient.Request?.Limit);
         Assert.Equal(2, codec.TryDecode(result.Continuation!)?.Target?.Offset);
     }
 
     [Fact]
-    public async Task AlbumArtistShouldPreserveItsRoleInThePlayableReference()
+    public async Task AlbumArtistShouldBeBrowsableButNotPlayable()
     {
         // Arrange
         var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage(
@@ -207,17 +207,13 @@ public sealed class BrowseServiceTests
 
         // Assert
         var item = Assert.Single(Assert.IsType<BrowseSucceeded>(outcome).Items);
-        Assert.True(item.Browsable);
-        Assert.True(item.Playable);
+        Assert.True(item.HasBrowseReference);
+        Assert.False(item.HasPlayReference);
         var decoded = codec.TryDecode(item.Reference);
         Assert.Equal(
             new BrowseTarget(BrowseTargetKind.AlbumArtistAlbums, "101", 0),
             decoded?.Target);
-        Assert.Equal(
-            new PlayableMedia(
-                new MediaIdentity(MediaEntityKind.Artist, "101"),
-                ArtistSelectionScope.AlbumArtist),
-            decoded?.Media);
+        Assert.Null(decoded?.Media);
     }
 
     [Fact]
@@ -251,8 +247,8 @@ public sealed class BrowseServiceTests
 
         // Assert
         var item = Assert.Single(Assert.IsType<BrowseSucceeded>(outcome).Items);
-        Assert.False(item.Browsable);
-        Assert.True(item.Playable);
+        Assert.False(item.HasBrowseReference);
+        Assert.True(item.HasPlayReference);
         var decoded = codec.TryDecode(item.Reference);
         Assert.Null(decoded?.Target);
         Assert.Equal(
@@ -474,22 +470,18 @@ public sealed class BrowseReferenceCodecTests
     }
 
     [Fact]
-    public void CodecShouldRoundTripAnAlbumArtistPlaybackConstraint()
+    public void CodecShouldRejectArtistPlaybackMedia()
     {
-        // Arrange
         var codec = new ReferenceCodecTestContext().Browse;
-        var expected = new BrowseReferenceValue(
-            new BrowseTarget(BrowseTargetKind.AlbumArtistAlbums, "204", 0),
-            new PlayableMedia(
-                new MediaIdentity(MediaEntityKind.Artist, "204"),
-                ArtistSelectionScope.AlbumArtist));
 
-        // Act
-        var decoded = codec.TryDecode(codec.Encode(expected));
+        var exception = Assert.Throws<ArgumentException>(() => codec.Encode(
+            new BrowseReferenceValue(
+                new BrowseTarget(BrowseTargetKind.ArtistAlbums, "204", 0),
+                new PlayableMedia(new MediaIdentity(MediaEntityKind.Artist, "204")))));
 
-        // Assert
-        Assert.Equal(expected, decoded);
+        Assert.Equal("value", exception.ParamName);
     }
+
 }
 
 public sealed class PlayableReferenceResolverTests
@@ -530,24 +522,24 @@ public sealed class PlayableReferenceResolverTests
     }
 
     [Fact]
-    public void ResolverShouldPreserveAnAlbumArtistSelectionConstraint()
+    public void ResolverShouldRejectArtistSearchReferences()
     {
         // Arrange
-        var browseCodec = new ReferenceCodecTestContext().Browse;
+        var searchCodec = new ReferenceCodecTestContext().Search;
         var resolver = new PlayableReferenceResolver(
-            new ReferenceCodecTestContext().Search,
-            browseCodec);
-        var expected = new PlayableMedia(
-            new MediaIdentity(MediaEntityKind.Artist, "204"),
-            ArtistSelectionScope.AlbumArtist);
-        var reference = browseCodec.Encode(new BrowseReferenceValue(
-            new BrowseTarget(BrowseTargetKind.AlbumArtistAlbums, "204", 0),
-            expected));
+            searchCodec,
+            new ReferenceCodecTestContext().Browse);
+        var artistMedia = new PlayableMedia(
+            new MediaIdentity(MediaEntityKind.Artist, "204"));
+        var searchReference = searchCodec.Encode(
+            new SearchResultReferenceValue(
+                "123456781234123412341234567890ab",
+                artistMedia.Identity));
 
         // Act
-        var resolved = resolver.Resolve(reference);
+        var searchResult = resolver.Resolve(searchReference);
 
         // Assert
-        Assert.Equal(expected, resolved?.Media);
+        Assert.Null(searchResult);
     }
 }

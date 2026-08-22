@@ -64,9 +64,7 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             return false;
         }
 
-        return media.ArtistScope is not { } artistScope
-            || Enum.IsDefined(artistScope)
-                && media.Identity.Kind == MediaEntityKind.Artist;
+        return media.Identity.Kind != MediaEntityKind.Artist;
     }
 
     private static bool HasValidFilter(BrowseTarget target)

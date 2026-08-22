@@ -197,7 +197,7 @@ public sealed class BrowseService(
             ? null
             : new BrowseReferenceValue(
                 TargetForSearchIdentity(searchReference.Identity),
-                new PlayableMedia(searchReference.Identity),
+                PlayableMedia(searchReference.Identity),
                 searchReference.CorrelationId);
     }
 
@@ -236,12 +236,7 @@ public sealed class BrowseService(
 
     private static PlayableMedia? PlayableMedia(LmsBrowseItem item) => item.Kind switch
     {
-        BrowseItemKind.AlbumArtist =>
-            new PlayableMedia(
-                new MediaIdentity(MediaEntityKind.Artist, item.Id),
-                ArtistSelectionScope.AlbumArtist),
-        BrowseItemKind.Artist =>
-            new PlayableMedia(new MediaIdentity(MediaEntityKind.Artist, item.Id)),
+        BrowseItemKind.AlbumArtist or BrowseItemKind.Artist => null,
         BrowseItemKind.Album =>
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, item.Id)),
         BrowseItemKind.Playlist =>
@@ -252,6 +247,11 @@ public sealed class BrowseService(
         _ => throw new InvalidOperationException(
             $"Unsupported LMS browse item kind {item.Kind}.")
     };
+
+    private static PlayableMedia? PlayableMedia(MediaIdentity identity) =>
+        identity.Kind == MediaEntityKind.Artist
+            ? null
+            : new PlayableMedia(identity);
 
     private static LmsBrowseQueryKind ToLmsQueryKind(BrowseTargetKind kind) => kind switch
     {
