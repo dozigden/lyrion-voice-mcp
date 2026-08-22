@@ -114,10 +114,9 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains(
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
-        Assert.Contains(
-            "rating-only exploration",
-            searchTool.GetProperty("description").GetString(),
-            StringComparison.Ordinal);
+        Assert.Equal(
+            "Search for artists, albums, tracks, or playlists. Optionally include a rating to narrow the search. * is not a wildcard.",
+            searchTool.GetProperty("description").GetString());
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         var browseTool = Assert.Single(
             document.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray(),

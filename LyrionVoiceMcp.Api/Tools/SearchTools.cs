@@ -23,7 +23,7 @@ public sealed class SearchTools(ISearchService searchService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(SearchResponse))]
-    [Description("Search for named artists, albums, tracks, or playlists. To constrain matching tracks by rating, supply both rating and ratingMatch. For rating-only exploration, use browse and open Ratings; '*' is not a wildcard.")]
+    [Description("Search for artists, albums, tracks, or playlists. Optionally include a rating to narrow the search. * is not a wildcard.")]
     public async Task<CallToolResult> SearchAsync(
         [Description("Meaningful artist, album, track, or playlist name text to search for, up to 500 characters and 20 words. Wildcards are not supported.")] string query,
         [Description("Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch.")] decimal? rating = null,
