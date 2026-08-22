@@ -1,11 +1,12 @@
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
+using System.Text.RegularExpressions;
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Extensions.Logging;
 
 namespace LyrionVoiceMcp.Services;
 
-internal sealed class SearchService(
+internal sealed partial class SearchService(
     ICatalogueSearchResolver catalogueSearch,
     ILmsPlaylistSearchClient playlistSearch,
     ISearchResultReferenceCodec referenceCodec,
@@ -27,14 +28,14 @@ internal sealed class SearchService(
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
-                "The search query must not be empty.");
+                "The search name must not be empty.");
         }
 
         if (query.Length > SearchQueryPolicy.MaximumLength)
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
-                $"The search query must contain no more than {SearchQueryPolicy.MaximumLength} characters.");
+                $"The search name must contain no more than {SearchQueryPolicy.MaximumLength} characters.");
         }
 
         var normalisedQuery = query.Trim();
@@ -43,14 +44,21 @@ internal sealed class SearchService(
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
-                "The search query must include a media name; '*' is not a wildcard. For rating-only exploration, use browse and open Ratings.");
+                "The search name must include media-name text; '*' is not a wildcard. For rating-only exploration, use browse and open Ratings.");
         }
 
         if (tokenCount > SearchQueryPolicy.MaximumTokenCount)
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
-                $"The search query must contain no more than {SearchQueryPolicy.MaximumTokenCount} words.");
+                $"The search name must contain no more than {SearchQueryPolicy.MaximumTokenCount} words.");
+        }
+
+        if (RatingSyntax().IsMatch(normalisedQuery))
+        {
+            return new SearchRejected(
+                SearchRejectionReason.InvalidQuery,
+                "The name must contain media-name text only. Put the numeric rating in rating and use ratingMatch exact or at_least; for example, name \"Copper Lines\", rating 5, ratingMatch \"exact\".");
         }
 
         if (criteria.RatingConstraint is { } ratingConstraint
@@ -208,6 +216,12 @@ internal sealed class SearchService(
             stopwatch.ElapsedMilliseconds);
         return new SearchSucceeded(results);
     }
+
+    [GeneratedRegex(
+        @"(?:\b(?:rating|rated)\s*(?:(?:at\s+least|exactly|of)\s*)?(?::|=)?\s*\d+(?:\.\d+)?(?:\s*(?:\+|/5))?|\b\d+(?:\.\d+)?\s*(?:\+|/5)?\s*(?:star(?:s)?|rating)\b|\b[0-5](?:\.\d+)?\s*\+(?=\s|$))",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        100)]
+    private static partial Regex RatingSyntax();
 
     private sealed record Candidate(
         MediaIdentity Identity,

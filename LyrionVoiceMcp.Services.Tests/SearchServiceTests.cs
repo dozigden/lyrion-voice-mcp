@@ -297,6 +297,51 @@ public sealed class SearchServiceTests
         Assert.Null(playlists.Query);
     }
 
+    [Theory]
+    [InlineData("Copper Lines tracks rating 5")]
+    [InlineData("Copper Lines 5 star tracks")]
+    [InlineData("Copper Lines tracks 4+")]
+    public async Task SearchShouldRejectRatingSyntaxInTheMediaNameBeforeRetrieval(
+        string query)
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var playlists = new StubPlaylistSearch([]);
+        var service = CreateService(
+            catalogue,
+            playlists,
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var outcome = await service.SearchAsync(
+            query,
+            TestContext.Current.CancellationToken);
+
+        var rejected = Assert.IsType<SearchRejected>(outcome);
+        Assert.Equal(SearchRejectionReason.InvalidQuery, rejected.Reason);
+        Assert.Contains("media-name text only", rejected.Message, StringComparison.Ordinal);
+        Assert.Contains("ratingMatch", rejected.Message, StringComparison.Ordinal);
+        Assert.Null(catalogue.Query);
+        Assert.Null(playlists.Query);
+    }
+
+    [Fact]
+    public async Task SearchShouldAllowOrdinaryNumericMediaNames()
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var service = CreateService(
+            catalogue,
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var outcome = await service.SearchAsync(
+            "1984 Copper Lines",
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<SearchSucceeded>(outcome);
+        Assert.Equal("1984 Copper Lines", catalogue.Query);
+    }
+
     [Fact]
     public async Task MissingProductionIndexShouldReturnAnExplicitRejection()
     {

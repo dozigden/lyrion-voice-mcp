@@ -87,7 +87,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"name\":\"search\"", body, StringComparison.Ordinal);
-        Assert.Contains("\"required\":[\"query\"]", body, StringComparison.Ordinal);
+        Assert.Contains("\"required\":[\"name\"]", body, StringComparison.Ordinal);
         using var document = ParseJsonRpcResponse(body);
         var searchTool = Assert.Single(
             document.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray(),
@@ -95,7 +95,14 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         var searchInputProperties = searchTool
             .GetProperty("inputSchema")
             .GetProperty("properties");
+        Assert.False(searchInputProperties.TryGetProperty("query", out _));
+        Assert.Equal(
+            "Artist, album, track, or playlist name text only, up to 500 characters and 20 words. Do not include ratings or search syntax; use rating and ratingMatch instead. Wildcards are not supported.",
+            searchInputProperties.GetProperty("name").GetProperty("description").GetString());
         var ratingInput = searchInputProperties.GetProperty("rating");
+        Assert.Equal(
+            "Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch; do not put the rating in name.",
+            ratingInput.GetProperty("description").GetString());
         Assert.Equal(0m, ratingInput.GetProperty("minimum").GetDecimal());
         Assert.Equal(5m, ratingInput.GetProperty("maximum").GetDecimal());
         Assert.Equal(
@@ -115,7 +122,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
         Assert.Equal(
-            "Search for artists, albums, tracks, or playlists. Optionally include a rating to narrow the search. * is not a wildcard.",
+            "Search for artists, albums, tracks, or playlists by name. Use the separate rating and ratingMatch fields to narrow track results. * is not a wildcard.",
             searchTool.GetProperty("description").GetString());
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         var browseTool = Assert.Single(
@@ -173,7 +180,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             31,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"query":"copper lines","rating":4.5,"ratingMatch":"at_least"}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"name":"copper lines","rating":4.5,"ratingMatch":"at_least"}}
             """,
             "search");
 
@@ -201,7 +208,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             32,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"query":"copper lines","rating":4}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"name":"copper lines","rating":4}}
             """,
             "search");
 
@@ -231,7 +238,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             3,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"query":"copper lines"}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"name":"copper lines"}}
             """,
             "search");
 
@@ -315,7 +322,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             7,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"query":" "}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"name":" "}}
             """,
             "search");
 
@@ -346,7 +353,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             15,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"query":"force unexpected failure"}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"name":"force unexpected failure"}}
             """,
             "search");
 

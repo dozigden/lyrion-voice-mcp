@@ -23,10 +23,10 @@ public sealed class SearchTools(ISearchService searchService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(SearchResponse))]
-    [Description("Search for artists, albums, tracks, or playlists. Optionally include a rating to narrow the search. * is not a wildcard.")]
+    [Description("Search for artists, albums, tracks, or playlists by name. Use the separate rating and ratingMatch fields to narrow track results. * is not a wildcard.")]
     public async Task<CallToolResult> SearchAsync(
-        [Description("Meaningful artist, album, track, or playlist name text to search for, up to 500 characters and 20 words. Wildcards are not supported.")] string query,
-        [Description("Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch.")] decimal? rating = null,
+        [Description("Artist, album, track, or playlist name text only, up to 500 characters and 20 words. Do not include ratings or search syntax; use rating and ratingMatch instead. Wildcards are not supported.")] string name,
+        [Description("Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch; do not put the rating in name.")] decimal? rating = null,
         [Description("Optional rating comparison supplied with rating. Use exact for exactly that rating. Use at_least for that rating or higher; rating 4 with at_least means 4+.")] string? ratingMatch = null,
         CancellationToken cancellationToken = default)
     {
@@ -39,7 +39,7 @@ public sealed class SearchTools(ISearchService searchService)
         try
         {
             var outcome = await searchService.SearchAsync(
-                new SearchCriteria(query, constraint.Value),
+                new SearchCriteria(name, constraint.Value),
                 cancellationToken);
             return outcome switch
             {

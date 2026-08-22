@@ -39,7 +39,7 @@ Every item returned by `browse` can contain a `browseRef`, a `playRef`, or both.
 
 `search` resolves voice-derived text into ordered media candidates.
 
-The input has a required meaningful media-name query of at most 500 characters and 20 words. Optional `rating` and `ratingMatch` fields must be supplied together. `rating` is a decimal number from 0 to 5; `ratingMatch` is `exact` for exactly that rating or `at_least` for that rating and higher, so rating 4 with `at_least` means 4+. Without them, search uses the production catalogue resolver followed by isolated LMS playlist discovery. With them, search returns catalogue tracks only and does not query playlists.
+The input has a required `name` field containing only meaningful artist, album, track, or playlist name text of at most 500 characters and 20 words. Optional `rating` and `ratingMatch` fields must be supplied together. `rating` is a decimal number from 0 to 5; `ratingMatch` is `exact` for exactly that rating or `at_least` for that rating and higher, so rating 4 with `at_least` means 4+. Ratings and rating syntax belong in those separate fields, never in `name`; recognisable misplaced numeric rating syntax returns a corrective tool error. Without a rating constraint, search uses the production catalogue resolver followed by isolated LMS playlist discovery. With one, search returns catalogue tracks only and does not query playlists.
 
 The structured response contains concise recursive-browse guidance and four required lists. `artists` contain `name` and `browseRef`; `albums` contain title, nullable artist, `browseRef`, and `playRef`; `tracks` contain title, nullable artist and album, numeric 0–5 `rating`, and `playRef`; `playlists` contain title, `browseRef`, and `playRef`. Empty lists represent no matches.
 
@@ -53,7 +53,7 @@ The production catalogue resolver does not expose its ranking score as confidenc
 
 Provider and collection scopes, caller-selected result limits, match evidence, explicit rank, and public timing are not part of the current contract. Observation timing and returned category counts remain internal concerns.
 
-Confidence may be reconsidered later alongside ranking calibration. A query must contain meaningful letter-or-digit media-name text; `*` and other wildcard-only input return a corrective MCP tool error directing rating-only exploration to Browse → Ratings.
+Confidence may be reconsidered later alongside ranking calibration. `name` must contain meaningful letter-or-digit media-name text; `*` and other wildcard-only input return a corrective MCP tool error directing rating-only exploration to Browse → Ratings.
 
 ## `browse`
 
