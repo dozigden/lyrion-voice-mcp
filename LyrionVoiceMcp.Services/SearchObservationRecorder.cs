@@ -202,4 +202,5 @@ internal sealed record SearchCandidateOccurrence(
     MediaIdentity Identity,
     string Title,
     string? Artist,
-    string? Album);
+    string? Album,
+    int? NativeRating = null);

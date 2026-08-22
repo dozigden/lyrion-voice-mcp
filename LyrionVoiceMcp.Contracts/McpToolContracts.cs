@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -19,7 +20,12 @@ public sealed record SearchCandidate(
     SearchEntityKind Kind,
     string Title,
     string? Artist,
-    string? Album);
+    string? Album)
+{
+    [Description("For tracks, a 0 to 5 star rating such as 4.5, or 'unrated'. Omitted for other result kinds.")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Rating { get; init; }
+}
 
 public sealed record SearchResponse(IReadOnlyList<SearchCandidate> Results);
 

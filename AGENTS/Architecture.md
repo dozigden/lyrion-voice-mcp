@@ -45,4 +45,4 @@ Read this before adding projects, dependencies, storage, or new integration boun
 
 ## Planned boundaries
 
-Canonical ID reconciliation, provider/plugin catalogues, corrections, structured filtering, ratings, last-played capability work, and virtual-library-aware search remain planned. Keep them independent of operational history and the selected index adapter.
+Canonical ID reconciliation, provider/plugin catalogues, corrections, structured rating filtering, last-played capability work, and virtual-library-aware search remain planned. Keep them independent of operational history and the selected index adapter.

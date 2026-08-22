@@ -191,4 +191,5 @@ public sealed record EntityCatalogueProjectionRow(
     string SourceId,
     string Title,
     string? Artist,
-    string? Album);
+    string? Album,
+    int? NativeRating = null);

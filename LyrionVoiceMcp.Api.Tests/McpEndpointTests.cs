@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Contracts;
 using Microsoft.AspNetCore.TestHost;
@@ -87,6 +88,21 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"name\":\"search\"", body, StringComparison.Ordinal);
         Assert.Contains("\"required\":[\"query\"]", body, StringComparison.Ordinal);
+        using var document = ParseJsonRpcResponse(body);
+        var searchTool = Assert.Single(
+            document.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray(),
+            tool => tool.GetProperty("name").GetString() == "search");
+        var candidateSchema = searchTool
+            .GetProperty("outputSchema")
+            .GetProperty("properties")
+            .GetProperty("results")
+            .GetProperty("items");
+        var ratingTypes = candidateSchema.GetProperty("properties").GetProperty("rating")
+            .GetProperty("type").EnumerateArray();
+        Assert.Contains(ratingTypes, type => type.GetString() == "string");
+        Assert.DoesNotContain(
+            candidateSchema.GetProperty("required").EnumerateArray(),
+            property => property.GetString() == "rating");
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         Assert.Contains("\"name\":\"get_player_status\"", body, StringComparison.Ordinal);
         Assert.Contains("\"name\":\"control_player\"", body, StringComparison.Ordinal);
@@ -154,6 +170,36 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("The Copper Lines", body, StringComparison.Ordinal);
         Assert.Contains("\"artist\":null", body, StringComparison.Ordinal);
         Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
+        using var document = ParseJsonRpcResponse(body);
+        var results = document.RootElement
+            .GetProperty("result")
+            .GetProperty("structuredContent")
+            .GetProperty("results")
+            .EnumerateArray()
+            .ToArray();
+        var artist = Assert.Single(results, result =>
+            result.GetProperty("title").GetString() == "The Copper Lines");
+        Assert.False(artist.TryGetProperty("rating", out _));
+        Assert.Equal(
+            "4.5",
+            Assert.Single(results, result =>
+                result.GetProperty("title").GetString() == "Ninety Point Signal")
+                .GetProperty("rating").GetString());
+        Assert.Equal(
+            "3.35",
+            Assert.Single(results, result =>
+                result.GetProperty("title").GetString() == "Odd Point Signal")
+                .GetProperty("rating").GetString());
+        Assert.Equal(
+            "unrated",
+            Assert.Single(results, result =>
+                result.GetProperty("title").GetString() == "Missing Rating Signal")
+                .GetProperty("rating").GetString());
+        Assert.Equal(
+            "unrated",
+            Assert.Single(results, result =>
+                result.GetProperty("title").GetString() == "Zero Rating Signal")
+                .GetProperty("rating").GetString());
         Assert.DoesNotContain("confidence", body, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("succeeded", recorded!.Status);
         Assert.Contains("copper lines", recorded.ArgumentsJson, StringComparison.Ordinal);
@@ -906,6 +952,13 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         return request;
     }
 
+    private static JsonDocument ParseJsonRpcResponse(string body)
+    {
+        var data = body.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Single(line => line.StartsWith("data:", StringComparison.Ordinal));
+        return JsonDocument.Parse(data["data:".Length..].Trim());
+    }
+
     private sealed class StubSearchService(SearchOutcome? outcome = null) : ISearchService
     {
         public Task<SearchOutcome> SearchAsync(
@@ -926,7 +979,34 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     MediaEntityKind.Artist,
                     "The Copper Lines",
                     null,
-                    null)
+                    null),
+                new(
+                    "rated-reference",
+                    MediaEntityKind.Track,
+                    "Ninety Point Signal",
+                    "The Copper Lines",
+                    "Copper Signals",
+                    90),
+                new(
+                    "odd-reference",
+                    MediaEntityKind.Track,
+                    "Odd Point Signal",
+                    "The Copper Lines",
+                    "Copper Signals",
+                    67),
+                new(
+                    "missing-reference",
+                    MediaEntityKind.Track,
+                    "Missing Rating Signal",
+                    "The Copper Lines",
+                    "Copper Signals"),
+                new(
+                    "zero-reference",
+                    MediaEntityKind.Track,
+                    "Zero Rating Signal",
+                    "The Copper Lines",
+                    "Copper Signals",
+                    0)
             ]));
         }
     }

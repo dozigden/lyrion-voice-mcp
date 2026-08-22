@@ -20,7 +20,8 @@ public sealed record SearchCandidate(
     MediaEntityKind Kind,
     string Title,
     string? Artist,
-    string? Album);
+    string? Album,
+    int? NativeRating = null);
 
 public sealed record SearchResolverMetrics(
     int? IndexedCandidateCount,

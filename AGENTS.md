@@ -23,6 +23,7 @@ README files are for human-facing usage. Agent execution guidance belongs here o
 - Prefer British English in identifiers, comments, documentation, and generated prose unless an external contract dictates spelling.
 - When behaviour covered by agent guidance changes, update the relevant guidance in the same work.
 - Keep implemented behaviour clearly separated from future plans in documentation.
+- Only update README files when the user explicitly instructs you to do so.
 - This is unauthenticated trusted-LAN software. Do not imply that the service is safe to expose publicly.
 - Treat the public MCP surface as evolvable user-facing product functionality. Add well-scoped media and player tools when justified, but do not expose diagnostics, raw LMS commands, or experimental internals as public tools.
 - Use the repository validation scripts for normal checks. Avoid ad hoc test commands unless changing those scripts or diagnosing a script failure.

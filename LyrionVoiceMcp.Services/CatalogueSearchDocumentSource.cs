@@ -104,5 +104,6 @@ public sealed class CatalogueSearchDocumentSource(
         }, row.SourceId),
         row.Title,
         row.Artist,
-        row.Album);
+        row.Album,
+        row.NativeRating);
 }

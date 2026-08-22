@@ -2,13 +2,14 @@
 
 Read this before changing search contracts, ranking, observation capture, catalogue ingestion, or search storage.
 
-- Production artist, album, and track search uses the catalogue-backed `catalogue-phuzzy-sqlite` resolver version 1. `ProductionCatalogueSearchService.Descriptor` is the authoritative production resolver identity; resolver and index-builder consumers must read the shared descriptor rather than repeat its name or version. Playlist discovery remains an isolated LMS `playlists` request.
+- Production artist, album, and track search uses the catalogue-backed `catalogue-phuzzy-sqlite` resolver version 2. Version 2 carries the nullable native LMS rating in track documents without using it for retrieval or ranking. `ProductionCatalogueSearchService.Descriptor` is the authoritative production resolver identity; resolver and index-builder consumers must read the shared descriptor rather than repeat its name or version. Playlist discovery remains an isolated LMS `playlists` request.
 - Keep resolver, candidate, execution, metric, and diagnostic contracts in Search production-neutral. The Evaluation executable consumes those contracts for benchmarking; deployed code must not depend on Evaluation types or the executable project.
 - Return at most 20 ranked catalogue candidates followed by at most 20 playlists in LMS order. Do not interleave the two sources.
 - Reject public search queries over 500 characters or 20 normalised letter-or-digit tokens before starting either retrieval source. Keep diagnostic and production limits aligned.
 - The production resolver uses bounded normalised, compact, acronym, consonant-skeleton, Double Metaphone, token/prefix, and trigram retrieval lanes, then applies the application-owned scorer. Preserve the distinction between retrieval evidence, ranking score, and confidence; no confidence or speculative no-match threshold is implemented.
 - Numeric tokens must contribute to phonetic evidence through spoken digit forms. Do not allow a phonetic encoder to silently discard a digit while treating the remaining words as a complete query span.
 - Keep the public result contract independent of catalogue rows, SQLite documents, and LMS response shapes.
+- The catalogue projection and disposable index retain nullable native 0–100 track ratings internally. Only `lms-core` statistics feed this field. MCP mapping alone converts positive values to 0–5 strings and maps missing or zero values to `unrated`; diagnostics and observations do not gain rating fields in this slice.
 - Search returns one opaque result reference per candidate; it does not return a separate public search identifier. Each reference combines candidate correlation with the underlying LMS playback identity.
 - Returning the same media item from two searches must produce distinct result references for the two candidate occurrences.
 - Artist, album, and playlist search references can seed `browse`. Preserve correlation through derived browse descendants and continuations so successful playback or queue mutation marks the originating result selected.

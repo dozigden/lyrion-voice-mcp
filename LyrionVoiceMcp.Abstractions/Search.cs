@@ -61,7 +61,8 @@ public sealed record CatalogueSearchDocument(
     MediaIdentity Identity,
     string Title,
     string? Artist,
-    string? Album);
+    string? Album,
+    int? NativeRating = null);
 
 public sealed record CatalogueSearchDocumentBatch(
     string CatalogueRefreshId,
@@ -80,7 +81,8 @@ public sealed record CatalogueSearchCandidate(
     string Title,
     string? Artist,
     string? Album,
-    int Score);
+    int Score,
+    int? NativeRating = null);
 
 public sealed record CatalogueSearchResponse(
     IReadOnlyList<CatalogueSearchCandidate> Candidates,
@@ -132,7 +134,8 @@ public sealed record SearchCandidateResult(
     MediaEntityKind Kind,
     string Title,
     string? Artist,
-    string? Album);
+    string? Album,
+    int? NativeRating = null);
 
 public enum SearchRejectionReason
 {

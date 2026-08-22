@@ -317,6 +317,7 @@ public sealed class CatalogueProjectionRepository(
                 item.SourceId,
                 item.Name,
                 null,
+                null,
                 null))
             .ToArrayAsync(cancellationToken);
 
@@ -337,6 +338,7 @@ public sealed class CatalogueProjectionRepository(
                     .Where(artist => artist.SourceId == item.AlbumArtistSourceId)
                     .Select(artist => artist.Name)
                     .SingleOrDefault(),
+                null,
                 null))
             .ToArrayAsync(cancellationToken);
 
@@ -354,7 +356,11 @@ public sealed class CatalogueProjectionRepository(
                 item.Id,
                 item.SourceId,
                 item.Title,
-                item.AlbumSourceId))
+                item.AlbumSourceId,
+                item.Statistics
+                    .Where(statistic => statistic.Source == "lms-core")
+                    .Select(statistic => statistic.Rating)
+                    .SingleOrDefault()))
             .ToArrayAsync(cancellationToken);
         if (tracks.Length == 0)
         {
@@ -407,7 +413,8 @@ public sealed class CatalogueProjectionRepository(
                 track.SourceId,
                 track.Title,
                 artist ?? album?.Artist,
-                album?.Title);
+                album?.Title,
+                track.NativeRating);
         }).ToArray();
     }
 
@@ -415,7 +422,8 @@ public sealed class CatalogueProjectionRepository(
         int Id,
         string SourceId,
         string Title,
-        string? AlbumSourceId);
+        string? AlbumSourceId,
+        int? NativeRating);
 
     private sealed record TrackArtistProjection(int TrackId, int RelationId, string Name);
 

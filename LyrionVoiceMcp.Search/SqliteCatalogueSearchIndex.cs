@@ -99,7 +99,8 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                     value.Title,
                     value.Artist,
                     value.Album,
-                    result.Score);
+                    result.Score,
+                    value.NativeRating);
             })
             .ToArray();
         return new CatalogueSearchResponse(
@@ -243,7 +244,9 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                     kind INTEGER NOT NULL,
                     title TEXT NOT NULL,
                     artist TEXT NULL,
-                    album TEXT NULL
+                    album TEXT NULL,
+                    native_rating INTEGER NULL CHECK (
+                        native_rating IS NULL OR native_rating BETWEEN 0 AND 100)
                 );
                 CREATE TABLE lookup_terms (
                     lane TEXT NOT NULL,
@@ -315,8 +318,22 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         await using var insertDocument = connection.CreateCommand();
         insertDocument.Transaction = transaction;
         insertDocument.CommandText = """
-            INSERT INTO documents (document_id, stable_key, kind, title, artist, album)
-            VALUES ($documentId, $stableKey, $kind, $title, $artist, $album);
+            INSERT INTO documents (
+                document_id,
+                stable_key,
+                kind,
+                title,
+                artist,
+                album,
+                native_rating)
+            VALUES (
+                $documentId,
+                $stableKey,
+                $kind,
+                $title,
+                $artist,
+                $album,
+                $nativeRating);
             """;
         var documentIdParameter = insertDocument.Parameters.Add("$documentId", SqliteType.Integer);
         var stableKeyParameter = insertDocument.Parameters.Add("$stableKey", SqliteType.Text);
@@ -324,6 +341,9 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         var titleParameter = insertDocument.Parameters.Add("$title", SqliteType.Text);
         var artistParameter = insertDocument.Parameters.Add("$artist", SqliteType.Text);
         var albumParameter = insertDocument.Parameters.Add("$album", SqliteType.Text);
+        var nativeRatingParameter = insertDocument.Parameters.Add(
+            "$nativeRating",
+            SqliteType.Integer);
 
         await using var insertTerm = connection.CreateCommand();
         insertTerm.Transaction = transaction;
@@ -368,6 +388,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             titleParameter.Value = document.Title;
             artistParameter.Value = document.Artist ?? (object)DBNull.Value;
             albumParameter.Value = document.Album ?? (object)DBNull.Value;
+            nativeRatingParameter.Value = document.NativeRating ?? (object)DBNull.Value;
             await insertDocument.ExecuteNonQueryAsync(cancellationToken);
 
             termDocumentIdParameter.Value = documentId;
@@ -685,7 +706,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         }
 
         command.CommandText = $"""
-            SELECT document_id, stable_key, kind, title, artist, album
+            SELECT document_id, stable_key, kind, title, artist, album, native_rating
             FROM documents
             WHERE document_id IN ({string.Join(", ", parameters)});
             """;
@@ -702,7 +723,8 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                     (MediaEntityKind)reader.GetInt32(2),
                     reader.GetString(3),
                     reader.IsDBNull(4) ? null : reader.GetString(4),
-                    reader.IsDBNull(5) ? null : reader.GetString(5)),
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    reader.IsDBNull(6) ? null : reader.GetInt32(6)),
                 PhuzzyText.Normalise(reader.GetString(3)),
                 reader.IsDBNull(4) ? string.Empty : PhuzzyText.Normalise(reader.GetString(4)),
                 reader.IsDBNull(5) ? string.Empty : PhuzzyText.Normalise(reader.GetString(5)),

@@ -47,6 +47,38 @@ public sealed class SearchServiceTests
     }
 
     [Fact]
+    public async Task SearchShouldCarryNativeRatingsOnlyFromCatalogueTracks()
+    {
+        var service = CreateService(
+            new StubCatalogueSearch([
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Track, "track-7"),
+                    "Rated Copper Signal",
+                    "The Imaginaries",
+                    "Imaginary Signals",
+                    1_040,
+                    90)
+            ]),
+            new StubPlaylistSearch([
+                new LmsSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Playlist, "playlist-9"),
+                    "Copper Evenings",
+                    null,
+                    null)
+            ]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var outcome = await service.SearchAsync(
+            "copper",
+            TestContext.Current.CancellationToken);
+
+        var results = Assert.IsType<SearchSucceeded>(outcome).Results;
+        Assert.Equal(90, results[0].NativeRating);
+        Assert.Null(results[1].NativeRating);
+    }
+
+    [Fact]
     public async Task SearchShouldRejectWhitespaceWithoutCallingEitherResolver()
     {
         var catalogue = new StubCatalogueSearch([]);

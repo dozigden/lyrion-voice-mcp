@@ -100,7 +100,8 @@ internal sealed class SearchService(
                 candidate.Identity,
                 candidate.Title,
                 candidate.Artist,
-                candidate.Album))
+                candidate.Album,
+                candidate.NativeRating))
             .Concat((playlistResponse?.Candidates ?? [])
                 .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Playlist)
                 .Take(20)
@@ -115,7 +116,8 @@ internal sealed class SearchService(
                 candidate.Identity,
                 candidate.Title,
                 candidate.Artist,
-                candidate.Album))
+                candidate.Album,
+                candidate.NativeRating))
             .ToArray();
         stopwatch.Stop();
 
@@ -141,7 +143,8 @@ internal sealed class SearchService(
                 candidate.Identity.Kind,
                 candidate.Title,
                 candidate.Artist,
-                candidate.Album))
+                candidate.Album,
+                candidate.NativeRating))
             .ToArray();
         await observationRecorder.RecordCompletedAsync(
             observation,
@@ -163,5 +166,6 @@ internal sealed class SearchService(
         MediaIdentity Identity,
         string Title,
         string? Artist,
-        string? Album);
+        string? Album,
+        int? NativeRating = null);
 }

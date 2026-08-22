@@ -29,7 +29,7 @@ public sealed class ProductionCatalogueSearchService :
     private const string PointerFileName = "current.json";
     private static readonly SearchResolverDescriptor DescriptorValue = new(
         "catalogue-phuzzy-sqlite",
-        "1");
+        "2");
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ProductionSearchSettings settings;

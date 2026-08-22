@@ -41,7 +41,7 @@ Every item returned by `browse` also has one opaque server-issued handle. Its re
 
 The implemented input consists only of a required query of at most 500 characters and 20 words. It searches the whole configured library through the production catalogue resolver, while playlists use an isolated LMS request.
 
-Each ordered result carries its opaque candidate reference, media kind, and display information. An empty list represents no match. Up to 20 ranked catalogue artists, albums, and tracks are followed by up to 20 matching playlists in LMS order.
+Each ordered result carries its opaque candidate reference, media kind, and display information. Every track result additionally contains a `rating` string: a positive LMS rating is represented on the 0–5 star scale without unnecessary trailing zeroes, such as `"4"`, `"4.5"`, or `"3.35"`; a track without a positive rating contains `"unrated"`. The native LMS 0–100 value is not public. Artist, album, and playlist results omit `rating`. An empty list represents no match. Up to 20 ranked catalogue artists, albums, and tracks are followed by up to 20 matching playlists in LMS order.
 
 The production catalogue resolver does not expose its ranking score as confidence. Playlist results follow catalogue results in LMS order. The server does not silently select or play a result.
 
@@ -125,4 +125,4 @@ Invalid actions or item combinations, missing players, and batches with no usabl
 
 ## Further surface
 
-Further queue editing, provider and plugin browsing, grouping, mixes, ratings and likes, volume or other player settings, and subscriptions are candidates for additional user-facing tools. Ingestion, reindexing, and search diagnostics remain operational concerns rather than public MCP tools.
+Further queue editing, provider and plugin browsing, grouping, mixes, rating-based filtering and likes, volume or other player settings, and subscriptions are candidates for additional user-facing tools. Ingestion, reindexing, and search diagnostics remain operational concerns rather than public MCP tools.

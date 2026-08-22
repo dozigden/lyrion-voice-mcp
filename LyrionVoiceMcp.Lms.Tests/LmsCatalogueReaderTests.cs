@@ -91,6 +91,11 @@ public sealed class LmsCatalogueReaderTests
         Assert.Equal(["31"], writer.LibraryTracks["51"]);
         Assert.Contains(
             handler.Commands,
+            command => command[0] == "titles"
+                && command.Any(value => value.StartsWith("tags:", StringComparison.Ordinal)
+                    && value.Contains('R')));
+        Assert.Contains(
+            handler.Commands,
             command => command.SequenceEqual(
                 ["titles", "0", "500", "library_id:51", "tags:II"]));
     }

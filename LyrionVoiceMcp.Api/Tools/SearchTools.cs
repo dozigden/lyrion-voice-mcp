@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Contracts;
 using ModelContextProtocol;
@@ -22,7 +23,7 @@ public sealed class SearchTools(ISearchService searchService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(SearchResponse))]
-    [Description("Search the whole configured Lyrion Music Server library for artists, albums, tracks, and playlists.")]
+    [Description("Search the whole configured Lyrion Music Server library for artists, albums, tracks, and playlists. Track results include a 0 to 5 rating string or 'unrated'.")]
     public async Task<CallToolResult> SearchAsync(
         [Description("The artist, album, track, or playlist text to search for, up to 500 characters and 20 words.")] string query,
         CancellationToken cancellationToken)
@@ -62,8 +63,9 @@ public sealed class SearchTools(ISearchService searchService)
             IsError = true
         };
 
-    private static ContractSearchCandidate MapCandidate(SearchCandidateResult candidate) =>
-        new(
+    private static ContractSearchCandidate MapCandidate(SearchCandidateResult candidate)
+    {
+        var result = new ContractSearchCandidate(
             candidate.Reference,
             candidate.Kind switch
             {
@@ -77,4 +79,25 @@ public sealed class SearchTools(ISearchService searchService)
             candidate.Title,
             candidate.Artist,
             candidate.Album);
+
+        return candidate.Kind == MediaEntityKind.Track
+            ? result with { Rating = FormatRating(candidate.NativeRating) }
+            : result;
+    }
+
+    private static string FormatRating(int? nativeRating)
+    {
+        if (nativeRating is null or 0)
+        {
+            return "unrated";
+        }
+
+        if (nativeRating is < 0 or > 100)
+        {
+            throw new InvalidOperationException(
+                "A track search result contained a rating outside the LMS 0 to 100 scale.");
+        }
+
+        return (nativeRating.Value / 20m).ToString("0.##", CultureInfo.InvariantCulture);
+    }
 }

@@ -58,6 +58,47 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RebuildShouldPreserveNativeTrackRatingsWithoutChangingRanking()
+    {
+        var source = new DocumentSource([
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "rated-track"),
+                "Fictional Rated Signal",
+                "The Imaginaries",
+                "Imaginary Signals",
+                67),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "unrated-track"),
+                "Fictional Unrated Signal",
+                "The Imaginaries",
+                "Imaginary Signals")
+        ]);
+        await using var service = CreateService(source);
+
+        var rebuilt = await service.RebuildAsync(
+            "refresh-ratings",
+            42,
+            NullProgress.Instance,
+            TestContext.Current.CancellationToken);
+        var rated = await service.SearchAsync(
+            "rated signal",
+            TestContext.Current.CancellationToken);
+        var unrated = await service.SearchAsync(
+            "unrated signal",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("2", rebuilt.Artifact.ResolverVersion);
+        Assert.Equal(
+            67,
+            Assert.Single(rated.Candidates, candidate =>
+                candidate.Identity.Id == "rated-track").NativeRating);
+        Assert.Null(Assert.Single(unrated.Candidates, candidate =>
+            candidate.Identity.Id == "unrated-track").NativeRating);
+        Assert.True(rated.Candidates[0].Score > 0);
+        Assert.True(unrated.Candidates[0].Score > 0);
+    }
+
+    [Fact]
     public void NumericTokensShouldContributeSpokenPhoneticEvidence()
     {
         var numeric = PhuzzyText.DoubleMetaphoneCodes("quartz 5");
@@ -97,6 +138,46 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
 
         Assert.Equal("amber", duringBuild.Candidates[0].Identity.Id);
         Assert.Equal("violet", afterBuild.Candidates[0].Identity.Id);
+    }
+
+    [Fact]
+    public async Task VersionOneArtifactShouldBeIncompatibleWithTheRatingIndex()
+    {
+        var source = new DocumentSource([
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "rated-track"),
+                "Fictional Rated Signal",
+                "The Imaginaries",
+                "Imaginary Signals",
+                80)
+        ]);
+        await using (var service = CreateService(source))
+        {
+            await service.RebuildAsync(
+                "refresh-ratings",
+                43,
+                NullProgress.Instance,
+                TestContext.Current.CancellationToken);
+        }
+
+        var generationDirectory = Assert.Single(
+            Directory.GetDirectories(directory, "generation-*"));
+        var manifestPath = Path.Combine(generationDirectory, "manifest.json");
+        var manifest = await File.ReadAllTextAsync(
+            manifestPath,
+            TestContext.Current.CancellationToken);
+        Assert.Contains("\"resolverVersion\":\"2\"", manifest, StringComparison.Ordinal);
+        await File.WriteAllTextAsync(
+            manifestPath,
+            manifest.Replace(
+                "\"resolverVersion\":\"2\"",
+                "\"resolverVersion\":\"1\"",
+                StringComparison.Ordinal),
+            TestContext.Current.CancellationToken);
+        await using var restarted = CreateService(source);
+
+        await Assert.ThrowsAsync<CatalogueSearchUnavailableException>(() =>
+            restarted.SearchAsync("rated signal", TestContext.Current.CancellationToken));
     }
 
     public ValueTask InitializeAsync()

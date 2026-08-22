@@ -106,7 +106,8 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
             item.Identity.Kind == MediaEntityKind.Track
             && item.Title == "Night Signal"
             && item.Artist == "The Imaginaries"
-            && item.Album == "Fictional Signals");
+            && item.Album == "Fictional Signals"
+            && item.NativeRating == 80);
 
         var scopeFactory = serviceProvider.GetRequiredService<IDbContextScopeFactory>();
         var tracks = serviceProvider.GetRequiredService<ICatalogueTrackRepository>();
@@ -313,7 +314,7 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
         artistSourceId is null ? [] : [artistSourceId],
         genreSourceId is null ? [] : [genreSourceId],
         [new CatalogueImportTrackStatistics(
-            "ratings-light",
+            "lms-core",
             80,
             12,
             DateTimeOffset.Parse("2026-08-17T19:30:00Z"))]);
