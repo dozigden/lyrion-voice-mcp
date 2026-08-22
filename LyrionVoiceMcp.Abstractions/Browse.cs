@@ -29,6 +29,25 @@ public enum LmsBrowseQueryKind
     PlaylistTracks
 }
 
+public enum BrowseTargetKind
+{
+    AlbumArtists,
+    Artists,
+    Albums,
+    Genres,
+    Playlists,
+    RecentlyAddedAlbums,
+    Years,
+    AlbumArtistAlbums,
+    ArtistAlbums,
+    GenreAlbums,
+    YearAlbums,
+    AlbumTracks,
+    PlaylistTracks,
+    RatingBuckets,
+    RatingTracks
+}
+
 public sealed record LmsBrowseRequest(
     LmsBrowseQueryKind Kind,
     string? FilterId,
@@ -54,9 +73,29 @@ public interface ILmsBrowseClient
 }
 
 public sealed record BrowseTarget(
-    LmsBrowseQueryKind Kind,
+    BrowseTargetKind Kind,
     string? FilterId,
     int Offset);
+
+public sealed record RatingBrowseTrack(
+    MediaIdentity Identity,
+    string Title,
+    string? Artist,
+    string? Album,
+    int NativeRating);
+
+public sealed record RatingBrowsePage(
+    IReadOnlyList<RatingBrowseTrack> Items,
+    bool HasMore);
+
+public interface IRatingBrowseResolver
+{
+    Task<RatingBrowsePage> BrowseAsync(
+        int bucket,
+        int offset,
+        int limit,
+        CancellationToken cancellationToken);
+}
 
 public sealed record BrowseReferenceValue(
     BrowseTarget? Target,
@@ -86,12 +125,14 @@ public sealed record BrowseItemResult(
     string? Artist,
     string? Album,
     bool Browsable,
-    bool Playable);
+    bool Playable,
+    int? NativeRating = null);
 
 public enum BrowseRejectionReason
 {
     InvalidReference,
-    NotBrowsable
+    NotBrowsable,
+    BrowseUnavailable
 }
 
 public abstract record BrowseOutcome;

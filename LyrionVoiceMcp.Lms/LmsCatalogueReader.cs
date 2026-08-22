@@ -283,7 +283,7 @@ public sealed class LmsCatalogueReader(
 
     private static CatalogueImportTrack MapTrack(JsonElement item)
     {
-        var rating = ReadOptionalNonNegativeInt(item, "rating", "tracks");
+        var rating = ReadOptionalNonNegativeInt(item, "rating", "tracks") ?? 0;
         if (rating > 100)
         {
             throw new LmsRequestException(

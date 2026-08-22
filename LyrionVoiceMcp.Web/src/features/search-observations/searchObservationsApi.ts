@@ -36,6 +36,7 @@ export interface SearchCandidateObservation {
   title: string;
   artist: string | null;
   album: string | null;
+  rating: number | null;
   selectedAt: string | null;
 }
 
@@ -56,6 +57,8 @@ export interface SearchObservationDetail {
   createdAt: string;
   originalQuery: string;
   normalisedQuery: string;
+  rating: number | null;
+  ratingMatch: 'exact' | 'at_least' | null;
   requestedKind: string | null;
   provider: string;
   collection: string;
@@ -159,12 +162,16 @@ function isSummary(value: unknown): boolean {
 function isDetail(value: unknown): value is SearchObservationDetail {
   return isRecord(value) && typeof value.id === 'string' && typeof value.createdAt === 'string'
     && typeof value.originalQuery === 'string' && typeof value.normalisedQuery === 'string'
+    && ((value.rating === null && value.ratingMatch === null)
+      || (isRating(value.rating) && (value.ratingMatch === 'exact' || value.ratingMatch === 'at_least')))
     && typeof value.provider === 'string' && typeof value.collection === 'string'
     && typeof value.resolver === 'string' && typeof value.resolverVersion === 'string'
     && (value.status === 'completed' || value.status === 'failed')
     && isNumber(value.totalDurationMilliseconds) && isNumber(value.retrievalDurationMilliseconds)
     && isNumber(value.processingDurationMilliseconds) && Array.isArray(value.requests)
-    && Array.isArray(value.candidates) && isNumber(value.retentionDays)
+    && Array.isArray(value.candidates) && value.candidates.every(candidate =>
+      isRecord(candidate) && (candidate.rating === null || isRating(candidate.rating)))
+    && isNumber(value.retentionDays)
     && (value.review === null || isRecord(value.review));
 }
 
@@ -178,4 +185,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isRating(value: unknown): value is number {
+  return isNumber(value) && value >= 0 && value <= 5;
 }

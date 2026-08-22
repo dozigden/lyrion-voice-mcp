@@ -17,6 +17,8 @@ public static class ServiceCollectionExtensions
             provider.GetRequiredService<ProductionCatalogueSearchService>());
         services.AddSingleton<IDiagnosticSearchResolver>(provider =>
             provider.GetRequiredService<ProductionCatalogueSearchService>());
+        services.AddSingleton<IRatingBrowseResolver>(provider =>
+            provider.GetRequiredService<ProductionCatalogueSearchService>());
         return services;
     }
 }

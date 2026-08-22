@@ -39,9 +39,11 @@ Every item returned by `browse` also has one opaque server-issued handle. Its re
 
 `search` resolves voice-derived text into ordered media candidates.
 
-The implemented input consists only of a required query of at most 500 characters and 20 words. It searches the whole configured library through the production catalogue resolver, while playlists use an isolated LMS request.
+The input has a required query of at most 500 characters and 20 words. Optional `rating` and `ratingMatch` fields must be supplied together. `rating` is a decimal number from 0 to 5; `ratingMatch` is `exact` or `at_least`. Without them, search uses the production catalogue resolver followed by isolated LMS playlist discovery. With them, search returns catalogue tracks only and does not query playlists.
 
-Each ordered result carries its opaque candidate reference, media kind, and display information. Every track result additionally contains a `rating` string: a positive LMS rating is represented on the 0–5 star scale without unnecessary trailing zeroes, such as `"4"`, `"4.5"`, or `"3.35"`; a track without a positive rating contains `"unrated"`. The native LMS 0–100 value is not public. Artist, album, and playlist results omit `rating`. An empty list represents no match. Up to 20 ranked catalogue artists, albums, and tracks are followed by up to 20 matching playlists in LMS order.
+Each ordered result carries its opaque candidate reference, media kind, and display information. Every track result additionally contains a numeric `rating` on the 0–5 scale, including decimals such as `4`, `4.5`, or `3.35`. Native LMS zero, including a missing rating normalised during import, is public rating `0`; there is no separate unrated value. The native LMS 0–100 value is not public. Artist, album, and playlist results omit `rating`. An empty list represents no match. Unconstrained searches return up to 20 ranked catalogue artists, albums, and tracks followed by up to 20 matching playlists in LMS order.
+
+Exact matching scales the public value by 20 and requires that exact native integer, so exact `4` means native 80 and a value with no exact native representation matches nothing. At-least matching uses the smallest native integer at or above the scaled public value. Exact `0` selects native zero; at-least `0` selects every track. Rating constraints are applied inside retrieval before lane limits.
 
 The production catalogue resolver does not expose its ranking score as confidence. Playlist results follow catalogue results in LMS order. The server does not silently select or play a result.
 
@@ -51,7 +53,7 @@ Confidence may be reconsidered later alongside ranking calibration. An invalid q
 
 ## `browse`
 
-`browse` takes one optional opaque search or browse reference. Omitting it returns these fixed local-library roots in order: album artists, artists, albums, genres, playlists, recently added, and years. Tracks are deliberately not exposed at the root.
+`browse` takes one optional opaque search or browse reference. Omitting it returns these fixed local-library roots in order: album artists, artists, albums, genres, playlists, ratings, recently added, and years. Tracks are deliberately not exposed at the root.
 
 Passing a browsable item reference descends through the local library:
 
@@ -59,13 +61,16 @@ Passing a browsable item reference descends through the local library:
 - albums lead to tracks in LMS track order;
 - genres and years lead to albums, then tracks;
 - playlists lead to their tracks in playlist order;
+- ratings lead to buckets `0`, `1`, `2`, `3`, `4`, and `5`, then to matching tracks;
 - recently added returns albums using LMS's native `sort:new` ordering, then those albums lead to tracks.
+
+Rating buckets floor the public decimal: native 0–19 appears under `0`, 20–39 under `1`, 40–59 under `2`, 60–79 under `3`, 80–99 under `4`, and 100 under `5`. Tracks within a bucket are ordered by native rating descending, then title, artist, album, and stable identity.
 
 Artist, album, and playlist references returned by `search` can enter the same hierarchy directly. Artist search results lead to albums, album results lead to tracks, and playlist results lead to playlist tracks. Track search results are playable but not browsable. Search-derived descendants and continuations retain the originating candidate correlation until a playable result is used.
 
 Pages use an internal 50-item size. The caller cannot select an offset, limit, filter, or sort order. When more results remain, the response contains an opaque `continuation` which is passed back as the next browse reference.
 
-Each item contains only `reference`, `kind`, `title`, optional `artist`, optional `album`, `browsable`, and `playable`. The response contains `items` and nullable `continuation`. Album-artist, artist, album, playlist, and track items are playable; genres and years are navigation only. Tracks are playable but not browsable.
+Each item contains `reference`, `kind`, `title`, optional `artist`, optional `album`, `browsable`, and `playable`. Tracks returned from a rating bucket also contain their numeric 0–5 `rating`; other browse items omit it. The response contains `items` and nullable `continuation`. Album-artist, artist, album, playlist, and track items are playable; genres, years, and rating buckets are navigation only. Tracks are playable but not browsable.
 
 Playing or queueing an album-artist item retains LMS's album-artist selection constraint. It therefore selects the same album-artist catalogue represented by that browse item. This is a narrow LMS query scope, not a general contributor-role model; ordinary artist items remain unrestricted.
 
@@ -125,4 +130,4 @@ Invalid actions or item combinations, missing players, and batches with no usabl
 
 ## Further surface
 
-Further queue editing, provider and plugin browsing, grouping, mixes, rating-based filtering and likes, volume or other player settings, and subscriptions are candidates for additional user-facing tools. Ingestion, reindexing, and search diagnostics remain operational concerns rather than public MCP tools.
+Further queue editing, provider and plugin browsing, grouping, mixes, broader compound filtering and likes, volume or other player settings, and subscriptions are candidates for additional user-facing tools. Ingestion, reindexing, and search diagnostics remain operational concerns rather than public MCP tools.

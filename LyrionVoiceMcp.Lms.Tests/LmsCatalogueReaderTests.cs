@@ -186,6 +186,34 @@ public sealed class LmsCatalogueReaderTests
             exception.Message);
     }
 
+    [Fact]
+    public async Task ReadShouldNormaliseAMissingRatingToZero()
+    {
+        var handler = new CatalogueHandler(command => command[0] switch
+        {
+            "serverstatus" => StatusResponse(0, 0, 0, 1),
+            "artists" or "albums" or "genres" => EmptyCountedResponse(),
+            "titles" =>
+                """
+                {"id":1,"result":{"count":1,"titles_loop":[{
+                  "id":31,"title":"Unrated Stars","url":"file:///music/Unrated%20Stars.flac","remote":"0"
+                }]}}
+                """,
+            "libraries" => """{"id":1,"result":{"folder_loop":[]}}""",
+            _ => throw new InvalidOperationException($"Unexpected command {string.Join(' ', command)}")
+        });
+        using var httpClient = new HttpClient(handler);
+        var writer = new RecordingWriter();
+
+        await CreateReader(httpClient).ReadAsync(
+            "refresh-1",
+            writer,
+            new RecordingCatalogueLogSink(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, Assert.Single(Assert.Single(writer.Tracks).Statistics).Rating);
+    }
+
     private static LmsCatalogueReader CreateReader(HttpClient httpClient)
     {
         var settings = LmsConnectionSettings.FromValues(

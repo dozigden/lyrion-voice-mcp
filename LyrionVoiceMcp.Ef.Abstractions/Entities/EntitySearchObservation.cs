@@ -12,6 +12,10 @@ public sealed class EntitySearchObservation
 
     public string NormalisedQuery { get; set; } = string.Empty;
 
+    public decimal? Rating { get; set; }
+
+    public EntityRatingMatchMode? RatingMatch { get; set; }
+
     public EntityMediaKind? RequestedKind { get; set; }
 
     public string Provider { get; set; } = string.Empty;
@@ -51,4 +55,10 @@ public enum EntityMediaKind
     Album,
     Track,
     Playlist
+}
+
+public enum EntityRatingMatchMode
+{
+    Exact,
+    AtLeast
 }

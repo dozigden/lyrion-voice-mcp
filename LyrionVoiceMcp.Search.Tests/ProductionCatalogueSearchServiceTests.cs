@@ -87,15 +87,169 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
             "unrated signal",
             TestContext.Current.CancellationToken);
 
-        Assert.Equal("2", rebuilt.Artifact.ResolverVersion);
+        Assert.Equal("3", rebuilt.Artifact.ResolverVersion);
         Assert.Equal(
             67,
             Assert.Single(rated.Candidates, candidate =>
                 candidate.Identity.Id == "rated-track").NativeRating);
-        Assert.Null(Assert.Single(unrated.Candidates, candidate =>
+        Assert.Equal(0, Assert.Single(unrated.Candidates, candidate =>
             candidate.Identity.Id == "unrated-track").NativeRating);
         Assert.True(rated.Candidates[0].Score > 0);
         Assert.True(unrated.Candidates[0].Score > 0);
+    }
+
+    [Fact]
+    public async Task RatingSearchShouldSupportExactAndAtLeastMatches()
+    {
+        var source = new DocumentSource([
+            Track("zero", "Rating Signal Zero", 0),
+            Track("four", "Rating Signal Four", 80),
+            Track("four-half", "Rating Signal Four Half", 90),
+            Track("five", "Rating Signal Five", 100),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Artist, "artist"),
+                "Rating Signal Artist",
+                null,
+                null)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-rating-search", 44);
+
+        var exactFour = await service.SearchAsync(
+            "rating signal",
+            new RatingSearchConstraint(4m, RatingMatchMode.Exact),
+            TestContext.Current.CancellationToken);
+        var atLeastFour = await service.SearchAsync(
+            "rating signal",
+            new RatingSearchConstraint(4m, RatingMatchMode.AtLeast),
+            TestContext.Current.CancellationToken);
+        var exactZero = await service.SearchAsync(
+            "rating signal",
+            new RatingSearchConstraint(0m, RatingMatchMode.Exact),
+            TestContext.Current.CancellationToken);
+        var atLeastZero = await service.SearchAsync(
+            "rating signal",
+            new RatingSearchConstraint(0m, RatingMatchMode.AtLeast),
+            TestContext.Current.CancellationToken);
+        var diagnostics = await service.SearchDetailedAsync(
+            "rating signal four half",
+            new RatingSearchConstraint(4m, RatingMatchMode.AtLeast),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["four"], Ids(exactFour));
+        Assert.Equal(["five", "four", "four-half"], Ids(atLeastFour).Order());
+        Assert.Equal(["zero"], Ids(exactZero));
+        Assert.Equal(
+            ["five", "four", "four-half", "zero"],
+            Ids(atLeastZero).Order());
+        Assert.Equal(
+            new RatingSearchConstraint(4m, RatingMatchMode.AtLeast),
+            diagnostics.RatingConstraint);
+        Assert.Equal(4.5m, diagnostics.Results[0].Rating);
+    }
+
+    [Fact]
+    public async Task DecimalRatingSearchShouldRespectTheNativeIntegerScale()
+    {
+        var source = new DocumentSource([
+            Track("ninety", "Decimal Rating Signal", 90),
+            Track("ninety-one", "Decimal Rating Signal", 91)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-decimal-search", 45);
+
+        var exactRepresentable = await service.SearchAsync(
+            "decimal rating signal",
+            new RatingSearchConstraint(4.5m, RatingMatchMode.Exact),
+            TestContext.Current.CancellationToken);
+        var exactUnrepresentable = await service.SearchAsync(
+            "decimal rating signal",
+            new RatingSearchConstraint(4.51m, RatingMatchMode.Exact),
+            TestContext.Current.CancellationToken);
+        var atLeast = await service.SearchAsync(
+            "decimal rating signal",
+            new RatingSearchConstraint(4.51m, RatingMatchMode.AtLeast),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["ninety"], Ids(exactRepresentable));
+        Assert.Empty(exactUnrepresentable.Candidates);
+        Assert.Equal(["ninety-one"], Ids(atLeast));
+    }
+
+    [Fact]
+    public async Task RatingConstraintShouldBeAppliedBeforeRetrievalLaneLimits()
+    {
+        var documents = Enumerable.Range(0, 81)
+            .Select(index => Track(
+                $"below-{index}",
+                $"Copper Rating Signal {index}",
+                79))
+            .Append(Track("eligible", "Copper Rating Signal Eligible", 80))
+            .ToArray();
+        await using var service = CreateService(new DocumentSource(documents));
+        await RebuildAsync(service, "refresh-rating-limits", 46);
+
+        var response = await service.SearchAsync(
+            "copper rating signal",
+            new RatingSearchConstraint(4m, RatingMatchMode.AtLeast),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["eligible"], Ids(response));
+    }
+
+    [Fact]
+    public async Task RatingBrowseShouldFloorBucketsAndOrderByNativeRatingThenTitle()
+    {
+        var source = new DocumentSource([
+            Track("zero", "Zero", 0),
+            Track("nineteen", "Nineteen", 19),
+            Track("twenty", "Twenty", 20),
+            Track("seventy-nine", "Zulu", 79),
+            Track("seventy-eight-b", "Beta", 78),
+            Track("seventy-eight-a", "Alpha", 78),
+            Track("ninety-nine", "Ninety Nine", 99),
+            Track("hundred", "Hundred", 100)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-rating-browse", 47);
+
+        var zero = await service.BrowseAsync(
+            0,
+            0,
+            50,
+            TestContext.Current.CancellationToken);
+        var three = await service.BrowseAsync(
+            3,
+            0,
+            2,
+            TestContext.Current.CancellationToken);
+        var threeContinued = await service.BrowseAsync(
+            3,
+            2,
+            2,
+            TestContext.Current.CancellationToken);
+        var four = await service.BrowseAsync(
+            4,
+            0,
+            50,
+            TestContext.Current.CancellationToken);
+        var five = await service.BrowseAsync(
+            5,
+            0,
+            50,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["nineteen", "zero"], zero.Items.Select(item => item.Identity.Id));
+        Assert.Equal(
+            ["seventy-nine", "seventy-eight-a"],
+            three.Items.Select(item => item.Identity.Id));
+        Assert.True(three.HasMore);
+        Assert.Equal(
+            ["seventy-eight-b"],
+            threeContinued.Items.Select(item => item.Identity.Id));
+        Assert.False(threeContinued.HasMore);
+        Assert.Equal(["ninety-nine"], four.Items.Select(item => item.Identity.Id));
+        Assert.Equal(["hundred"], five.Items.Select(item => item.Identity.Id));
     }
 
     [Fact]
@@ -141,7 +295,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task VersionOneArtifactShouldBeIncompatibleWithTheRatingIndex()
+    public async Task VersionTwoArtifactShouldBeIncompatibleWithRatingFiltering()
     {
         var source = new DocumentSource([
             new CatalogueSearchDocument(
@@ -166,12 +320,12 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
         var manifest = await File.ReadAllTextAsync(
             manifestPath,
             TestContext.Current.CancellationToken);
-        Assert.Contains("\"resolverVersion\":\"2\"", manifest, StringComparison.Ordinal);
+        Assert.Contains("\"resolverVersion\":\"3\"", manifest, StringComparison.Ordinal);
         await File.WriteAllTextAsync(
             manifestPath,
             manifest.Replace(
+                "\"resolverVersion\":\"3\"",
                 "\"resolverVersion\":\"2\"",
-                "\"resolverVersion\":\"1\"",
                 StringComparison.Ordinal),
             TestContext.Current.CancellationToken);
         await using var restarted = CreateService(source);
@@ -201,6 +355,29 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
             new ProductionSearchSettings(directory),
             source,
             TimeProvider.System);
+
+    private static CatalogueSearchDocument Track(
+        string id,
+        string title,
+        int nativeRating) => new(
+            new MediaIdentity(MediaEntityKind.Track, id),
+            title,
+            "The Imaginaries",
+            "Imaginary Signals",
+            nativeRating);
+
+    private static IEnumerable<string> Ids(CatalogueSearchResponse response) =>
+        response.Candidates.Select(candidate => candidate.Identity.Id);
+
+    private static Task<SearchIndexRebuildResult> RebuildAsync(
+        ProductionCatalogueSearchService service,
+        string refreshId,
+        long jobId) =>
+        service.RebuildAsync(
+            refreshId,
+            jobId,
+            NullProgress.Instance,
+            TestContext.Current.CancellationToken);
 
     private sealed class DocumentSource(
         IReadOnlyList<CatalogueSearchDocument> documents) : ICatalogueSearchDocumentSource

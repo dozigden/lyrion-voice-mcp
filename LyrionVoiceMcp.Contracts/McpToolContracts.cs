@@ -22,9 +22,9 @@ public sealed record SearchCandidate(
     string? Artist,
     string? Album)
 {
-    [Description("For tracks, a 0 to 5 star rating such as 4.5, or 'unrated'. Omitted for other result kinds.")]
+    [Description("For tracks, a numeric 0 to 5 star rating such as 4.5. Omitted for other result kinds.")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Rating { get; init; }
+    public decimal? Rating { get; init; }
 }
 
 public sealed record SearchResponse(IReadOnlyList<SearchCandidate> Results);
@@ -56,7 +56,12 @@ public sealed record BrowseItem(
     string? Artist,
     string? Album,
     bool Browsable,
-    bool Playable);
+    bool Playable)
+{
+    [Description("For tracks returned from rating browse, the numeric 0 to 5 rating. Omitted otherwise.")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? Rating { get; init; }
+}
 
 public sealed record GetPlayerStatusResponse(IReadOnlyList<PlayerStatus> Players);
 

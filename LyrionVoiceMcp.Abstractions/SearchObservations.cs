@@ -23,7 +23,8 @@ public sealed record SearchObservationCandidate(
     string Title,
     string? Artist,
     string? Album,
-    DateTimeOffset? SelectedAt);
+    DateTimeOffset? SelectedAt,
+    decimal? Rating = null);
 
 public sealed record SearchObservationReview(
     SearchReviewClassification Classification,
@@ -53,7 +54,8 @@ public sealed record SearchObservation(
     long ProcessingDurationMilliseconds,
     IReadOnlyList<LmsSearchRequestObservation> Requests,
     IReadOnlyList<SearchObservationCandidate> Candidates,
-    SearchObservationReview? Review);
+    SearchObservationReview? Review,
+    RatingSearchConstraint? RatingConstraint = null);
 
 public enum SearchObservationReviewFilter
 {
@@ -105,7 +107,8 @@ public sealed record EvaluationCandidate(
     string? Artist,
     string? Album,
     bool Selected,
-    bool Expected);
+    bool Expected,
+    decimal? Rating = null);
 
 public sealed record SearchEvaluationCase(
     string Query,
@@ -114,7 +117,8 @@ public sealed record SearchEvaluationCase(
     string? ExpectedTitle,
     string? ExpectedArtist,
     string? ExpectedAlbum,
-    IReadOnlyList<EvaluationCandidate> OriginalCandidates);
+    IReadOnlyList<EvaluationCandidate> OriginalCandidates,
+    RatingSearchConstraint? RatingConstraint = null);
 
 public interface ISearchObservationStore
 {

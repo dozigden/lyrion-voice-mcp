@@ -11,12 +11,14 @@ internal sealed class SearchObservationRecorder(
     public SearchObservationContext Begin(
         string originalQuery,
         string normalisedQuery,
-        SearchResolverDescriptor resolver) => new(
+        SearchResolverDescriptor resolver,
+        RatingSearchConstraint? ratingConstraint = null) => new(
             Guid.NewGuid().ToString("N"),
             timeProvider.GetUtcNow(),
             originalQuery,
             normalisedQuery,
-            resolver);
+            resolver,
+            ratingConstraint);
 
     public Task RecordCompletedAsync(
         SearchObservationContext context,
@@ -122,7 +124,10 @@ internal sealed class SearchObservationRecorder(
             candidate.Title,
             candidate.Artist,
             candidate.Album,
-            null)).ToArray();
+            null,
+            candidate.Identity.Kind == MediaEntityKind.Track
+                ? candidate.NativeRating / 20m
+                : null)).ToArray();
 
     private static SearchObservationCandidate[] CreatePlaylistObservationCandidates(
         LmsSearchResponse? playlists) =>
@@ -134,6 +139,7 @@ internal sealed class SearchObservationRecorder(
                 candidate.Title,
                 candidate.Artist,
                 candidate.Album,
+                null,
                 null))
             .ToArray();
 
@@ -157,8 +163,8 @@ internal sealed class SearchObservationRecorder(
             context.CreatedAt,
             context.OriginalQuery,
             context.NormalisedQuery,
-            null,
-            "catalogue+lms",
+            context.RatingConstraint is null ? null : MediaEntityKind.Track,
+            context.RatingConstraint is null ? "catalogue+lms" : "catalogue",
             "whole_library",
             context.Resolver.Name,
             context.Resolver.Version,
@@ -169,7 +175,8 @@ internal sealed class SearchObservationRecorder(
             Math.Max(0, totalDurationMilliseconds - retrievalDurationMilliseconds),
             requests,
             candidates,
-            null);
+            null,
+            context.RatingConstraint);
 
     private async Task TryRecordAsync(
         SearchObservation observation,
@@ -194,7 +201,8 @@ internal sealed record SearchObservationContext(
     DateTimeOffset CreatedAt,
     string OriginalQuery,
     string NormalisedQuery,
-    SearchResolverDescriptor Resolver);
+    SearchResolverDescriptor Resolver,
+    RatingSearchConstraint? RatingConstraint);
 
 internal sealed record SearchCandidateOccurrence(
     int Position,
@@ -203,4 +211,4 @@ internal sealed record SearchCandidateOccurrence(
     string Title,
     string? Artist,
     string? Album,
-    int? NativeRating = null);
+    int NativeRating = 0);

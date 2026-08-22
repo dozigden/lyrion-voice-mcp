@@ -22,5 +22,7 @@ public sealed class EntitySearchObservationCandidate
 
     public string? Album { get; set; }
 
+    public decimal? Rating { get; set; }
+
     public EntitySearchObservationSelection? Selection { get; set; }
 }

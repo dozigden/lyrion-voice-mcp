@@ -109,10 +109,12 @@ public static class SearchObservationEndpoints
     {
         var cases = await service.ExportAsync(cancellationToken);
         var response = new SearchEvaluationExportResponse(
-            1,
+            2,
             timeProvider.GetUtcNow(),
             cases.Select(item => new SearchEvaluationCaseResponse(
                 item.Query,
+                item.RatingConstraint?.Rating,
+                item.RatingConstraint is null ? null : ToText(item.RatingConstraint.Match),
                 ToText(item.Classification),
                 item.ExpectedKind is null ? null : ToText(item.ExpectedKind.Value),
                 item.ExpectedTitle,
@@ -124,6 +126,7 @@ public static class SearchObservationEndpoints
                     candidate.Title,
                     candidate.Artist,
                     candidate.Album,
+                    candidate.Rating,
                     candidate.Selected,
                     candidate.Expected)).ToArray())).ToArray());
         return Results.File(
@@ -139,6 +142,8 @@ public static class SearchObservationEndpoints
 
     private static SearchObservationDetailResponse ToDetailResponse(SearchObservation item, int retentionDays) => new(
         item.Id, item.CreatedAt, item.OriginalQuery, item.NormalisedQuery,
+        item.RatingConstraint?.Rating,
+        item.RatingConstraint is null ? null : ToText(item.RatingConstraint.Match),
         item.RequestedKind is null ? null : ToText(item.RequestedKind.Value), item.Provider, item.Collection,
         item.Resolver, item.ResolverVersion, ToText(item.Status), item.FailureMessage,
         item.TotalDurationMilliseconds, item.RetrievalDurationMilliseconds, item.ProcessingDurationMilliseconds,
@@ -147,7 +152,7 @@ public static class SearchObservationEndpoints
             request.DurationMilliseconds, request.ResultCount)).ToArray(),
         item.Candidates.Select(candidate => new SearchCandidateObservationResponse(
             candidate.Position, candidate.CorrelationId, ToText(candidate.Identity.Kind), candidate.Title,
-            candidate.Artist, candidate.Album, candidate.SelectedAt)).ToArray(),
+            candidate.Artist, candidate.Album, candidate.Rating, candidate.SelectedAt)).ToArray(),
         item.Review is null ? null : new SearchObservationReviewResponse(
             ToText(item.Review.Classification), item.Review.ExpectedCorrelationId,
             item.Review.ExpectedKind is null ? null : ToText(item.Review.ExpectedKind.Value),
@@ -191,6 +196,12 @@ public static class SearchObservationEndpoints
     private static string ToText(MediaEntityKind value) => value.ToString().ToLowerInvariant();
     private static string ToText(LmsSearchRequestStatus value) => value.ToString().ToLowerInvariant();
     private static string ToText(SearchObservationStatus value) => value.ToString().ToLowerInvariant();
+    private static string ToText(RatingMatchMode value) => value switch
+    {
+        RatingMatchMode.Exact => "exact",
+        RatingMatchMode.AtLeast => "at_least",
+        _ => throw new InvalidOperationException("Unknown rating match mode.")
+    };
     private static string ToText(SearchReviewClassification value) => value switch
     {
         SearchReviewClassification.WrongOrder => "wrong_order",

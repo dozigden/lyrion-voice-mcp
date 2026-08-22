@@ -18,6 +18,8 @@ describe('SearchObservationDetailView', () => {
       createdAt: '2026-08-12T18:00:00Z',
       originalQuery: 'zyrack',
       normalisedQuery: 'zyrack',
+      rating: null,
+      ratingMatch: null,
       requestedKind: null,
       provider: 'lms',
       collection: 'whole_library',

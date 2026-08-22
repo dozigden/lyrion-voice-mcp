@@ -63,8 +63,9 @@ public sealed class BrowseTools(IBrowseService browseService)
             IsError = true
         };
 
-    private static ContractBrowseItem MapItem(BrowseItemResult item) =>
-        new(
+    private static ContractBrowseItem MapItem(BrowseItemResult item)
+    {
+        var result = new ContractBrowseItem(
             item.Reference,
             item.Kind switch
             {
@@ -84,4 +85,9 @@ public sealed class BrowseTools(IBrowseService browseService)
             item.Album,
             item.Browsable,
             item.Playable);
+
+        return item.NativeRating is null
+            ? result
+            : result with { Rating = item.NativeRating.Value / 20m };
+    }
 }

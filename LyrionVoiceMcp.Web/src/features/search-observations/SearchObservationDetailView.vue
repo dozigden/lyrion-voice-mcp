@@ -9,6 +9,9 @@
           <p class="eyebrow">{{ formatDate(item.createdAt) }}</p>
           <h1>“{{ item.originalQuery }}”</h1>
           <p v-if="item.normalisedQuery !== item.originalQuery">Normalised to “{{ item.normalisedQuery }}”</p>
+          <p v-if="item.rating !== null">
+            Rating {{ item.ratingMatch === 'at_least' ? 'at least' : 'exactly' }} {{ item.rating }}
+          </p>
         </div>
         <span class="resolver">{{ item.resolver }} · v{{ item.resolverVersion }}</span>
       </header>
@@ -49,7 +52,7 @@
         <ol v-else class="candidate-list">
           <li v-for="candidate in item.candidates" :key="candidate.correlationId" :class="{ selected: candidate.selectedAt }">
             <span class="position">{{ candidate.position }}</span>
-            <div><strong>{{ candidate.title }}</strong><span>{{ candidate.kind }}<template v-if="candidate.artist"> · {{ candidate.artist }}</template><template v-if="candidate.album"> · {{ candidate.album }}</template></span></div>
+            <div><strong>{{ candidate.title }}</strong><span>{{ candidate.kind }}<template v-if="candidate.artist"> · {{ candidate.artist }}</template><template v-if="candidate.album"> · {{ candidate.album }}</template><template v-if="candidate.rating !== null"> · rating {{ candidate.rating }}</template></span></div>
             <span v-if="candidate.selectedAt" class="played">Played</span>
           </li>
         </ol>

@@ -62,7 +62,7 @@ public sealed record CatalogueSearchDocument(
     string Title,
     string? Artist,
     string? Album,
-    int? NativeRating = null);
+    int NativeRating = 0);
 
 public sealed record CatalogueSearchDocumentBatch(
     string CatalogueRefreshId,
@@ -82,7 +82,17 @@ public sealed record CatalogueSearchCandidate(
     string? Artist,
     string? Album,
     int Score,
-    int? NativeRating = null);
+    int NativeRating = 0);
+
+public enum RatingMatchMode
+{
+    Exact,
+    AtLeast
+}
+
+public sealed record RatingSearchConstraint(
+    decimal Rating,
+    RatingMatchMode Match);
 
 public sealed record CatalogueSearchResponse(
     IReadOnlyList<CatalogueSearchCandidate> Candidates,
@@ -96,6 +106,15 @@ public interface ICatalogueSearchResolver
     Task<CatalogueSearchResponse> SearchAsync(
         string query,
         CancellationToken cancellationToken);
+
+    Task<CatalogueSearchResponse> SearchAsync(
+        string query,
+        RatingSearchConstraint? ratingConstraint,
+        CancellationToken cancellationToken) =>
+        ratingConstraint is null
+            ? SearchAsync(query, cancellationToken)
+            : throw new NotSupportedException(
+                "This catalogue search resolver does not support rating constraints.");
 }
 
 public sealed class CatalogueSearchUnavailableException(string message) : Exception(message);
@@ -135,7 +154,11 @@ public sealed record SearchCandidateResult(
     string Title,
     string? Artist,
     string? Album,
-    int? NativeRating = null);
+    int NativeRating = 0);
+
+public sealed record SearchCriteria(
+    string Query,
+    RatingSearchConstraint? RatingConstraint = null);
 
 public enum SearchRejectionReason
 {
@@ -157,6 +180,14 @@ public interface ISearchService
     Task<SearchOutcome> SearchAsync(
         string query,
         CancellationToken cancellationToken);
+
+    Task<SearchOutcome> SearchAsync(
+        SearchCriteria criteria,
+        CancellationToken cancellationToken) =>
+        criteria.RatingConstraint is null
+            ? SearchAsync(criteria.Query, cancellationToken)
+            : throw new NotSupportedException(
+                "This search service does not support rating constraints.");
 }
 
 public sealed record SearchResultReferenceValue(

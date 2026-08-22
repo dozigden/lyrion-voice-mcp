@@ -12,10 +12,17 @@ internal sealed class SearchService(
     SearchObservationRecorder observationRecorder,
     ILogger<SearchService> logger) : ISearchService
 {
-    public async Task<SearchOutcome> SearchAsync(
+    public Task<SearchOutcome> SearchAsync(
         string query,
+        CancellationToken cancellationToken) =>
+        SearchAsync(new SearchCriteria(query), cancellationToken);
+
+    public async Task<SearchOutcome> SearchAsync(
+        SearchCriteria criteria,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(criteria);
+        var query = criteria.Query;
         if (string.IsNullOrWhiteSpace(query))
         {
             return new SearchRejected(
@@ -39,13 +46,28 @@ internal sealed class SearchService(
                 $"The search query must contain no more than {SearchQueryPolicy.MaximumTokenCount} words.");
         }
 
+        if (criteria.RatingConstraint is { } ratingConstraint
+            && (ratingConstraint.Rating is < 0 or > 5
+                || !Enum.IsDefined(ratingConstraint.Match)))
+        {
+            return new SearchRejected(
+                SearchRejectionReason.InvalidQuery,
+                "The rating must be from 0 to 5 and ratingMatch must be exact or at_least.");
+        }
+
         var observation = observationRecorder.Begin(
             query,
             normalisedQuery,
-            catalogueSearch.Descriptor);
+            catalogueSearch.Descriptor,
+            criteria.RatingConstraint);
         var stopwatch = Stopwatch.StartNew();
-        var catalogueTask = catalogueSearch.SearchAsync(normalisedQuery, cancellationToken);
-        var playlistTask = playlistSearch.SearchPlaylistsAsync(normalisedQuery, cancellationToken);
+        var catalogueTask = catalogueSearch.SearchAsync(
+            normalisedQuery,
+            criteria.RatingConstraint,
+            cancellationToken);
+        var playlistTask = criteria.RatingConstraint is null
+            ? playlistSearch.SearchPlaylistsAsync(normalisedQuery, cancellationToken)
+            : null;
 
         CatalogueSearchResponse? catalogueResponse = null;
         LmsSearchResponse? playlistResponse = null;
@@ -62,7 +84,10 @@ internal sealed class SearchService(
 
         try
         {
-            playlistResponse = await playlistTask;
+            if (playlistTask is not null)
+            {
+                playlistResponse = await playlistTask;
+            }
         }
         catch (LmsSearchFailedException exception)
         {
@@ -155,7 +180,7 @@ internal sealed class SearchService(
             cancellationToken);
 
         logger.LogInformation(
-            "Catalogue and playlist search for {Query} returned {ResultCount} candidates in {ElapsedMilliseconds} ms.",
+            "Media search for {Query} returned {ResultCount} candidates in {ElapsedMilliseconds} ms.",
             normalisedQuery,
             results.Length,
             stopwatch.ElapsedMilliseconds);
@@ -167,5 +192,5 @@ internal sealed class SearchService(
         string Title,
         string? Artist,
         string? Album,
-        int? NativeRating = null);
+        int NativeRating = 0);
 }

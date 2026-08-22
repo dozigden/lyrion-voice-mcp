@@ -318,7 +318,7 @@ public sealed class CatalogueProjectionRepository(
                 item.Name,
                 null,
                 null,
-                null))
+                0))
             .ToArrayAsync(cancellationToken);
 
     public async Task<IReadOnlyList<EntityCatalogueProjectionRow>> ReadAlbumsAfterAsync(
@@ -339,7 +339,7 @@ public sealed class CatalogueProjectionRepository(
                     .Select(artist => artist.Name)
                     .SingleOrDefault(),
                 null,
-                null))
+                0))
             .ToArrayAsync(cancellationToken);
 
     public async Task<IReadOnlyList<EntityCatalogueProjectionRow>> ReadTracksAfterAsync(
@@ -423,7 +423,7 @@ public sealed class CatalogueProjectionRepository(
         string SourceId,
         string Title,
         string? AlbumSourceId,
-        int? NativeRating);
+        int NativeRating);
 
     private sealed record TrackArtistProjection(int TrackId, int RelationId, string Name);
 

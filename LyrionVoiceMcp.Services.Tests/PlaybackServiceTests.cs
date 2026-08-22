@@ -411,7 +411,7 @@ public sealed class PlaybackServiceTests
             TimeProvider.System,
             NullLogger<PlaybackService>.Instance);
         var reference = browseCodec.Encode(new BrowseReferenceValue(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "52", 0),
+            new BrowseTarget(BrowseTargetKind.AlbumTracks, "52", 0),
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "52"))));
 
         // Act
@@ -446,7 +446,7 @@ public sealed class PlaybackServiceTests
             NullLogger<PlaybackService>.Instance);
         var correlationId = "123456781234123412341234567890ab";
         var reference = browseCodec.Encode(new BrowseReferenceValue(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "52", 0),
+            new BrowseTarget(BrowseTargetKind.AlbumTracks, "52", 0),
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "52")),
             correlationId));
 

@@ -72,12 +72,13 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
     private static bool HasValidFilter(BrowseTarget target)
     {
         var requiresFilter = target.Kind is
-            LmsBrowseQueryKind.AlbumArtistAlbums or
-            LmsBrowseQueryKind.ArtistAlbums or
-            LmsBrowseQueryKind.GenreAlbums or
-            LmsBrowseQueryKind.YearAlbums or
-            LmsBrowseQueryKind.AlbumTracks or
-            LmsBrowseQueryKind.PlaylistTracks;
+            BrowseTargetKind.AlbumArtistAlbums or
+            BrowseTargetKind.ArtistAlbums or
+            BrowseTargetKind.GenreAlbums or
+            BrowseTargetKind.YearAlbums or
+            BrowseTargetKind.AlbumTracks or
+            BrowseTargetKind.PlaylistTracks or
+            BrowseTargetKind.RatingTracks;
         return requiresFilter
             ? !string.IsNullOrWhiteSpace(target.FilterId)
             : target.FilterId is null;

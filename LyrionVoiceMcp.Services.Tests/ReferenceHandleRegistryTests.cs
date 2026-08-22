@@ -162,7 +162,7 @@ public sealed class ReferenceHandleRegistryTests
         new MediaIdentity(MediaEntityKind.Track, id));
 
     private static BrowseReferenceValue BrowseValue(string id) => new(
-        new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, id, 0),
+        new BrowseTarget(BrowseTargetKind.AlbumTracks, id, 0),
         new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, id)),
         "123456781234123412341234567890ab");
 

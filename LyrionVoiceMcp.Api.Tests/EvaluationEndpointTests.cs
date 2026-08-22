@@ -29,7 +29,7 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(1, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(2, document.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(
             "production",
             Assert.Single(document.RootElement.GetProperty("resolvers").EnumerateArray())

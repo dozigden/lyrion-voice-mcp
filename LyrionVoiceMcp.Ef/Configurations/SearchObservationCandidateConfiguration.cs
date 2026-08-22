@@ -18,6 +18,7 @@ public sealed class SearchObservationCandidateConfiguration
         builder.Property(item => item.Title).HasMaxLength(1024).IsRequired();
         builder.Property(item => item.Artist).HasMaxLength(1024);
         builder.Property(item => item.Album).HasMaxLength(1024);
+        builder.Property(item => item.Rating);
 
         builder.HasIndex(item => item.CorrelationId).IsUnique();
         builder.HasIndex(item => new { item.SearchObservationId, item.Position }).IsUnique();

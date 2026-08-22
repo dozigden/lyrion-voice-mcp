@@ -6,6 +6,7 @@ public interface IDiagnosticSearchResolver
 {
     Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
+        RatingSearchConstraint? ratingConstraint,
         CancellationToken cancellationToken);
 }
 
@@ -17,6 +18,7 @@ public sealed record SearchDiagnostics(
     double RerankDurationMilliseconds,
     double TotalDurationMilliseconds,
     int RetrievedCandidateCount,
+    RatingSearchConstraint? RatingConstraint,
     IReadOnlyList<SearchLaneMeasurement> Lanes,
     IReadOnlyList<SearchDiagnosticCandidate> Results);
 
@@ -35,7 +37,8 @@ public sealed record SearchDiagnosticCandidate(
     string? Album,
     int Score,
     IReadOnlyList<string> RetrievalLanes,
-    SearchScoreEvidence? ScoreEvidence);
+    SearchScoreEvidence? ScoreEvidence,
+    decimal? Rating = null);
 
 public sealed record SearchScoreEvidence(
     string Field,
@@ -106,6 +109,7 @@ internal static class SearchDiagnosticResults
         double retrievalDurationMilliseconds,
         double rerankDurationMilliseconds,
         double totalDurationMilliseconds,
+        RatingSearchConstraint? ratingConstraint,
         IReadOnlyList<SearchLaneMeasurement> lanes,
         IReadOnlyList<RankedPhuzzyCandidate> ranked,
         IReadOnlyDictionary<string, IReadOnlyList<string>> retrievalLanes)
@@ -122,7 +126,10 @@ internal static class SearchDiagnosticResults
                 value.Album,
                 item.Score,
                 candidateLanes ?? [],
-                item.Evidence);
+                item.Evidence,
+                value.Kind == MediaEntityKind.Track
+                    ? value.NativeRating / 20m
+                    : null);
         }).ToArray();
         return new SearchDiagnostics(
             resolver.Descriptor.Name,
@@ -132,6 +139,7 @@ internal static class SearchDiagnosticResults
             rerankDurationMilliseconds,
             totalDurationMilliseconds,
             results.Length,
+            ratingConstraint,
             lanes,
             results);
     }

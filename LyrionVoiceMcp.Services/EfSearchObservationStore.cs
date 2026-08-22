@@ -132,6 +132,10 @@ public sealed class EfSearchObservationStore(
         CreatedAtUtc = observation.CreatedAt.UtcDateTime,
         OriginalQuery = observation.OriginalQuery,
         NormalisedQuery = observation.NormalisedQuery,
+        Rating = observation.RatingConstraint?.Rating,
+        RatingMatch = observation.RatingConstraint is null
+            ? null
+            : ToEntity(observation.RatingConstraint.Match),
         RequestedKind = observation.RequestedKind is null
             ? null
             : ToEntity(observation.RequestedKind.Value),
@@ -163,6 +167,7 @@ public sealed class EfSearchObservationStore(
             Title = candidate.Title,
             Artist = candidate.Artist,
             Album = candidate.Album,
+            Rating = candidate.Rating,
             Selection = candidate.SelectedAt is null
                 ? null
                 : new EntitySearchObservationSelection
@@ -234,9 +239,15 @@ public sealed class EfSearchObservationStore(
                 item.Album,
                 item.Selection is null
                     ? null
-                    : ToDateTimeOffset(item.Selection.SelectedAtUtc)))
+                    : ToDateTimeOffset(item.Selection.SelectedAtUtc),
+                item.Rating))
             .ToArray(),
-        observation.Review is null ? null : ToModel(observation.Review));
+        observation.Review is null ? null : ToModel(observation.Review),
+        observation.Rating is null || observation.RatingMatch is null
+            ? null
+            : new RatingSearchConstraint(
+                observation.Rating.Value,
+                ToModel(observation.RatingMatch.Value)));
 
     private static SearchObservationReview ToModel(EntitySearchObservationReview review) =>
         new(
@@ -287,8 +298,14 @@ public sealed class EfSearchObservationStore(
                     string.Equals(
                         candidate.CorrelationId,
                         review.ExpectedCorrelationId,
-                        StringComparison.Ordinal)))
-                .ToArray());
+                        StringComparison.Ordinal),
+                    candidate.Rating))
+                .ToArray(),
+            observation.Rating is null || observation.RatingMatch is null
+                ? null
+                : new RatingSearchConstraint(
+                    observation.Rating.Value,
+                    ToModel(observation.RatingMatch.Value)));
     }
 
     private static DateTimeOffset ToDateTimeOffset(DateTime value) =>
@@ -313,6 +330,20 @@ public sealed class EfSearchObservationStore(
             SearchObservationStatus.Failed => EntitySearchObservationStatus.Failed,
             _ => throw new InvalidOperationException("Unknown search observation status.")
         };
+
+    private static EntityRatingMatchMode ToEntity(RatingMatchMode value) => value switch
+    {
+        RatingMatchMode.Exact => EntityRatingMatchMode.Exact,
+        RatingMatchMode.AtLeast => EntityRatingMatchMode.AtLeast,
+        _ => throw new InvalidOperationException("Unknown rating match mode.")
+    };
+
+    private static RatingMatchMode ToModel(EntityRatingMatchMode value) => value switch
+    {
+        EntityRatingMatchMode.Exact => RatingMatchMode.Exact,
+        EntityRatingMatchMode.AtLeast => RatingMatchMode.AtLeast,
+        _ => throw new InvalidOperationException("Unknown stored rating match mode.")
+    };
 
     private static SearchObservationStatus ToModel(
         EntitySearchObservationStatus value) => value switch

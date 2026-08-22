@@ -21,7 +21,7 @@ public sealed record SearchCandidate(
     string Title,
     string? Artist,
     string? Album,
-    int? NativeRating = null);
+    int NativeRating = 0);
 
 public sealed record SearchResolverMetrics(
     int? IndexedCandidateCount,

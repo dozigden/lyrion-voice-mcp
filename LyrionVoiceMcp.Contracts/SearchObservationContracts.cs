@@ -25,6 +25,8 @@ public sealed record SearchObservationDetailResponse(
     DateTimeOffset CreatedAt,
     string OriginalQuery,
     string NormalisedQuery,
+    decimal? Rating,
+    string? RatingMatch,
     string? RequestedKind,
     string Provider,
     string Collection,
@@ -55,6 +57,7 @@ public sealed record SearchCandidateObservationResponse(
     string Title,
     string? Artist,
     string? Album,
+    decimal? Rating,
     DateTimeOffset? SelectedAt);
 
 public sealed record SearchObservationReviewResponse(
@@ -85,6 +88,8 @@ public sealed record SearchEvaluationExportResponse(
 
 public sealed record SearchEvaluationCaseResponse(
     string Query,
+    decimal? Rating,
+    string? RatingMatch,
     string Classification,
     string? ExpectedKind,
     string? ExpectedTitle,
@@ -98,5 +103,6 @@ public sealed record SearchEvaluationCandidateResponse(
     string Title,
     string? Artist,
     string? Album,
+    decimal? Rating,
     bool Selected,
     bool Expected);

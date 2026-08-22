@@ -92,6 +92,16 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         var searchTool = Assert.Single(
             document.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray(),
             tool => tool.GetProperty("name").GetString() == "search");
+        var searchInputProperties = searchTool
+            .GetProperty("inputSchema")
+            .GetProperty("properties");
+        var ratingInput = searchInputProperties.GetProperty("rating");
+        Assert.Equal(0m, ratingInput.GetProperty("minimum").GetDecimal());
+        Assert.Equal(5m, ratingInput.GetProperty("maximum").GetDecimal());
+        Assert.Equal(
+            ["exact", "at_least"],
+            searchInputProperties.GetProperty("ratingMatch").GetProperty("enum")
+                .EnumerateArray().Select(value => value.GetString()));
         var candidateSchema = searchTool
             .GetProperty("outputSchema")
             .GetProperty("properties")
@@ -99,7 +109,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("items");
         var ratingTypes = candidateSchema.GetProperty("properties").GetProperty("rating")
             .GetProperty("type").EnumerateArray();
-        Assert.Contains(ratingTypes, type => type.GetString() == "string");
+        Assert.Contains(ratingTypes, type => type.GetString() == "number");
         Assert.DoesNotContain(
             candidateSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
@@ -129,6 +139,64 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "\"enum\":[\"replace\",\"append\"]",
             body,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SearchToolShouldPassNumericRatingConstraintToTheService()
+    {
+        var search = new CapturingSearchService();
+        await using var searchFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISearchService>();
+                services.AddSingleton<ISearchService>(search);
+            }));
+        using var client = searchFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            31,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"query":"copper lines","rating":4.5,"ratingMatch":"at_least"}}
+            """,
+            "search");
+
+        var response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("copper lines", search.Criteria?.Query);
+        Assert.Equal(4.5m, search.Criteria?.RatingConstraint?.Rating);
+        Assert.Equal(RatingMatchMode.AtLeast, search.Criteria?.RatingConstraint?.Match);
+    }
+
+    [Fact]
+    public async Task SearchToolShouldRejectAnIncompleteRatingConstraint()
+    {
+        await using var searchFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISearchService>();
+                services.AddSingleton<ISearchService>(new CapturingSearchService());
+            }));
+        using var client = searchFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            32,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"query":"copper lines","rating":4}}
+            """,
+            "search");
+
+        var response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("must be supplied together", body, StringComparison.Ordinal);
+        Assert.Contains("\"isError\":true", body, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -181,25 +249,25 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             result.GetProperty("title").GetString() == "The Copper Lines");
         Assert.False(artist.TryGetProperty("rating", out _));
         Assert.Equal(
-            "4.5",
+            4.5m,
             Assert.Single(results, result =>
                 result.GetProperty("title").GetString() == "Ninety Point Signal")
-                .GetProperty("rating").GetString());
+                .GetProperty("rating").GetDecimal());
         Assert.Equal(
-            "3.35",
+            3.35m,
             Assert.Single(results, result =>
                 result.GetProperty("title").GetString() == "Odd Point Signal")
-                .GetProperty("rating").GetString());
+                .GetProperty("rating").GetDecimal());
         Assert.Equal(
-            "unrated",
+            0m,
             Assert.Single(results, result =>
                 result.GetProperty("title").GetString() == "Missing Rating Signal")
-                .GetProperty("rating").GetString());
+                .GetProperty("rating").GetDecimal());
         Assert.Equal(
-            "unrated",
+            0m,
             Assert.Single(results, result =>
                 result.GetProperty("title").GetString() == "Zero Rating Signal")
-                .GetProperty("rating").GetString());
+                .GetProperty("rating").GetDecimal());
         Assert.DoesNotContain("confidence", body, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("succeeded", recorded!.Status);
         Assert.Contains("copper lines", recorded.ArgumentsJson, StringComparison.Ordinal);
@@ -348,6 +416,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains("\"album\":null", body, StringComparison.Ordinal);
         Assert.Contains("\"browsable\":true", body, StringComparison.Ordinal);
         Assert.Contains("\"playable\":true", body, StringComparison.Ordinal);
+        Assert.Contains("\"rating\":4.5", body, StringComparison.Ordinal);
         Assert.Contains("browse-next", body, StringComparison.Ordinal);
     }
 
@@ -1011,6 +1080,25 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         }
     }
 
+    private sealed class CapturingSearchService : ISearchService
+    {
+        public SearchCriteria? Criteria { get; private set; }
+
+        public Task<SearchOutcome> SearchAsync(
+            string query,
+            CancellationToken cancellationToken) =>
+            SearchAsync(new SearchCriteria(query), cancellationToken);
+
+        public Task<SearchOutcome> SearchAsync(
+            SearchCriteria criteria,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Criteria = criteria;
+            return Task.FromResult<SearchOutcome>(new SearchSucceeded([]));
+        }
+    }
+
     private sealed class ThrowingSearchService : ISearchService
     {
         public Task<SearchOutcome> SearchAsync(
@@ -1045,7 +1133,16 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     null,
                     null,
                     true,
-                    true)
+                    true),
+                new BrowseItemResult(
+                    "rated-track",
+                    BrowseItemKind.Track,
+                    "Ninety Point Signal",
+                    "The Imaginaries",
+                    "Imaginary Signals",
+                    false,
+                    true,
+                    90)
             ],
             "browse-next"));
         }

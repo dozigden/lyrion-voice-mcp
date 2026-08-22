@@ -84,11 +84,11 @@ builder.Services
     })
     .WithRequestFilters(filters => filters.AddCallToolFilter(McpToolCallFilter.Create()))
     .WithHttpTransport()
-    .WithTools<SearchTools>(McpToolJson.Options)
     .WithTools<BrowseTools>(McpToolJson.Options)
     .WithTools<PlayerTools>(McpToolJson.Options)
     .WithTools<QueueTools>(McpToolJson.Options)
     .WithTools<PlaybackTools>(McpToolJson.Options)
+    .WithTools([SearchToolRegistration.Create()])
     .WithTools([PlayerControlToolRegistration.Create()])
     .WithTools([QueueManagementToolRegistration.Create()]);
 

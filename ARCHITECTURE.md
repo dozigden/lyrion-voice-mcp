@@ -142,15 +142,15 @@ Startup applies generated EF migrations, enables SQLite WAL mode, recovers inter
 Implemented now:
 
 - Catalogue-backed phuzzy artist, album, and track search plus isolated LMS playlist search.
-- Voice-facing track search ratings on a 0–5 string scale, with unrated tracks labelled explicitly.
-- Local-library browse and opaque reference routing into playback and queue operations.
+- Voice-facing decimal 0–5 track ratings plus exact and minimum rating search.
+- Local-library browse, including floor-bucket rating browse, and opaque reference routing into playback and queue operations.
 - Canonical catalogue ingestion with ratings, play counts, genres, virtual libraries, and memberships.
 - One EF application database, disposable search generations, durable jobs, operational history, and Vue inspection.
 
 Planned, not implemented:
 
 - User-managed local search corrections and aliases.
-- Structured compound search using ratings, virtual-library scope, relationships, and available date/statistic fields.
+- Broader compound search using virtual-library scope, relationships, and available date/statistic fields alongside the implemented rating constraint.
 - Provider and plugin capability adapters for Spotify/Spotty, BBC Sounds, and other non-local media shapes.
 - Last-played filtering unless LMS or a plugin exposes a supported capability.
 - Provider browsing, player grouping, mixes/radio, and further player controls.

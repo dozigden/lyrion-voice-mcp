@@ -28,7 +28,7 @@ public sealed record CatalogueImportGenre(
 
 public sealed record CatalogueImportTrackStatistics(
     string Source,
-    int? Rating,
+    int Rating,
     int? PlayCount,
     DateTimeOffset? LastPlayedAt);
 

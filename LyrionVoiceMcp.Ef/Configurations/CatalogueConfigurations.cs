@@ -156,6 +156,10 @@ public sealed class CatalogueTrackStatisticConfiguration
     {
         ModelConventions.ConfigureIntPrimaryKey(builder);
         builder.Property(item => item.Source).HasMaxLength(128).IsRequired();
+        builder.Property(item => item.Rating).IsRequired();
+        builder.ToTable(item => item.HasCheckConstraint(
+            "CK_CatalogueTrackStatistics_Rating",
+            "Rating BETWEEN 0 AND 100"));
         builder.HasIndex(item => new { item.TrackId, item.Source }).IsUnique();
         builder.ToTable("CatalogueTrackStatistics");
     }

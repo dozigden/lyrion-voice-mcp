@@ -75,7 +75,72 @@ public sealed class SearchServiceTests
 
         var results = Assert.IsType<SearchSucceeded>(outcome).Results;
         Assert.Equal(90, results[0].NativeRating);
-        Assert.Null(results[1].NativeRating);
+        Assert.Equal(0, results[1].NativeRating);
+    }
+
+    [Fact]
+    public async Task RatingSearchShouldConstrainCatalogueTracksAndSkipPlaylists()
+    {
+        var catalogue = new StubCatalogueSearch([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, "track-90"),
+                "Rated Copper Signal",
+                "The Imaginaries",
+                "Imaginary Signals",
+                1_040,
+                90)
+        ]);
+        var playlists = new StubPlaylistSearch([
+            new LmsSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Playlist, "playlist-9"),
+                "Copper Evenings",
+                null,
+                null)
+        ]);
+        var observations = new RecordingSearchObservationStore();
+        var service = CreateService(
+            catalogue,
+            playlists,
+            new ReferenceCodecTestContext().Search,
+            observations);
+        var constraint = new RatingSearchConstraint(4.5m, RatingMatchMode.AtLeast);
+
+        var outcome = await service.SearchAsync(
+            new SearchCriteria("copper", constraint),
+            TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(Assert.IsType<SearchSucceeded>(outcome).Results);
+        Assert.Equal(MediaEntityKind.Track, result.Kind);
+        Assert.Equal(constraint, catalogue.RatingConstraint);
+        Assert.Null(playlists.Query);
+        Assert.Equal(constraint, observations.Recorded?.RatingConstraint);
+        Assert.Equal(MediaEntityKind.Track, observations.Recorded?.RequestedKind);
+        Assert.Equal("catalogue", observations.Recorded?.Provider);
+        Assert.Equal(4.5m, Assert.Single(observations.Recorded!.Candidates).Rating);
+    }
+
+    [Fact]
+    public async Task InvalidRatingConstraintShouldBeRejectedBeforeRetrieval()
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var playlists = new StubPlaylistSearch([]);
+        var service = CreateService(
+            catalogue,
+            playlists,
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var outcome = await service.SearchAsync(
+            new SearchCriteria(
+                "copper",
+                new RatingSearchConstraint(5.01m, RatingMatchMode.Exact)),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            SearchRejectionReason.InvalidQuery,
+            Assert.IsType<SearchRejected>(outcome).Reason);
+        Assert.Null(catalogue.Query);
+        Assert.Null(playlists.Query);
     }
 
     [Fact]
@@ -282,6 +347,7 @@ public sealed class SearchServiceTests
             "7");
 
         public string? Query { get; private set; }
+        public RatingSearchConstraint? RatingConstraint { get; private set; }
 
         public Task<CatalogueSearchResponse> SearchAsync(
             string query,
@@ -289,6 +355,15 @@ public sealed class SearchServiceTests
         {
             Query = query;
             return Task.FromResult(new CatalogueSearchResponse(results, 1, 1));
+        }
+
+        public Task<CatalogueSearchResponse> SearchAsync(
+            string query,
+            RatingSearchConstraint? ratingConstraint,
+            CancellationToken cancellationToken)
+        {
+            RatingConstraint = ratingConstraint;
+            return SearchAsync(query, cancellationToken);
         }
     }
 

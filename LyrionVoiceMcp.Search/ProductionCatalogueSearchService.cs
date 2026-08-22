@@ -22,6 +22,7 @@ public sealed class ProductionCatalogueSearchService :
     ISearchIndexBuilder,
     ICatalogueSearchResolver,
     IDiagnosticSearchResolver,
+    IRatingBrowseResolver,
     IAsyncDisposable
 {
     private const string ManifestFileName = "manifest.json";
@@ -29,7 +30,7 @@ public sealed class ProductionCatalogueSearchService :
     private const string PointerFileName = "current.json";
     private static readonly SearchResolverDescriptor DescriptorValue = new(
         "catalogue-phuzzy-sqlite",
-        "2");
+        "3");
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ProductionSearchSettings settings;
@@ -51,6 +52,7 @@ public sealed class ProductionCatalogueSearchService :
 
     public async Task<CatalogueSearchResponse> SearchAsync(
         string query,
+        RatingSearchConstraint? ratingConstraint,
         CancellationToken cancellationToken)
     {
         var generation = await GetLoadedAsync(cancellationToken);
@@ -60,11 +62,20 @@ public sealed class ProductionCatalogueSearchService :
                 "The production catalogue search index has not been built.");
         }
 
-        return await generation.Resolver.SearchCatalogueAsync(query, cancellationToken);
+        return await generation.Resolver.SearchCatalogueAsync(
+            query,
+            ratingConstraint,
+            cancellationToken);
     }
+
+    public Task<CatalogueSearchResponse> SearchAsync(
+        string query,
+        CancellationToken cancellationToken) =>
+        SearchAsync(query, null, cancellationToken);
 
     public async Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
+        RatingSearchConstraint? ratingConstraint,
         CancellationToken cancellationToken)
     {
         var generation = await GetLoadedAsync(cancellationToken);
@@ -74,7 +85,35 @@ public sealed class ProductionCatalogueSearchService :
                 "The production catalogue search index has not been built.");
         }
 
-        return await generation.Resolver.SearchDetailedAsync(query, cancellationToken);
+        return await generation.Resolver.SearchDetailedAsync(
+            query,
+            ratingConstraint,
+            cancellationToken);
+    }
+
+    public Task<SearchDiagnostics> SearchDetailedAsync(
+        string query,
+        CancellationToken cancellationToken) =>
+        SearchDetailedAsync(query, null, cancellationToken);
+
+    public async Task<RatingBrowsePage> BrowseAsync(
+        int bucket,
+        int offset,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var generation = await GetLoadedAsync(cancellationToken);
+        if (generation is null)
+        {
+            throw new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built.");
+        }
+
+        return await generation.Resolver.BrowseRatingsAsync(
+            bucket,
+            offset,
+            limit,
+            cancellationToken);
     }
 
     public async Task<SearchIndexArtifact?> GetArtifactAsync(
@@ -126,7 +165,7 @@ public sealed class ProductionCatalogueSearchService :
                 cancellationToken);
 
             var validated = SqliteCatalogueSearchIndex.Open(indexPath, artifact, Descriptor);
-            await validated.SearchCatalogueAsync("validation", cancellationToken);
+            await validated.SearchCatalogueAsync("validation", null, cancellationToken);
             Directory.Move(stagingDirectory, generationDirectory);
             var publishedResolver = SqliteCatalogueSearchIndex.Open(
                 Path.Combine(generationDirectory, IndexFileName),

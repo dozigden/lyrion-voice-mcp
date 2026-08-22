@@ -4,6 +4,7 @@ namespace LyrionVoiceMcp.Services;
 
 public sealed class BrowseService(
     ILmsBrowseClient lmsBrowseClient,
+    IRatingBrowseResolver ratingBrowseResolver,
     IBrowseReferenceCodec browseReferenceCodec,
     ISearchResultReferenceCodec searchReferenceCodec) : IBrowseService
 {
@@ -36,9 +37,19 @@ public sealed class BrowseService(
         }
 
         var target = decoded.Target;
+        if (target.Kind == BrowseTargetKind.RatingBuckets)
+        {
+            return new BrowseSucceeded(RatingBucketItems(), null);
+        }
+
+        if (target.Kind == BrowseTargetKind.RatingTracks)
+        {
+            return await BrowseRatingTracksAsync(target, cancellationToken);
+        }
+
         var page = await lmsBrowseClient.BrowseAsync(
             new LmsBrowseRequest(
-                target.Kind,
+                ToLmsQueryKind(target.Kind),
                 target.FilterId,
                 target.Offset,
                 PageSize),
@@ -64,16 +75,17 @@ public sealed class BrowseService(
 
     private IReadOnlyList<BrowseItemResult> RootItems() =>
     [
-        RootItem("Album artists", LmsBrowseQueryKind.AlbumArtists),
-        RootItem("Artists", LmsBrowseQueryKind.Artists),
-        RootItem("Albums", LmsBrowseQueryKind.Albums),
-        RootItem("Genres", LmsBrowseQueryKind.Genres),
-        RootItem("Playlists", LmsBrowseQueryKind.Playlists),
-        RootItem("Recently added", LmsBrowseQueryKind.RecentlyAddedAlbums),
-        RootItem("Years", LmsBrowseQueryKind.Years)
+        RootItem("Album artists", BrowseTargetKind.AlbumArtists),
+        RootItem("Artists", BrowseTargetKind.Artists),
+        RootItem("Albums", BrowseTargetKind.Albums),
+        RootItem("Genres", BrowseTargetKind.Genres),
+        RootItem("Playlists", BrowseTargetKind.Playlists),
+        RootItem("Ratings", BrowseTargetKind.RatingBuckets),
+        RootItem("Recently added", BrowseTargetKind.RecentlyAddedAlbums),
+        RootItem("Years", BrowseTargetKind.Years)
     ];
 
-    private BrowseItemResult RootItem(string title, LmsBrowseQueryKind kind) =>
+    private BrowseItemResult RootItem(string title, BrowseTargetKind kind) =>
         new(
             browseReferenceCodec.Encode(new BrowseReferenceValue(
                 new BrowseTarget(kind, null, 0),
@@ -84,6 +96,74 @@ public sealed class BrowseService(
             null,
             true,
             false);
+
+    private IReadOnlyList<BrowseItemResult> RatingBucketItems() =>
+        Enumerable.Range(0, 6)
+            .Select(bucket => new BrowseItemResult(
+                browseReferenceCodec.Encode(new BrowseReferenceValue(
+                    new BrowseTarget(
+                        BrowseTargetKind.RatingTracks,
+                        bucket.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        0),
+                    null)),
+                BrowseItemKind.Category,
+                bucket.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                null,
+                null,
+                true,
+                false))
+            .ToArray();
+
+    private async Task<BrowseOutcome> BrowseRatingTracksAsync(
+        BrowseTarget target,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(
+            target.FilterId,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var bucket)
+            || bucket is < 0 or > 5)
+        {
+            return new BrowseRejected(
+                BrowseRejectionReason.InvalidReference,
+                "The rating browse reference is invalid.");
+        }
+
+        RatingBrowsePage page;
+        try
+        {
+            page = await ratingBrowseResolver.BrowseAsync(
+                bucket,
+                target.Offset,
+                PageSize,
+                cancellationToken);
+        }
+        catch (CatalogueSearchUnavailableException exception)
+        {
+            return new BrowseRejected(
+                BrowseRejectionReason.BrowseUnavailable,
+                exception.Message);
+        }
+
+        var items = page.Items.Select(item => new BrowseItemResult(
+            browseReferenceCodec.Encode(new BrowseReferenceValue(
+                null,
+                new PlayableMedia(item.Identity))),
+            BrowseItemKind.Track,
+            item.Title,
+            item.Artist,
+            item.Album,
+            false,
+            true,
+            item.NativeRating)).ToArray();
+        var continuation = page.HasMore
+            ? browseReferenceCodec.Encode(new BrowseReferenceValue(
+                target with { Offset = target.Offset + items.Length },
+                null))
+            : null;
+        return new BrowseSucceeded(items, continuation);
+    }
 
     private BrowseItemResult MapItem(
         LmsBrowseItem item,
@@ -125,11 +205,11 @@ public sealed class BrowseService(
         identity.Kind switch
         {
             MediaEntityKind.Artist =>
-                new BrowseTarget(LmsBrowseQueryKind.ArtistAlbums, identity.Id, 0),
+                new BrowseTarget(BrowseTargetKind.ArtistAlbums, identity.Id, 0),
             MediaEntityKind.Album =>
-                new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, identity.Id, 0),
+                new BrowseTarget(BrowseTargetKind.AlbumTracks, identity.Id, 0),
             MediaEntityKind.Playlist =>
-                new BrowseTarget(LmsBrowseQueryKind.PlaylistTracks, identity.Id, 0),
+                new BrowseTarget(BrowseTargetKind.PlaylistTracks, identity.Id, 0),
             MediaEntityKind.Track => null,
             _ => throw new InvalidOperationException(
                 $"Unsupported search media kind {identity.Kind}.")
@@ -138,17 +218,17 @@ public sealed class BrowseService(
     private static BrowseTarget? NextTarget(LmsBrowseItem item) => item.Kind switch
     {
         BrowseItemKind.AlbumArtist =>
-            new BrowseTarget(LmsBrowseQueryKind.AlbumArtistAlbums, item.Id, 0),
+            new BrowseTarget(BrowseTargetKind.AlbumArtistAlbums, item.Id, 0),
         BrowseItemKind.Artist =>
-            new BrowseTarget(LmsBrowseQueryKind.ArtistAlbums, item.Id, 0),
+            new BrowseTarget(BrowseTargetKind.ArtistAlbums, item.Id, 0),
         BrowseItemKind.Album =>
-            new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, item.Id, 0),
+            new BrowseTarget(BrowseTargetKind.AlbumTracks, item.Id, 0),
         BrowseItemKind.Genre =>
-            new BrowseTarget(LmsBrowseQueryKind.GenreAlbums, item.Id, 0),
+            new BrowseTarget(BrowseTargetKind.GenreAlbums, item.Id, 0),
         BrowseItemKind.Playlist =>
-            new BrowseTarget(LmsBrowseQueryKind.PlaylistTracks, item.Id, 0),
+            new BrowseTarget(BrowseTargetKind.PlaylistTracks, item.Id, 0),
         BrowseItemKind.Year =>
-            new BrowseTarget(LmsBrowseQueryKind.YearAlbums, item.Id, 0),
+            new BrowseTarget(BrowseTargetKind.YearAlbums, item.Id, 0),
         BrowseItemKind.Track => null,
         _ => throw new InvalidOperationException(
             $"Unsupported LMS browse item kind {item.Kind}.")
@@ -171,5 +251,23 @@ public sealed class BrowseService(
         BrowseItemKind.Genre or BrowseItemKind.Year => null,
         _ => throw new InvalidOperationException(
             $"Unsupported LMS browse item kind {item.Kind}.")
+    };
+
+    private static LmsBrowseQueryKind ToLmsQueryKind(BrowseTargetKind kind) => kind switch
+    {
+        BrowseTargetKind.AlbumArtists => LmsBrowseQueryKind.AlbumArtists,
+        BrowseTargetKind.Artists => LmsBrowseQueryKind.Artists,
+        BrowseTargetKind.Albums => LmsBrowseQueryKind.Albums,
+        BrowseTargetKind.Genres => LmsBrowseQueryKind.Genres,
+        BrowseTargetKind.Playlists => LmsBrowseQueryKind.Playlists,
+        BrowseTargetKind.RecentlyAddedAlbums => LmsBrowseQueryKind.RecentlyAddedAlbums,
+        BrowseTargetKind.Years => LmsBrowseQueryKind.Years,
+        BrowseTargetKind.AlbumArtistAlbums => LmsBrowseQueryKind.AlbumArtistAlbums,
+        BrowseTargetKind.ArtistAlbums => LmsBrowseQueryKind.ArtistAlbums,
+        BrowseTargetKind.GenreAlbums => LmsBrowseQueryKind.GenreAlbums,
+        BrowseTargetKind.YearAlbums => LmsBrowseQueryKind.YearAlbums,
+        BrowseTargetKind.AlbumTracks => LmsBrowseQueryKind.AlbumTracks,
+        BrowseTargetKind.PlaylistTracks => LmsBrowseQueryKind.PlaylistTracks,
+        _ => throw new InvalidOperationException($"Unsupported LMS browse target {kind}.")
     };
 }

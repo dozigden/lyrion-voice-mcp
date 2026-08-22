@@ -6,13 +6,14 @@ namespace LyrionVoiceMcp.Services.Tests;
 public sealed class BrowseServiceTests
 {
     [Fact]
-    public async Task RootShouldReturnTheSevenAgreedLocalLibraryCategories()
+    public async Task RootShouldReturnTheEightAgreedLocalLibraryCategories()
     {
         // Arrange
         var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage([], 0));
         var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
+            NullRatingBrowseResolver.Instance,
             codec,
             new ReferenceCodecTestContext().Search);
 
@@ -30,6 +31,7 @@ public sealed class BrowseServiceTests
                 "Albums",
                 "Genres",
                 "Playlists",
+                "Ratings",
                 "Recently added",
                 "Years"
             ],
@@ -42,6 +44,84 @@ public sealed class BrowseServiceTests
             Assert.NotNull(codec.TryDecode(item.Reference)?.Target);
         });
         Assert.Null(result.Continuation);
+        Assert.Null(lmsClient.Request);
+    }
+
+    [Fact]
+    public async Task RatingsShouldExposeSixIntegerBuckets()
+    {
+        var codec = new ReferenceCodecTestContext().Browse;
+        var service = new BrowseService(
+            new StubLmsBrowseClient(new LmsBrowsePage([], 0)),
+            NullRatingBrowseResolver.Instance,
+            codec,
+            new ReferenceCodecTestContext().Search);
+        var root = Assert.IsType<BrowseSucceeded>(await service.BrowseAsync(
+            null,
+            TestContext.Current.CancellationToken));
+        var ratingReference = Assert.Single(
+            root.Items,
+            item => item.Title == "Ratings").Reference;
+
+        var outcome = await service.BrowseAsync(
+            ratingReference,
+            TestContext.Current.CancellationToken);
+
+        var result = Assert.IsType<BrowseSucceeded>(outcome);
+        Assert.Equal(
+            ["0", "1", "2", "3", "4", "5"],
+            result.Items.Select(item => item.Title));
+        Assert.All(result.Items, item =>
+        {
+            Assert.Equal(BrowseItemKind.Category, item.Kind);
+            Assert.True(item.Browsable);
+            Assert.False(item.Playable);
+            Assert.Equal(
+                BrowseTargetKind.RatingTracks,
+                codec.TryDecode(item.Reference)?.Target?.Kind);
+        });
+    }
+
+    [Fact]
+    public async Task RatingBucketShouldReturnRatedPlayableTracksAndContinuation()
+    {
+        var ratingResolver = new StubRatingBrowseResolver(new RatingBrowsePage(
+        [
+            new RatingBrowseTrack(
+                new MediaIdentity(MediaEntityKind.Track, "track-90"),
+                "Ninety Point Signal",
+                "The Imaginaries",
+                "Imaginary Signals",
+                90)
+        ],
+        true));
+        var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage([], 0));
+        var codec = new ReferenceCodecTestContext().Browse;
+        var service = new BrowseService(
+            lmsClient,
+            ratingResolver,
+            codec,
+            new ReferenceCodecTestContext().Search);
+        var reference = codec.Encode(new BrowseReferenceValue(
+            new BrowseTarget(BrowseTargetKind.RatingTracks, "4", 0),
+            null));
+
+        var outcome = await service.BrowseAsync(
+            reference,
+            TestContext.Current.CancellationToken);
+
+        var result = Assert.IsType<BrowseSucceeded>(outcome);
+        var item = Assert.Single(result.Items);
+        Assert.Equal(90, item.NativeRating);
+        Assert.True(item.Playable);
+        Assert.False(item.Browsable);
+        Assert.Equal(
+            new PlayableMedia(new MediaIdentity(MediaEntityKind.Track, "track-90")),
+            codec.TryDecode(item.Reference)?.Media);
+        Assert.Equal(4, ratingResolver.Bucket);
+        Assert.Equal(0, ratingResolver.Offset);
+        Assert.Equal(50, ratingResolver.Limit);
+        Assert.Equal(1, codec.TryDecode(result.Continuation!)?.Target?.Offset);
         Assert.Null(lmsClient.Request);
     }
 
@@ -68,10 +148,11 @@ public sealed class BrowseServiceTests
         var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
+            NullRatingBrowseResolver.Instance,
             codec,
             new ReferenceCodecTestContext().Search);
         var reference = codec.Encode(new BrowseReferenceValue(
-            new BrowseTarget(LmsBrowseQueryKind.Albums, null, 0),
+            new BrowseTarget(BrowseTargetKind.Albums, null, 0),
             null));
 
         // Act
@@ -84,7 +165,7 @@ public sealed class BrowseServiceTests
         Assert.Equal(2, result.Items.Count);
         var firstReference = codec.TryDecode(result.Items[0].Reference);
         Assert.Equal(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "201", 0),
+            new BrowseTarget(BrowseTargetKind.AlbumTracks, "201", 0),
             firstReference?.Target);
         Assert.Equal(
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "201")),
@@ -112,10 +193,11 @@ public sealed class BrowseServiceTests
         var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
+            NullRatingBrowseResolver.Instance,
             codec,
             new ReferenceCodecTestContext().Search);
         var reference = codec.Encode(new BrowseReferenceValue(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumArtists, null, 0),
+            new BrowseTarget(BrowseTargetKind.AlbumArtists, null, 0),
             null));
 
         // Act
@@ -129,7 +211,7 @@ public sealed class BrowseServiceTests
         Assert.True(item.Playable);
         var decoded = codec.TryDecode(item.Reference);
         Assert.Equal(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumArtistAlbums, "101", 0),
+            new BrowseTarget(BrowseTargetKind.AlbumArtistAlbums, "101", 0),
             decoded?.Target);
         Assert.Equal(
             new PlayableMedia(
@@ -155,10 +237,11 @@ public sealed class BrowseServiceTests
         var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
+            NullRatingBrowseResolver.Instance,
             codec,
             new ReferenceCodecTestContext().Search);
         var reference = codec.Encode(new BrowseReferenceValue(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "201", 0),
+            new BrowseTarget(BrowseTargetKind.AlbumTracks, "201", 0),
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "201"))));
 
         // Act
@@ -185,6 +268,7 @@ public sealed class BrowseServiceTests
         var codec = new ReferenceCodecTestContext().Browse;
         var service = new BrowseService(
             lmsClient,
+            NullRatingBrowseResolver.Instance,
             codec,
             new ReferenceCodecTestContext().Search);
         var reference = codec.Encode(new BrowseReferenceValue(
@@ -218,7 +302,11 @@ public sealed class BrowseServiceTests
         2));
         var browseCodec = new ReferenceCodecTestContext().Browse;
         var searchCodec = new ReferenceCodecTestContext().Search;
-        var service = new BrowseService(lmsClient, browseCodec, searchCodec);
+        var service = new BrowseService(
+            lmsClient,
+            NullRatingBrowseResolver.Instance,
+            browseCodec,
+            searchCodec);
         var correlationId = "123456781234123412341234567890ab";
         var searchReference = searchCodec.Encode(
             new SearchResultReferenceValue(
@@ -250,6 +338,7 @@ public sealed class BrowseServiceTests
         var searchCodec = new ReferenceCodecTestContext().Search;
         var service = new BrowseService(
             lmsClient,
+            NullRatingBrowseResolver.Instance,
             new ReferenceCodecTestContext().Browse,
             searchCodec);
         var searchReference = searchCodec.Encode(new SearchResultReferenceValue(
@@ -280,6 +369,7 @@ public sealed class BrowseServiceTests
         var searchCodec = new ReferenceCodecTestContext().Search;
         var service = new BrowseService(
             lmsClient,
+            NullRatingBrowseResolver.Instance,
             new ReferenceCodecTestContext().Browse,
             searchCodec);
         var searchReference = searchCodec.Encode(new SearchResultReferenceValue(
@@ -310,6 +400,39 @@ public sealed class BrowseServiceTests
             return Task.FromResult(page);
         }
     }
+
+    private sealed class NullRatingBrowseResolver : IRatingBrowseResolver
+    {
+        public static NullRatingBrowseResolver Instance { get; } = new();
+
+        public Task<RatingBrowsePage> BrowseAsync(
+            int bucket,
+            int offset,
+            int limit,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new RatingBrowsePage([], false));
+    }
+
+    private sealed class StubRatingBrowseResolver(RatingBrowsePage page)
+        : IRatingBrowseResolver
+    {
+        public int? Bucket { get; private set; }
+        public int? Offset { get; private set; }
+        public int? Limit { get; private set; }
+
+        public Task<RatingBrowsePage> BrowseAsync(
+            int bucket,
+            int offset,
+            int limit,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Bucket = bucket;
+            Offset = offset;
+            Limit = limit;
+            return Task.FromResult(page);
+        }
+    }
 }
 
 public sealed class BrowseReferenceCodecTests
@@ -320,7 +443,7 @@ public sealed class BrowseReferenceCodecTests
         // Arrange
         var codec = new ReferenceCodecTestContext().Browse;
         var expected = new BrowseReferenceValue(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "204", 50),
+            new BrowseTarget(BrowseTargetKind.AlbumTracks, "204", 50),
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "204")),
             "123456781234123412341234567890ab");
 
@@ -343,7 +466,7 @@ public sealed class BrowseReferenceCodecTests
         // Act
         var exception = Assert.Throws<ArgumentException>(() => codec.Encode(
             new BrowseReferenceValue(
-                new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, null, 0),
+                new BrowseTarget(BrowseTargetKind.AlbumTracks, null, 0),
                 null)));
 
         // Assert
@@ -356,7 +479,7 @@ public sealed class BrowseReferenceCodecTests
         // Arrange
         var codec = new ReferenceCodecTestContext().Browse;
         var expected = new BrowseReferenceValue(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumArtistAlbums, "204", 0),
+            new BrowseTarget(BrowseTargetKind.AlbumArtistAlbums, "204", 0),
             new PlayableMedia(
                 new MediaIdentity(MediaEntityKind.Artist, "204"),
                 ArtistSelectionScope.AlbumArtist));
@@ -384,11 +507,11 @@ public sealed class PlayableReferenceResolverTests
             new SearchResultReferenceValue(correlationId, identity));
         var browseReference = browseCodec.Encode(
             new BrowseReferenceValue(
-                new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "204", 0),
+                new BrowseTarget(BrowseTargetKind.AlbumTracks, "204", 0),
                 new PlayableMedia(identity)));
         var searchDerivedBrowseReference = browseCodec.Encode(
             new BrowseReferenceValue(
-                new BrowseTarget(LmsBrowseQueryKind.AlbumTracks, "204", 0),
+                new BrowseTarget(BrowseTargetKind.AlbumTracks, "204", 0),
                 new PlayableMedia(identity),
                 correlationId));
 
@@ -418,7 +541,7 @@ public sealed class PlayableReferenceResolverTests
             new MediaIdentity(MediaEntityKind.Artist, "204"),
             ArtistSelectionScope.AlbumArtist);
         var reference = browseCodec.Encode(new BrowseReferenceValue(
-            new BrowseTarget(LmsBrowseQueryKind.AlbumArtistAlbums, "204", 0),
+            new BrowseTarget(BrowseTargetKind.AlbumArtistAlbums, "204", 0),
             expected));
 
         // Act

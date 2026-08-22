@@ -4,7 +4,11 @@ using LyrionVoiceMcp.Search;
 
 namespace LyrionVoiceMcp.Api.Diagnostics;
 
-public sealed record ProductionSearchDiagnosticRequest(string Resolver, string Query);
+public sealed record ProductionSearchDiagnosticRequest(
+    string Resolver,
+    string Query,
+    decimal? Rating = null,
+    string? RatingMatch = null);
 
 public sealed record ProductionSearchDiagnosticExecution(
     bool ResolverPreparedForThisRequest,
@@ -46,6 +50,22 @@ public static class ProductionSearchDiagnosticValidation
             return $"query must contain no more than {SearchQueryPolicy.MaximumTokenCount} words.";
         }
 
+        if ((request.Rating is null) != (request.RatingMatch is null))
+        {
+            return "rating and ratingMatch must be supplied together.";
+        }
+
+        if (request.Rating is < 0 or > 5)
+        {
+            return "rating must be from 0 to 5.";
+        }
+
+        if (request.RatingMatch is not null
+            && request.RatingMatch is not "exact" and not "at_least")
+        {
+            return "ratingMatch must be exact or at_least.";
+        }
+
         return string.Equals(request.Resolver, "production", StringComparison.Ordinal)
             ? null
             : "resolver must be production.";
@@ -57,7 +77,7 @@ public sealed class ProductionSearchDiagnosticService(
     ISearchIndexBuilder indexBuilder) : IAsyncDisposable
 {
     private static readonly ProductionSearchDiagnosticDescription DescriptionValue = new(
-        1,
+        2,
         ["production"]);
     private readonly SemaphoreSlim gate = new(1, 1);
 
@@ -84,6 +104,7 @@ public sealed class ProductionSearchDiagnosticService(
             var afterResolver = process.WorkingSet64;
             var search = await resolver.SearchDetailedAsync(
                 request.Query,
+                CreateRatingConstraint(request),
                 cancellationToken);
             process.Refresh();
             return new ProductionSearchDiagnosticExecution(
@@ -99,6 +120,21 @@ public sealed class ProductionSearchDiagnosticService(
         {
             gate.Release();
         }
+    }
+
+    private static RatingSearchConstraint? CreateRatingConstraint(
+        ProductionSearchDiagnosticRequest request)
+    {
+        if (request.Rating is null || request.RatingMatch is null)
+        {
+            return null;
+        }
+
+        return new RatingSearchConstraint(
+            request.Rating.Value,
+            request.RatingMatch == "exact"
+                ? RatingMatchMode.Exact
+                : RatingMatchMode.AtLeast);
     }
 
     public ValueTask DisposeAsync()

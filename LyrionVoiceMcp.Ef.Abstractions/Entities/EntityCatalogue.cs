@@ -126,7 +126,7 @@ public sealed class EntityCatalogueTrackStatistic
     public int TrackId { get; set; }
     public EntityCatalogueTrack Track { get; set; } = null!;
     public string Source { get; set; } = string.Empty;
-    public int? Rating { get; set; }
+    public int Rating { get; set; }
     public int? PlayCount { get; set; }
     public DateTime? LastPlayedAtUtc { get; set; }
 }

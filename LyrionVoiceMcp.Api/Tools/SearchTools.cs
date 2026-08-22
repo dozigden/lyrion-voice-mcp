@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Globalization;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Contracts;
 using ModelContextProtocol;
@@ -23,14 +22,24 @@ public sealed class SearchTools(ISearchService searchService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(SearchResponse))]
-    [Description("Search the whole configured Lyrion Music Server library for artists, albums, tracks, and playlists. Track results include a 0 to 5 rating string or 'unrated'.")]
+    [Description("Search the whole configured Lyrion Music Server library. Optionally constrain track results by an exact or minimum numeric 0 to 5 rating.")]
     public async Task<CallToolResult> SearchAsync(
         [Description("The artist, album, track, or playlist text to search for, up to 500 characters and 20 words.")] string query,
-        CancellationToken cancellationToken)
+        [Description("Optional numeric track rating from 0 to 5. Supply together with ratingMatch.")] decimal? rating = null,
+        [Description("Optional rating comparison: exact or at_least. Supply together with rating.")] string? ratingMatch = null,
+        CancellationToken cancellationToken = default)
     {
+        var constraint = CreateRatingConstraint(rating, ratingMatch);
+        if (constraint.Error is not null)
+        {
+            return ErrorResult(constraint.Error);
+        }
+
         try
         {
-            var outcome = await searchService.SearchAsync(query, cancellationToken);
+            var outcome = await searchService.SearchAsync(
+                new SearchCriteria(query, constraint.Value),
+                cancellationToken);
             return outcome switch
             {
                 SearchSucceeded succeeded => SuccessResult(
@@ -81,23 +90,40 @@ public sealed class SearchTools(ISearchService searchService)
             candidate.Album);
 
         return candidate.Kind == MediaEntityKind.Track
-            ? result with { Rating = FormatRating(candidate.NativeRating) }
+            ? result with { Rating = candidate.NativeRating / 20m }
             : result;
     }
 
-    private static string FormatRating(int? nativeRating)
+    private static (RatingSearchConstraint? Value, string? Error) CreateRatingConstraint(
+        decimal? rating,
+        string? ratingMatch)
     {
-        if (nativeRating is null or 0)
+        if (rating is null && ratingMatch is null)
         {
-            return "unrated";
+            return (null, null);
         }
 
-        if (nativeRating is < 0 or > 100)
+        if (rating is null || ratingMatch is null)
         {
-            throw new InvalidOperationException(
-                "A track search result contained a rating outside the LMS 0 to 100 scale.");
+            return (null, "rating and ratingMatch must be supplied together.");
         }
 
-        return (nativeRating.Value / 20m).ToString("0.##", CultureInfo.InvariantCulture);
+        var match = ratingMatch switch
+        {
+            "exact" => RatingMatchMode.Exact,
+            "at_least" => RatingMatchMode.AtLeast,
+            _ => (RatingMatchMode?)null
+        };
+        if (match is null)
+        {
+            return (null, "ratingMatch must be exact or at_least.");
+        }
+
+        if (rating is < 0 or > 5)
+        {
+            return (null, "rating must be from 0 to 5.");
+        }
+
+        return (new RatingSearchConstraint(rating.Value, match.Value), null);
     }
 }

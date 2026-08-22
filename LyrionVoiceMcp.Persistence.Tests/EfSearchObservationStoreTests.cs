@@ -151,6 +151,56 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task StoreShouldRoundTripRatingConstraintsAndCandidateRatings()
+    {
+        var constraint = new RatingSearchConstraint(4.5m, RatingMatchMode.AtLeast);
+        var observation = CreateObservation(Now) with
+        {
+            Id = "rated-search",
+            RatingConstraint = constraint,
+            Candidates =
+            [
+                new SearchObservationCandidate(
+                    1,
+                    "rated-correlation",
+                    new MediaIdentity(MediaEntityKind.Track, "rated-track"),
+                    "Rated Signal",
+                    "The Imaginaries",
+                    "Imaginary Signals",
+                    null,
+                    4.55m)
+            ]
+        };
+
+        await store.RecordAsync(observation, TestContext.Current.CancellationToken);
+        Assert.True(await store.SaveReviewAsync(
+            observation.Id,
+            new SearchObservationReview(
+                SearchReviewClassification.Good,
+                "rated-correlation",
+                MediaEntityKind.Track,
+                "Rated Signal",
+                "The Imaginaries",
+                "Imaginary Signals",
+                null,
+                true,
+                Now.AddMinutes(1)),
+            TestContext.Current.CancellationToken));
+
+        var saved = await store.GetAsync(
+            observation.Id,
+            TestContext.Current.CancellationToken);
+        var exported = Assert.Single(await store.ExportAsync(
+            TestContext.Current.CancellationToken),
+            item => item.Query == observation.NormalisedQuery
+                && item.RatingConstraint is not null);
+        Assert.Equal(constraint, saved?.RatingConstraint);
+        Assert.Equal(4.55m, Assert.Single(saved!.Candidates).Rating);
+        Assert.Equal(constraint, exported.RatingConstraint);
+        Assert.Equal(4.55m, Assert.Single(exported.OriginalCandidates).Rating);
+    }
+
+    [Fact]
     public async Task RecordingShouldDeleteExpiredRowsFromApplicationDatabase()
     {
         var expired = CreateObservation(Now.AddDays(-91)) with { Id = "expired" };
