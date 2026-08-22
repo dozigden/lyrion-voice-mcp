@@ -10,6 +10,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
+assert_json() {
+  local description="${1:?description is required}"
+  local expression="${2:?jq expression is required}"
+  local response="${3-}"
+
+  if ! jq --exit-status "$expression" <<< "$response" >/dev/null; then
+    echo "$description returned unexpected JSON:" >&2
+    echo "$response" >&2
+    exit 1
+  fi
+}
+
+check_json_endpoint() {
+  local path="${1:?endpoint path is required}"
+  local description="${2:?description is required}"
+  local expression="${3:?jq expression is required}"
+  local response
+
+  if ! response="$(curl --fail --silent --show-error "$base_url$path")"; then
+    echo "Could not read $description from $path." >&2
+    exit 1
+  fi
+
+  assert_json "$description" "$expression" "$response"
+}
+
 if [[ -n "$expected_arch" ]]; then
   actual_arch="$(docker image inspect "$image" --format '{{.Architecture}}')"
   if [[ "$actual_arch" != "$expected_arch" ]]; then
@@ -42,23 +68,23 @@ if [[ -z "$health_json" ]]; then
   exit 1
 fi
 
-jq --exit-status '.status == "ok"' <<< "$health_json" >/dev/null
-curl --fail --silent "$base_url/api/version" | jq --exit-status '.version and .channel and .build and .commit' >/dev/null
-curl --fail --silent "$base_url/api/lms" | jq --exit-status '.status == "not_configured"' >/dev/null
-curl --fail --silent "$base_url/api/search-observations?limit=1" \
-  | jq --exit-status '.items == [] and .retentionDays == 90' >/dev/null
-curl --fail --silent "$base_url/api/jobs?limit=1" \
-  | jq --exit-status '(.items | type) == "array" and .retentionDays == 90' >/dev/null
-curl --fail --silent "$base_url/api/scheduled-jobs" \
-  | jq --exit-status 'length == 4 and any(.name == "catalogue-refresh" and .enabled == false)' >/dev/null
-curl --fail --silent "$base_url/api/error-logs?limit=1" \
-  | jq --exit-status '(.items | type) == "array" and .retentionDays == 90' >/dev/null
-curl --fail --silent "$base_url/api/tool-calls?limit=1" \
-  | jq --exit-status '(.items | type) == "array" and .retentionDays == 30' >/dev/null
-curl --fail --silent "$base_url/api/evaluation" \
-  | jq --exit-status '.schemaVersion == 1 and .resolvers == ["production"]' >/dev/null
-curl --fail --silent "$base_url/api/search/index" \
-  | jq --exit-status '.resolver == "catalogue-phuzzy-sqlite" and .artifact == null' >/dev/null
+assert_json "Health endpoint" '.status == "ok"' "$health_json"
+check_json_endpoint "/api/version" "Version endpoint" '.version and .channel and .build and .commit'
+check_json_endpoint "/api/lms" "LMS endpoint" '.status == "not_configured"'
+check_json_endpoint "/api/search-observations?limit=1" "Search observation endpoint" \
+  '.items == [] and .retentionDays == 90'
+check_json_endpoint "/api/jobs?limit=1" "Jobs endpoint" \
+  '(.items | type) == "array" and .retentionDays == 90'
+check_json_endpoint "/api/scheduled-jobs" "Scheduled jobs endpoint" \
+  'length == 4 and any(.name == "catalogue-refresh" and .enabled == false)'
+check_json_endpoint "/api/error-logs?limit=1" "Error logs endpoint" \
+  '(.items | type) == "array" and .retentionDays == 90'
+check_json_endpoint "/api/tool-calls?limit=1" "Tool calls endpoint" \
+  '(.items | type) == "array" and .retentionDays == 30'
+check_json_endpoint "/api/evaluation" "Evaluation endpoint" \
+  '.schemaVersion == 2 and .resolvers == ["production"]'
+check_json_endpoint "/api/search/index" "Search index endpoint" \
+  '.resolver == "catalogue-phuzzy-sqlite" and .artifact == null'
 docker exec "$container_name" test -r /app/licenses/Apache-2.0.txt
 docker exec "$container_name" test -r /app/licenses/Lucene.Net-NOTICE.txt
 docker exec "$container_name" test -r /app/licenses/Cronos-LICENSE.txt
