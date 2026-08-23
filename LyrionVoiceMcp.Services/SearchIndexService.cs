@@ -77,6 +77,27 @@ public sealed class SearchIndexService(
             return outcome is JobEnqueued enqueued ? enqueued.Job.Id : null;
         }, cancellationToken);
 
+    public Task<long?> EnqueueForStartupAsync(
+        string catalogueRefreshId,
+        CancellationToken cancellationToken) => lifecycleGate.ExecuteAsync<long?>(async token =>
+        {
+            if (await GetLatestActiveByTypeAsync(JobTypes.CatalogueRefresh, token) is not null)
+            {
+                return null;
+            }
+
+            if (await GetActiveJobAsync(token) is not null)
+            {
+                return null;
+            }
+
+            var outcome = await EnqueueAsync(
+                catalogueRefreshId,
+                $"search-index:production:startup:{catalogueRefreshId}:{Guid.NewGuid():N}",
+                token);
+            return outcome is JobEnqueued enqueued ? enqueued.Job.Id : null;
+        }, cancellationToken);
+
     private Task<JobEnqueueOutcome> EnqueueAsync(
         string catalogueRefreshId,
         string correlationId,

@@ -47,6 +47,10 @@ public interface ISearchIndexService
     Task<long?> EnqueueForCatalogueAsync(
         string catalogueRefreshId,
         CancellationToken cancellationToken);
+
+    Task<long?> EnqueueForStartupAsync(
+        string catalogueRefreshId,
+        CancellationToken cancellationToken);
 }
 
 public abstract record SearchIndexRebuildOutcome;

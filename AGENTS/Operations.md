@@ -11,6 +11,7 @@ Read this before changing background work, scheduling, error capture, retention,
 - Expected handler outcomes return `JobHandlerResult`; unexpected exceptions are persisted through `IErrorLogService` with the job ID and then fail the job.
 - Keep payload and result JSON inspectable and valid. Correlations are stable idempotency keys, not display labels.
 - Catalogue refresh and production search-index rebuild are separate jobs. A successful catalogue job queues one correlated production rebuild; the single runner serialises expensive work. Manual rebuilds use unique correlations, reject a concurrent rebuild, and target the current successful catalogue refresh.
+- After interrupted-job recovery and the first scheduled-job check, startup readiness runs once in the background scheduler. It waits for an active catalogue refresh, configuration-gates any initial catalogue refresh, and queues an inspectably correlated index recovery when the successful catalogue has no matching compatible artifact. A failed readiness check is retried by the scheduler loop and must not stop ordinary job processing.
 
 ## Scheduling
 

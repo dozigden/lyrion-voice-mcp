@@ -250,6 +250,98 @@ public sealed class JobArchitectureTests : IDisposable
     }
 
     [Fact]
+    public async Task StartupShouldEnqueueAnInspectableSearchIndexRecoveryJob()
+    {
+        // Arrange
+        var lifecycleGate = new JobLifecycleGate();
+        var service = new SearchIndexService(
+            new RecordingIndexBuilder(),
+            new TestCatalogueStore(CreateCatalogueState("job-42")),
+            scopeFactory,
+            jobRepository,
+            CreateJobService(new JobCancellationRegistry(), lifecycleGate),
+            lifecycleGate,
+            timeProvider);
+
+        // Act
+        var jobId = await service.EnqueueForStartupAsync(
+            "job-42",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(jobId);
+        var details = await CreateJobService(
+                new JobCancellationRegistry(),
+                lifecycleGate)
+            .GetAsync(jobId.Value, TestContext.Current.CancellationToken);
+        Assert.StartsWith(
+            "search-index:production:startup:job-42:",
+            details?.Job.CorrelationId,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartupShouldNotQueueIndexRecoveryDuringCatalogueRefresh()
+    {
+        // Arrange
+        var lifecycleGate = new JobLifecycleGate();
+        var jobs = CreateJobService(new JobCancellationRegistry(), lifecycleGate);
+        await jobs.EnqueueAsync(
+            new CreateJob(
+                JobTypes.CatalogueRefresh,
+                "{}",
+                Now,
+                "manual:catalogue.refresh:test"),
+            TestContext.Current.CancellationToken);
+        var service = new SearchIndexService(
+            new RecordingIndexBuilder(),
+            new TestCatalogueStore(CreateCatalogueState("job-42")),
+            scopeFactory,
+            jobRepository,
+            jobs,
+            lifecycleGate,
+            timeProvider);
+
+        // Act
+        var jobId = await service.EnqueueForStartupAsync(
+            "job-42",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Null(jobId);
+        var indexJobs = await jobs.BrowseAsync(
+            new JobQuery(Type: JobTypes.SearchIndexRebuild),
+            TestContext.Current.CancellationToken);
+        Assert.Empty(indexJobs.Items);
+    }
+
+    [Fact]
+    public async Task StartupCatalogueRefreshShouldUseAnInspectableCorrelation()
+    {
+        // Arrange
+        var lifecycleGate = new JobLifecycleGate();
+        var jobs = CreateJobService(new JobCancellationRegistry(), lifecycleGate);
+        var service = new CatalogueRefreshService(
+            new TestCatalogueStore(CreateCatalogueState("job-42")),
+            scopeFactory,
+            jobRepository,
+            jobs,
+            lifecycleGate,
+            timeProvider);
+
+        // Act
+        var outcome = await service.RefreshOnStartupAsync(
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var started = Assert.IsType<CatalogueRefreshStarted>(outcome);
+        Assert.StartsWith(
+            "startup:catalogue.refresh:",
+            started.Status.LatestRefresh?.CorrelationId,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SearchIndexHandlerShouldBuildAgainstTheMatchingSuccessfulCatalogue()
     {
         // Arrange

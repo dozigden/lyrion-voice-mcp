@@ -13,6 +13,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ICatalogueImportWriter, CatalogueImportWriter>();
         services.AddSingleton<ICatalogueSearchDocumentSource, CatalogueSearchDocumentSource>();
         services.AddTransient<ISearchIndexService, SearchIndexService>();
+        services.AddTransient<StartupReadinessService>();
         services.AddSingleton<IJobLifecycleGate, JobLifecycleGate>();
         services.AddSingleton<IJobCancellationRegistry, JobCancellationRegistry>();
         services.AddTransient<IJobService, JobService>();

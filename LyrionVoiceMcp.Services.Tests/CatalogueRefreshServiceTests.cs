@@ -152,6 +152,10 @@ public sealed class CatalogueRefreshServiceTests
             CatalogueRefreshId = catalogueRefreshId;
             return Task.FromResult<long?>(101);
         }
+
+        public Task<long?> EnqueueForStartupAsync(
+            string catalogueRefreshId,
+            CancellationToken cancellationToken) => Task.FromResult<long?>(null);
     }
 
     private sealed class RecordingJobLogWriter : IJobLogWriter

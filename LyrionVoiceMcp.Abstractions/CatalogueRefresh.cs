@@ -20,4 +20,7 @@ public interface ICatalogueRefreshService
     Task<CatalogueStatus> GetStatusAsync(CancellationToken cancellationToken);
 
     Task<CatalogueRefreshOutcome> RefreshAsync(CancellationToken cancellationToken);
+
+    Task<CatalogueRefreshOutcome> RefreshOnStartupAsync(
+        CancellationToken cancellationToken);
 }

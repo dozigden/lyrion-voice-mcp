@@ -9,13 +9,26 @@ public sealed class CatalogueRefreshService(
     IDbContextScopeFactory scopeFactory,
     IJobRepository jobRepository,
     IJobService jobService,
+    IJobLifecycleGate lifecycleGate,
     TimeProvider timeProvider) : ICatalogueRefreshService
 {
     public async Task<CatalogueStatus> GetStatusAsync(CancellationToken cancellationToken) => new(
         await catalogue.GetSummaryAsync(cancellationToken),
         await GetLatestAsync(cancellationToken));
 
-    public async Task<CatalogueRefreshOutcome> RefreshAsync(CancellationToken cancellationToken)
+    public Task<CatalogueRefreshOutcome> RefreshAsync(CancellationToken cancellationToken) =>
+        lifecycleGate.ExecuteAsync(token => EnqueueAsync(
+            $"manual:catalogue.refresh:{Guid.NewGuid():N}",
+            token), cancellationToken);
+
+    public Task<CatalogueRefreshOutcome> RefreshOnStartupAsync(
+        CancellationToken cancellationToken) => lifecycleGate.ExecuteAsync(token => EnqueueAsync(
+            $"startup:catalogue.refresh:{Guid.NewGuid():N}",
+            token), cancellationToken);
+
+    private async Task<CatalogueRefreshOutcome> EnqueueAsync(
+        string correlationId,
+        CancellationToken cancellationToken)
     {
         if (await GetLatestActiveAsync(cancellationToken) is not null)
         {
@@ -27,7 +40,7 @@ public sealed class CatalogueRefreshService(
                 JobTypes.CatalogueRefresh,
                 "{}",
                 timeProvider.GetUtcNow(),
-                $"manual:catalogue.refresh:{Guid.NewGuid():N}"),
+                correlationId),
             cancellationToken);
         return outcome switch
         {

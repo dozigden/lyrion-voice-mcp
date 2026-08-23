@@ -305,6 +305,10 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
 
         public Task<CatalogueRefreshOutcome> RefreshAsync(CancellationToken cancellationToken) =>
             Task.FromResult(outcome ?? new CatalogueRefreshStarted(status));
+
+        public Task<CatalogueRefreshOutcome> RefreshOnStartupAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult(outcome ?? new CatalogueRefreshStarted(status));
     }
 
     private sealed class ThrowingJobService : IJobService

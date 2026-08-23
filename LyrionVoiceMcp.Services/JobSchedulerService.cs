@@ -16,6 +16,7 @@ public sealed class JobSchedulerService(
     private static readonly TimeSpan ScheduledJobPollDelay = TimeSpan.FromMinutes(1);
     private readonly string schedulerId = $"{Environment.MachineName}:{Guid.NewGuid():N}";
     private DateTimeOffset nextScheduledJobPoll = DateTimeOffset.MinValue;
+    private bool startupReadinessChecked;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -28,6 +29,13 @@ public sealed class JobSchedulerService(
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 await EnqueueScheduledJobsIfDueAsync(scope.ServiceProvider, stoppingToken);
+                if (!startupReadinessChecked)
+                {
+                    await scope.ServiceProvider.GetRequiredService<StartupReadinessService>()
+                        .CheckAsync(stoppingToken);
+                    startupReadinessChecked = true;
+                }
+
                 var runner = scope.ServiceProvider.GetRequiredService<IJobRunner>();
                 if (!await runner.RunNextDueAsync(stoppingToken))
                 {
