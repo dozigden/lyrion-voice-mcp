@@ -72,7 +72,10 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
             TestContext.Current.CancellationToken);
         await writer.WriteTracksAsync(
             refreshId,
-            [CreateTrack("track-1", "Night Signal", "album-1", "artist-1", "genre-1")],
+            [
+                CreateTrack("track-1", "Night Signal", "album-1", "artist-1", "genre-1"),
+                CreateTrack("track-2", "Album Signal", "album-1", null, "genre-1")
+            ],
             TestContext.Current.CancellationToken);
         await writer.WriteArtistsAsync(
             refreshId,
@@ -93,7 +96,7 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
 
         var completion = await lifecycle.CompleteRefreshAsync(
             refreshId,
-            CreateSourceResult(refreshId, 2, 1, 1, 1, 1, 1),
+            CreateSourceResult(refreshId, 2, 1, 1, 2, 1, 1),
             Now.AddMinutes(1),
             0,
             TestContext.Current.CancellationToken);
@@ -107,7 +110,16 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
             && item.Title == "Night Signal"
             && item.Artist == "The Imaginaries"
             && item.Album == "Fictional Signals"
-            && item.NativeRating == 80);
+            && item.NativeRating == 80
+            && item.ArtistIds is not null
+            && item.ArtistIds.SequenceEqual(["artist-1"]));
+        Assert.Contains(projected, item =>
+            item.Identity.Kind == MediaEntityKind.Track
+            && item.Title == "Album Signal"
+            && item.Artist == "The Imaginaries"
+            && item.Album == "Fictional Signals"
+            && item.ArtistIds is not null
+            && item.ArtistIds.SequenceEqual(["artist-1"]));
 
         var scopeFactory = serviceProvider.GetRequiredService<IDbContextScopeFactory>();
         var tracks = serviceProvider.GetRequiredService<ICatalogueTrackRepository>();

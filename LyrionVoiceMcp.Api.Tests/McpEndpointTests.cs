@@ -112,8 +112,12 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         var trackSchema = searchTool
             .GetProperty("outputSchema")
             .GetProperty("properties")
-            .GetProperty("tracks")
+            .GetProperty("topTracks")
             .GetProperty("items");
+        Assert.True(searchTool
+            .GetProperty("outputSchema")
+            .GetProperty("properties")
+            .TryGetProperty("tracks", out _));
         Assert.Equal(
             "number",
             trackSchema.GetProperty("properties").GetProperty("rating")
@@ -122,7 +126,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
         Assert.Equal(
-            "Search for artists, albums, tracks, or playlists by name. Use the separate rating and ratingMatch fields to narrow track results. * is not a wildcard.",
+            "Search for artists, albums, tracks, or playlists by name. Returns relevant 4+ top tracks separately and varies equally relevant track matches. Use the separate rating and ratingMatch fields to narrow track results. * is not a wildcard.",
             searchTool.GetProperty("description").GetString());
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         var browseTool = Assert.Single(
@@ -277,6 +281,10 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Equal("playlist-reference", playlist.GetProperty("browseRef").GetString());
         Assert.Equal("playlist-reference", playlist.GetProperty("playRef").GetString());
         var tracks = structuredContent.GetProperty("tracks").EnumerateArray().ToArray();
+        var topTrack = Assert.Single(
+            structuredContent.GetProperty("topTracks").EnumerateArray());
+        Assert.Equal("Copper Favourite", topTrack.GetProperty("title").GetString());
+        Assert.Equal(5m, topTrack.GetProperty("rating").GetDecimal());
         Assert.Equal(
             4.5m,
             Assert.Single(tracks, result =>
@@ -1135,6 +1143,15 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     "Copper Evenings",
                     null,
                     null)
+            ],
+            [
+                new(
+                    "top-track-reference",
+                    MediaEntityKind.Track,
+                    "Copper Favourite",
+                    "The Copper Lines",
+                    "Copper Signals",
+                    100)
             ]));
         }
     }
@@ -1154,7 +1171,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         {
             cancellationToken.ThrowIfCancellationRequested();
             Criteria = criteria;
-            return Task.FromResult<SearchOutcome>(new SearchSucceeded([]));
+            return Task.FromResult<SearchOutcome>(new SearchSucceeded([], []));
         }
     }
 

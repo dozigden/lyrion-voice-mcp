@@ -31,6 +31,7 @@ public sealed record SearchResponse(
     string Guidance,
     IReadOnlyList<SearchArtist> Artists,
     IReadOnlyList<SearchAlbum> Albums,
+    IReadOnlyList<SearchTrack> TopTracks,
     IReadOnlyList<SearchTrack> Tracks,
     IReadOnlyList<SearchPlaylist> Playlists);
 

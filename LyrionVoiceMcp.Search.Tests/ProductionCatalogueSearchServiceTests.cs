@@ -87,7 +87,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
             "unrated signal",
             TestContext.Current.CancellationToken);
 
-        Assert.Equal("3", rebuilt.Artifact.ResolverVersion);
+        Assert.Equal("4", rebuilt.Artifact.ResolverVersion);
         Assert.Equal(
             67,
             Assert.Single(rated.Candidates, candidate =>
@@ -190,7 +190,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
                 $"Bounded Signal Album {index}",
                 "The Imaginaries",
                 null)))
-            .Concat(Enumerable.Range(1, 31).Select(index => new CatalogueSearchDocument(
+            .Concat(Enumerable.Range(1, 81).Select(index => new CatalogueSearchDocument(
                 new MediaIdentity(MediaEntityKind.Track, $"track-{index}"),
                 $"Bounded Signal Track {index}",
                 "The Imaginaries",
@@ -207,8 +207,47 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
             candidate.Identity.Kind == MediaEntityKind.Artist));
         Assert.Equal(SearchResultPolicy.AlbumLimit, response.Candidates.Count(candidate =>
             candidate.Identity.Kind == MediaEntityKind.Album));
-        Assert.Equal(SearchResultPolicy.TrackLimit, response.Candidates.Count(candidate =>
-            candidate.Identity.Kind == MediaEntityKind.Track));
+        Assert.InRange(
+            response.Candidates.Count(candidate =>
+                candidate.Identity.Kind == MediaEntityKind.Track),
+            SearchResultPolicy.TrackLimit + 1,
+            SearchResultPolicy.TrackCandidateLimit);
+    }
+
+    [Fact]
+    public async Task PublishedIndexShouldStreamTracksByCanonicalArtistIdentity()
+    {
+        var source = new DocumentSource([
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "artist-track"),
+                "An Unrelated Title",
+                "The Imaginaries",
+                "Imaginary Signals",
+                90,
+                ["artist-1"]),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "other-track"),
+                "Another Unrelated Title",
+                "Another Artist",
+                "Other Signals",
+                100,
+                ["artist-2"])
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-artist-tracks", 49);
+
+        var candidates = new List<CatalogueSearchCandidate>();
+        await foreach (var candidate in service.ReadArtistTracksAsync(
+            "artist-1",
+            TestContext.Current.CancellationToken))
+        {
+            candidates.Add(candidate);
+        }
+
+        var result = Assert.Single(candidates);
+        Assert.Equal("artist-track", result.Identity.Id);
+        Assert.Equal(90, result.NativeRating);
+        Assert.Equal(1_120, result.Score);
     }
 
     [Fact]
@@ -330,7 +369,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task VersionTwoArtifactShouldBeIncompatibleWithRatingFiltering()
+    public async Task VersionThreeArtifactShouldBeIncompatibleWithArtistExpansion()
     {
         var source = new DocumentSource([
             new CatalogueSearchDocument(
@@ -355,12 +394,12 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
         var manifest = await File.ReadAllTextAsync(
             manifestPath,
             TestContext.Current.CancellationToken);
-        Assert.Contains("\"resolverVersion\":\"3\"", manifest, StringComparison.Ordinal);
+        Assert.Contains("\"resolverVersion\":\"4\"", manifest, StringComparison.Ordinal);
         await File.WriteAllTextAsync(
             manifestPath,
             manifest.Replace(
+                "\"resolverVersion\":\"4\"",
                 "\"resolverVersion\":\"3\"",
-                "\"resolverVersion\":\"2\"",
                 StringComparison.Ordinal),
             TestContext.Current.CancellationToken);
         await using var restarted = CreateService(source);

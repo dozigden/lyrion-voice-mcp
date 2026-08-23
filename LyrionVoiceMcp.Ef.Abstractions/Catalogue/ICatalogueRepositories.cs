@@ -192,4 +192,5 @@ public sealed record EntityCatalogueProjectionRow(
     string Title,
     string? Artist,
     string? Album,
-    int NativeRating = 0);
+    int NativeRating = 0,
+    IReadOnlyList<string>? ArtistSourceIds = null);

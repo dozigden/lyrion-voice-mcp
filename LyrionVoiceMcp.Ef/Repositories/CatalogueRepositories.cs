@@ -385,19 +385,23 @@ public sealed class CatalogueProjectionRepository(
             .Select(item => new TrackArtistProjection(
                 item.TrackArtist.TrackId,
                 item.TrackArtist.Id,
+                item.TrackArtist.ArtistSourceId,
                 item.Artist.Name))
             .ToArrayAsync(cancellationToken);
         var artistsByTrack = artistRows
             .GroupBy(item => item.TrackId)
             .ToDictionary(
                 group => group.Key,
-                group => string.Join(", ", group.Select(item => item.Name)));
+                group => new TrackArtistsProjection(
+                    string.Join(", ", group.Select(item => item.Name)),
+                    group.Select(item => item.ArtistSourceId).ToArray()));
         var albums = await DbContext.CatalogueAlbums
             .AsNoTracking()
             .Where(item => albumIds.Contains(item.SourceId))
             .Select(item => new AlbumProjection(
                 item.SourceId,
                 item.Title,
+                item.AlbumArtistSourceId,
                 DbContext.CatalogueArtists
                     .Where(artist => artist.SourceId == item.AlbumArtistSourceId)
                     .Select(artist => artist.Name)
@@ -407,14 +411,18 @@ public sealed class CatalogueProjectionRepository(
         return tracks.Select(track =>
         {
             albums.TryGetValue(track.AlbumSourceId ?? string.Empty, out var album);
-            artistsByTrack.TryGetValue(track.Id, out var artist);
+            artistsByTrack.TryGetValue(track.Id, out var artists);
             return new EntityCatalogueProjectionRow(
                 EntityCatalogueProjectionKind.Track,
                 track.SourceId,
                 track.Title,
-                artist ?? album?.Artist,
+                artists?.Names ?? album?.Artist,
                 album?.Title,
-                track.NativeRating);
+                track.NativeRating,
+                artists?.SourceIds
+                    ?? (album?.ArtistSourceId is null
+                        ? []
+                        : [album.ArtistSourceId]));
         }).ToArray();
     }
 
@@ -425,7 +433,19 @@ public sealed class CatalogueProjectionRepository(
         string? AlbumSourceId,
         int NativeRating);
 
-    private sealed record TrackArtistProjection(int TrackId, int RelationId, string Name);
+    private sealed record TrackArtistProjection(
+        int TrackId,
+        int RelationId,
+        string ArtistSourceId,
+        string Name);
 
-    private sealed record AlbumProjection(string SourceId, string Title, string? Artist);
+    private sealed record TrackArtistsProjection(
+        string Names,
+        IReadOnlyList<string> SourceIds);
+
+    private sealed record AlbumProjection(
+        string SourceId,
+        string Title,
+        string? ArtistSourceId,
+        string? Artist);
 }

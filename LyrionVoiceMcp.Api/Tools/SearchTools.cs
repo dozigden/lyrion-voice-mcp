@@ -12,7 +12,7 @@ namespace LyrionVoiceMcp.Api.Tools;
 public sealed class SearchTools(ISearchService searchService)
 {
     private const string ReferenceGuidance =
-        "Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating.";
+        "topTracks are relevant tracks rated 4 or higher; tracks are varied matches and exclude tracks already shown in topTracks. Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating.";
 
     [McpServerTool(
         Name = "search",
@@ -23,7 +23,7 @@ public sealed class SearchTools(ISearchService searchService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(SearchResponse))]
-    [Description("Search for artists, albums, tracks, or playlists by name. Use the separate rating and ratingMatch fields to narrow track results. * is not a wildcard.")]
+    [Description("Search for artists, albums, tracks, or playlists by name. Returns relevant 4+ top tracks separately and varies equally relevant track matches. Use the separate rating and ratingMatch fields to narrow track results. * is not a wildcard.")]
     public async Task<CallToolResult> SearchAsync(
         [Description("Artist, album, track, or playlist name text only, up to 500 characters and 20 words. Do not include ratings or search syntax; use rating and ratingMatch instead. Wildcards are not supported.")] string name,
         [Description("Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch; do not put the rating in name.")] decimal? rating = null,
@@ -43,7 +43,9 @@ public sealed class SearchTools(ISearchService searchService)
                 cancellationToken);
             return outcome switch
             {
-                SearchSucceeded succeeded => SuccessResult(MapResponse(succeeded.Results)),
+                SearchSucceeded succeeded => SuccessResult(MapResponse(
+                    succeeded.Results,
+                    succeeded.TopTracks)),
                 SearchRejected rejected => ErrorResult(rejected.Message),
                 _ => throw new UnreachableException(
                     $"Unsupported search outcome {outcome.GetType().Name}.")
@@ -73,7 +75,8 @@ public sealed class SearchTools(ISearchService searchService)
         };
 
     private static SearchResponse MapResponse(
-        IReadOnlyList<SearchCandidateResult> candidates) =>
+        IReadOnlyList<SearchCandidateResult> candidates,
+        IReadOnlyList<SearchCandidateResult> topTracks) =>
         new(
             ReferenceGuidance,
             candidates
@@ -90,14 +93,10 @@ public sealed class SearchTools(ISearchService searchService)
                     candidate.Reference,
                     candidate.Reference))
                 .ToArray(),
+            topTracks.Select(MapTrack).ToArray(),
             candidates
                 .Where(candidate => candidate.Kind == MediaEntityKind.Track)
-                .Select(candidate => new SearchTrack(
-                    candidate.Title,
-                    candidate.Artist,
-                    candidate.Album,
-                    candidate.NativeRating / 20m,
-                    candidate.Reference))
+                .Select(MapTrack)
                 .ToArray(),
             candidates
                 .Where(candidate => candidate.Kind == MediaEntityKind.Playlist)
@@ -106,6 +105,14 @@ public sealed class SearchTools(ISearchService searchService)
                     candidate.Reference,
                     candidate.Reference))
                 .ToArray());
+
+    private static SearchTrack MapTrack(SearchCandidateResult candidate) =>
+        new(
+            candidate.Title,
+            candidate.Artist,
+            candidate.Album,
+            candidate.NativeRating / 20m,
+            candidate.Reference);
 
     private static (RatingSearchConstraint? Value, string? Error) CreateRatingConstraint(
         decimal? rating,

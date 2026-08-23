@@ -4,7 +4,7 @@ This documents the currently implemented public tools. It does not limit the ser
 
 ## Tool flow
 
-1. `search` returns separately ranked artist, album, track, and playlist candidates with capability-specific references.
+1. `search` returns separately grouped artist, album, top-track, varied-track, and playlist candidates with capability-specific references.
 2. `browse` returns local-library roots or descends through an opaque `browseRef` returned by search or an earlier browse call.
 3. `get_player_status` discovers LMS players and their voice-relevant state.
 4. The caller can pass one discovered LMS player ID or exact unique player name and an action to `control_player`.
@@ -41,9 +41,11 @@ Every item returned by `browse` can contain a `browseRef`, a `playRef`, or both.
 
 The input has a required `name` field containing only meaningful artist, album, track, or playlist name text of at most 500 characters and 20 words. Optional `rating` and `ratingMatch` fields must be supplied together. `rating` is a decimal number from 0 to 5; `ratingMatch` is `exact` for exactly that rating or `at_least` for that rating and higher, so rating 4 with `at_least` means 4+. Ratings and rating syntax belong in those separate fields, never in `name`; recognisable misplaced numeric rating syntax returns a corrective tool error. Without a rating constraint, search uses the production catalogue resolver followed by isolated LMS playlist discovery. With one, search returns catalogue tracks only and does not query playlists.
 
-The structured response contains concise recursive-browse guidance and four required lists. `artists` contain `name` and `browseRef`; `albums` contain title, nullable artist, `browseRef`, and `playRef`; `tracks` contain title, nullable artist and album, numeric 0–5 `rating`, and `playRef`; `playlists` contain title, `browseRef`, and `playRef`. Empty lists represent no matches.
+The structured response contains concise recursive-browse guidance and five required lists. `artists` contain `name` and `browseRef`; `albums` contain title, nullable artist, `browseRef`, and `playRef`; `topTracks` and `tracks` contain title, nullable artist and album, numeric 0–5 `rating`, and `playRef`; `playlists` contain title, `browseRef`, and `playRef`. Empty lists represent no matches.
 
-Search returns up to 5 artists, 5 albums, 30 tracks, and 5 playlists, ranked independently within each list; playlists preserve LMS order. These are central internal caps rather than request parameters and may be tuned without changing the response schema. Search has no continuation or caller-selected limit.
+Search returns up to 5 artists, 5 albums, 5 top tracks, 30 tracks, and 5 playlists; playlists preserve LMS order. `topTracks` contains relevant tracks rated 4 or above, intersected with any explicit rating constraint. Within an equal-relevance band, higher ratings improve top-track selection odds, but rating is not a strict ordering and eligible four-star tracks retain a chance of appearing. The ordinary `tracks` population still includes highly rated tracks, but the particular selected `topTracks` are removed from `tracks` in the final response. Track ordering preserves relevance score bands, varies candidates within equal-score bands, and spreads albums within a band. These are central internal caps rather than request parameters. Search has no continuation or caller-selected limit.
+
+When the whole query uniquely and exactly identifies an artist, with no equally exact album or track, search draws from that artist's canonical complete track relationship instead of the bounded text-retrieval lanes. This expansion is streamed through bounded rotating pools. Duplicate exact artists and fuzzy artist matches retain ordinary search behaviour.
 
 Native LMS zero, including a missing rating normalised during import, is public rating `0`; there is no separate unrated value. The native LMS 0–100 value is not public.
 

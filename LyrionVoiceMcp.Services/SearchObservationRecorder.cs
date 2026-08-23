@@ -22,7 +22,7 @@ internal sealed class SearchObservationRecorder(
 
     public Task RecordCompletedAsync(
         SearchObservationContext context,
-        CatalogueSearchResponse catalogue,
+        IReadOnlyList<LmsSearchRequestObservation> catalogueRequests,
         LmsSearchResponse? playlists,
         IReadOnlyList<SearchCandidateOccurrence> candidates,
         long totalDurationMilliseconds,
@@ -33,13 +33,14 @@ internal sealed class SearchObservationRecorder(
                 SearchObservationStatus.Completed,
                 null,
                 totalDurationMilliseconds,
-                RetrievalDuration(catalogue, playlists),
-                CreateRequestObservations(context.Resolver, catalogue, playlists),
+                RetrievalDuration(catalogueRequests, playlists),
+                [.. catalogueRequests, .. playlists?.Requests ?? []],
                 CreateObservationCandidates(candidates)),
             cancellationToken);
 
     public Task RecordCatalogueFailureAsync(
         SearchObservationContext context,
+        IReadOnlyList<LmsSearchRequestObservation> catalogueRequests,
         Exception failure,
         long elapsedMilliseconds,
         LmsSearchResponse? playlists,
@@ -50,30 +51,22 @@ internal sealed class SearchObservationRecorder(
                 SearchObservationStatus.Failed,
                 failure.Message,
                 elapsedMilliseconds,
-                elapsedMilliseconds,
-                [
-                    new LmsSearchRequestObservation(
-                        "catalogue-index",
-                        context.Resolver.Name,
-                        LmsSearchRequestStatus.Failed,
-                        failure.Message,
-                        elapsedMilliseconds,
-                        0),
-                    .. playlists?.Requests ?? []
-                ],
+                RetrievalDuration(catalogueRequests, playlists),
+                [.. catalogueRequests, .. playlists?.Requests ?? []],
                 CreatePlaylistObservationCandidates(playlists)),
             cancellationToken);
 
     public Task RecordPlaylistFailureAsync(
         SearchObservationContext context,
-        CatalogueSearchResponse catalogue,
+        IReadOnlyList<LmsSearchRequestObservation> catalogueRequests,
         LmsSearchResponse? playlists,
         IReadOnlyList<SearchCandidateOccurrence> candidates,
         Exception failure,
         long totalDurationMilliseconds,
         CancellationToken cancellationToken)
     {
-        var requests = CreateRequestObservations(context.Resolver, catalogue, playlists);
+        IReadOnlyList<LmsSearchRequestObservation> requests =
+            [.. catalogueRequests, .. playlists?.Requests ?? []];
         if (failure is not LmsSearchFailedException)
         {
             requests = [
@@ -94,26 +87,11 @@ internal sealed class SearchObservationRecorder(
                 SearchObservationStatus.Failed,
                 failure.Message,
                 totalDurationMilliseconds,
-                RetrievalDuration(catalogue, playlists),
+                RetrievalDuration(catalogueRequests, playlists),
                 requests,
                 CreateObservationCandidates(candidates)),
             cancellationToken);
     }
-
-    private static IReadOnlyList<LmsSearchRequestObservation> CreateRequestObservations(
-        SearchResolverDescriptor resolver,
-        CatalogueSearchResponse catalogue,
-        LmsSearchResponse? playlists) =>
-    [
-        new LmsSearchRequestObservation(
-            "catalogue-index",
-            resolver.Name,
-            LmsSearchRequestStatus.Completed,
-            null,
-            catalogue.RetrievalDurationMilliseconds + catalogue.RerankDurationMilliseconds,
-            catalogue.Candidates.Count),
-        .. playlists?.Requests ?? []
-    ];
 
     private static SearchObservationCandidate[] CreateObservationCandidates(
         IReadOnlyList<SearchCandidateOccurrence> candidates) =>
@@ -144,12 +122,22 @@ internal sealed class SearchObservationRecorder(
             .ToArray();
 
     private static long RetrievalDuration(
-        CatalogueSearchResponse catalogue,
-        LmsSearchResponse? playlists) =>
-        Math.Max(
-            catalogue.RetrievalDurationMilliseconds
-                + catalogue.RerankDurationMilliseconds,
-            playlists?.RetrievalDurationMilliseconds ?? 0);
+        IReadOnlyList<LmsSearchRequestObservation> catalogueRequests,
+        LmsSearchResponse? playlists)
+    {
+        var initialCatalogueDuration = catalogueRequests
+            .Where(request => request.Source == "catalogue-index")
+            .Select(request => request.DurationMilliseconds)
+            .DefaultIfEmpty()
+            .Max();
+        var artistExpansionDuration = catalogueRequests
+            .Where(request => request.Source == "catalogue-artist-tracks")
+            .Sum(request => request.DurationMilliseconds);
+        return Math.Max(
+                initialCatalogueDuration,
+                playlists?.RetrievalDurationMilliseconds ?? 0)
+            + artistExpansionDuration;
+    }
 
     private static SearchObservation CreateObservation(
         SearchObservationContext context,

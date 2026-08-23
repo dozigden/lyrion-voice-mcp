@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Data.Sqlite;
 
@@ -98,7 +99,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 .Take(SearchResultPolicy.AlbumLimit))
             .Concat(execution.Ranked
                 .Where(result => result.Candidate.Source.Value.Kind == MediaEntityKind.Track)
-                .Take(SearchResultPolicy.TrackLimit))
+                .Take(SearchResultPolicy.TrackCandidateLimit))
             .Select(result =>
             {
                 var value = result.Candidate.Source.Value;
@@ -116,13 +117,62 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                     value.Artist,
                     value.Album,
                     result.Score,
-                    value.NativeRating);
+                    value.NativeRating,
+                    string.Equals(
+                        PhuzzyText.Normalise(query),
+                        PhuzzyText.Normalise(value.Title),
+                        StringComparison.Ordinal));
             })
             .ToArray();
         return new CatalogueSearchResponse(
             candidates,
             (long)Math.Round(execution.RetrievalDurationMilliseconds),
             (long)Math.Round(execution.RerankDurationMilliseconds));
+    }
+
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
+        string artistId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(artistId);
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                documents.stable_key,
+                documents.title,
+                documents.artist,
+                documents.album,
+                documents.native_rating
+            FROM document_artists
+            INNER JOIN documents
+                ON documents.document_id = document_artists.document_id
+            WHERE document_artists.artist_id = $artistId
+              AND documents.kind = $trackKind
+            ORDER BY documents.document_id;
+            """;
+        command.Parameters.AddWithValue("$artistId", artistId);
+        command.Parameters.AddWithValue("$trackKind", (int)MediaEntityKind.Track);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var stableKey = reader.GetString(0);
+            var separator = stableKey.IndexOf(':');
+            if (separator < 0 || separator == stableKey.Length - 1)
+            {
+                throw new InvalidDataException(
+                    "A search index document has an invalid stable key.");
+            }
+
+            yield return new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, stableKey[(separator + 1)..]),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                1_120,
+                reader.GetInt32(4));
+        }
     }
 
     public async Task<SearchDiagnostics> SearchDetailedAsync(
@@ -367,6 +417,13 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 ) WITHOUT ROWID;
                 CREATE INDEX ix_lookup_terms_document
                     ON lookup_terms (document_id);
+                CREATE TABLE document_artists (
+                    document_id INTEGER NOT NULL,
+                    artist_id TEXT NOT NULL,
+                    PRIMARY KEY (document_id, artist_id)
+                ) WITHOUT ROWID;
+                CREATE INDEX ix_document_artists_artist
+                    ON document_artists (artist_id, document_id);
                 CREATE VIRTUAL TABLE document_fts USING fts5(
                     document_id UNINDEXED,
                     content,
@@ -456,6 +513,17 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             "$nativeRating",
             SqliteType.Integer);
 
+        await using var insertArtist = connection.CreateCommand();
+        insertArtist.Transaction = transaction;
+        insertArtist.CommandText = """
+            INSERT OR IGNORE INTO document_artists (document_id, artist_id)
+            VALUES ($documentId, $artistId);
+            """;
+        var artistDocumentIdParameter = insertArtist.Parameters.Add(
+            "$documentId",
+            SqliteType.Integer);
+        var artistIdParameter = insertArtist.Parameters.Add("$artistId", SqliteType.Text);
+
         await using var insertTerm = connection.CreateCommand();
         insertTerm.Transaction = transaction;
         insertTerm.CommandText = """
@@ -501,6 +569,15 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             albumParameter.Value = document.Album ?? (object)DBNull.Value;
             nativeRatingParameter.Value = document.NativeRating;
             await insertDocument.ExecuteNonQueryAsync(cancellationToken);
+
+            artistDocumentIdParameter.Value = documentId;
+            foreach (var artistId in (document.ArtistIds ?? [])
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal))
+            {
+                artistIdParameter.Value = artistId;
+                await insertArtist.ExecuteNonQueryAsync(cancellationToken);
+            }
 
             termDocumentIdParameter.Value = documentId;
             foreach (var term in CreateStoredTerms(candidate))

@@ -62,7 +62,8 @@ public sealed record CatalogueSearchDocument(
     string Title,
     string? Artist,
     string? Album,
-    int NativeRating = 0);
+    int NativeRating = 0,
+    IReadOnlyList<string>? ArtistIds = null);
 
 public sealed record CatalogueSearchDocumentBatch(
     string CatalogueRefreshId,
@@ -82,7 +83,8 @@ public sealed record CatalogueSearchCandidate(
     string? Artist,
     string? Album,
     int Score,
-    int NativeRating = 0);
+    int NativeRating = 0,
+    bool IsExactTitleMatch = false);
 
 public enum RatingMatchMode
 {
@@ -115,6 +117,13 @@ public interface ICatalogueSearchResolver
             ? SearchAsync(query, cancellationToken)
             : throw new NotSupportedException(
                 "This catalogue search resolver does not support rating constraints.");
+}
+
+public interface ICatalogueArtistTrackResolver
+{
+    IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
+        string artistId,
+        CancellationToken cancellationToken);
 }
 
 public sealed class CatalogueSearchUnavailableException(string message) : Exception(message);
@@ -152,7 +161,11 @@ public static class SearchResultPolicy
 {
     public const int ArtistLimit = 5;
     public const int AlbumLimit = 5;
+    public const int TopTrackLimit = 5;
     public const int TrackLimit = 30;
+    public const int PreparedTrackLimit = TrackLimit + TopTrackLimit;
+    public const int TrackCandidateLimit = 80;
+    public const int ArtistTrackReservoirLimit = 200;
     public const int PlaylistLimit = 5;
 }
 
@@ -177,7 +190,8 @@ public enum SearchRejectionReason
 public abstract record SearchOutcome;
 
 public sealed record SearchSucceeded(
-    IReadOnlyList<SearchCandidateResult> Results) : SearchOutcome;
+    IReadOnlyList<SearchCandidateResult> Results,
+    IReadOnlyList<SearchCandidateResult> TopTracks) : SearchOutcome;
 
 public sealed record SearchRejected(
     SearchRejectionReason Reason,

@@ -24,15 +24,23 @@ public sealed class SearchObservationRecorderTests
             NullLogger<SearchObservationRecorder>.Instance);
         var descriptor = new SearchResolverDescriptor("fictional-resolver", "7");
         var context = recorder.Begin("  copper  ", "copper", descriptor);
-        var catalogue = new CatalogueSearchResponse(
-            [new CatalogueSearchCandidate(
-                new MediaIdentity(MediaEntityKind.Artist, "artist-7"),
-                "Copper Lines",
+        var catalogueRequests = new LmsSearchRequestObservation[]
+        {
+            new(
+                "catalogue-index",
+                "search:unconstrained",
+                LmsSearchRequestStatus.Completed,
                 null,
+                10,
+                1),
+            new(
+                "catalogue-artist-tracks",
+                "artist-tracks",
+                LmsSearchRequestStatus.Completed,
                 null,
-                1_040)],
-            7,
-            3);
+                5,
+                30)
+        };
         var playlists = new LmsSearchResponse(
             [],
             [new LmsSearchRequestObservation(
@@ -56,7 +64,7 @@ public sealed class SearchObservationRecorderTests
 
         await recorder.RecordCompletedAsync(
             context,
-            catalogue,
+            catalogueRequests,
             playlists,
             candidates,
             20,
@@ -70,15 +78,20 @@ public sealed class SearchObservationRecorderTests
         Assert.Equal(descriptor.Version, recorded.ResolverVersion);
         Assert.Equal(SearchObservationStatus.Completed, recorded.Status);
         Assert.Equal(20, recorded.TotalDurationMilliseconds);
-        Assert.Equal(12, recorded.RetrievalDurationMilliseconds);
-        Assert.Equal(8, recorded.ProcessingDurationMilliseconds);
+        Assert.Equal(17, recorded.RetrievalDurationMilliseconds);
+        Assert.Equal(3, recorded.ProcessingDurationMilliseconds);
         Assert.Collection(
             recorded.Requests,
             request =>
             {
                 Assert.Equal("catalogue-index", request.Source);
-                Assert.Equal(descriptor.Name, request.Command);
+                Assert.Equal("search:unconstrained", request.Command);
                 Assert.Equal(1, request.ResultCount);
+            },
+            request =>
+            {
+                Assert.Equal("catalogue-artist-tracks", request.Source);
+                Assert.Equal(30, request.ResultCount);
             },
             request => Assert.Equal("playlists", request.Source));
         var candidate = Assert.Single(recorded.Candidates);
@@ -113,6 +126,13 @@ public sealed class SearchObservationRecorderTests
 
         await recorder.RecordCatalogueFailureAsync(
             context,
+            [new LmsSearchRequestObservation(
+                "catalogue-index",
+                "search:unconstrained",
+                LmsSearchRequestStatus.Failed,
+                "Synthetic catalogue failure.",
+                15,
+                0)],
             new InvalidOperationException("Synthetic catalogue failure."),
             15,
             playlists,
