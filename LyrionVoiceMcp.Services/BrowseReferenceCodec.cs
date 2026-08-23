@@ -4,7 +4,6 @@ namespace LyrionVoiceMcp.Services;
 
 public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
 {
-    private const string Prefix = "browse_";
     private readonly ReferenceHandleRegistry registry;
 
     internal BrowseReferenceCodec(ReferenceHandleRegistry registry)
@@ -22,12 +21,12 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             throw new ArgumentException("The browse reference value is invalid.", nameof(value));
         }
 
-        return registry.Issue(Prefix, value);
+        return registry.Issue(ReferencePrefixes.ForBrowse(value), value);
     }
 
     public BrowseReferenceValue? TryDecode(string reference)
     {
-        return registry.Resolve<BrowseReferenceValue>(Prefix, reference);
+        return registry.Resolve<BrowseReferenceValue>(reference);
     }
 
     private static bool IsValid(BrowseReferenceValue value)

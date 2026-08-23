@@ -4,7 +4,6 @@ namespace LyrionVoiceMcp.Services;
 
 public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
 {
-    private const string Prefix = "result_";
     private readonly ReferenceHandleRegistry registry;
 
     internal SearchResultReferenceCodec(ReferenceHandleRegistry registry)
@@ -32,11 +31,13 @@ public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
                 nameof(value));
         }
 
-        return registry.Issue(Prefix, value);
+        return registry.Issue(
+            ReferencePrefixes.ForMedia(value.Identity.Kind),
+            value);
     }
 
     public SearchResultReferenceValue? TryDecode(string reference)
     {
-        return registry.Resolve<SearchResultReferenceValue>(Prefix, reference);
+        return registry.Resolve<SearchResultReferenceValue>(reference);
     }
 }

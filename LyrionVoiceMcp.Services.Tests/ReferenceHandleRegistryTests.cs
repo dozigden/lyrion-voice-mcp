@@ -101,7 +101,7 @@ public sealed class ReferenceHandleRegistryTests
     }
 
     [Fact]
-    public void PrefixAndValueTypeShouldPreventCrossCodecResolution()
+    public void StoredValueTypeShouldPreventCrossCodecResolutionWhenPrefixesMatch()
     {
         // Arrange
         var registry = new ReferenceHandleRegistry(
@@ -110,7 +110,9 @@ public sealed class ReferenceHandleRegistryTests
             10);
         var searchCodec = new SearchResultReferenceCodec(registry);
         var browseCodec = new BrowseReferenceCodec(registry);
-        var searchReference = searchCodec.Encode(SearchValue("37"));
+        var searchReference = searchCodec.Encode(new SearchResultReferenceValue(
+            "123456781234123412341234567890ab",
+            new MediaIdentity(MediaEntityKind.Album, "37")));
         var browseReference = browseCodec.Encode(BrowseValue("38"));
 
         // Act
@@ -118,6 +120,8 @@ public sealed class ReferenceHandleRegistryTests
         var browseAsSearch = searchCodec.TryDecode(browseReference);
 
         // Assert
+        Assert.StartsWith("album_", searchReference, StringComparison.Ordinal);
+        Assert.StartsWith("album_", browseReference, StringComparison.Ordinal);
         Assert.Null(searchAsBrowse);
         Assert.Null(browseAsSearch);
     }

@@ -555,26 +555,32 @@ public sealed class SearchServiceTests
 
 public sealed class SearchResultReferenceCodecTests
 {
-    [Fact]
-    public void CodecShouldRoundTripCorrelationAndMediaIdentityWithoutServerOrVersion()
+    [Theory]
+    [InlineData(MediaEntityKind.Artist, "artist_")]
+    [InlineData(MediaEntityKind.Album, "album_")]
+    [InlineData(MediaEntityKind.Track, "track_")]
+    [InlineData(MediaEntityKind.Playlist, "playlist_")]
+    public void CodecShouldUseTheEntityPrefixAndRoundTripTheValue(
+        MediaEntityKind kind,
+        string expectedPrefix)
     {
         var codec = new ReferenceCodecTestContext().Search;
         var expected = new SearchResultReferenceValue(
             "123456781234123412341234567890ab",
-            new MediaIdentity(MediaEntityKind.Album, "204"));
+            new MediaIdentity(kind, "204"));
 
         var reference = codec.Encode(expected);
         var decoded = codec.TryDecode(reference);
 
-        Assert.StartsWith("result_", reference, StringComparison.Ordinal);
-        Assert.Equal(23, reference.Length);
+        Assert.StartsWith(expectedPrefix, reference, StringComparison.Ordinal);
+        Assert.Matches($"^{expectedPrefix}[0-9a-f]{{16}}$", reference);
         Assert.Equal(expected, decoded);
     }
 
     [Fact]
     public void TryDecodeShouldReturnNullForMalformedReference()
     {
-        var decoded = new ReferenceCodecTestContext().Search.TryDecode("result_not-base64");
+        var decoded = new ReferenceCodecTestContext().Search.TryDecode("album_not-a-handle");
 
         Assert.Null(decoded);
     }

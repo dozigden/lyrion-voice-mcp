@@ -7,7 +7,6 @@ internal sealed class ReferenceHandleRegistry
     internal static readonly TimeSpan DefaultLifetime = TimeSpan.FromHours(24);
     internal const int DefaultCapacity = 10_000;
     private const int RandomByteCount = 8;
-    private const int EncodedKeyLength = RandomByteCount * 2;
     private readonly Dictionary<string, Entry> entries = new(StringComparer.Ordinal);
     private readonly Queue<Entry> issuanceOrder = new();
     private readonly object sync = new();
@@ -76,12 +75,10 @@ internal sealed class ReferenceHandleRegistry
         }
     }
 
-    public TValue? Resolve<TValue>(string prefix, string reference)
+    public TValue? Resolve<TValue>(string reference)
         where TValue : class
     {
-        if (string.IsNullOrEmpty(reference)
-            || reference.Length != prefix.Length + EncodedKeyLength
-            || !reference.StartsWith(prefix, StringComparison.Ordinal))
+        if (string.IsNullOrEmpty(reference))
         {
             return null;
         }

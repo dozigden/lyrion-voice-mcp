@@ -448,9 +448,62 @@ public sealed class BrowseReferenceCodecTests
         var decoded = codec.TryDecode(reference);
 
         // Assert
-        Assert.StartsWith("browse_", reference, StringComparison.Ordinal);
-        Assert.Equal(23, reference.Length);
+        Assert.StartsWith("album_", reference, StringComparison.Ordinal);
+        Assert.Matches("^album_[0-9a-f]{16}$", reference);
         Assert.Equal(expected, decoded);
+    }
+
+    [Fact]
+    public void CodecShouldUseReadableEntityAndLocationPrefixes()
+    {
+        var codec = new ReferenceCodecTestContext().Browse;
+        static BrowseReferenceValue Target(
+            BrowseTargetKind kind,
+            string? filterId = null,
+            int offset = 0) =>
+            new(new BrowseTarget(kind, filterId, offset), null);
+        static BrowseReferenceValue Media(MediaEntityKind kind) =>
+            new(null, new PlayableMedia(new MediaIdentity(kind, "205")));
+        var examples = new (BrowseReferenceValue Value, string Prefix)[]
+        {
+            (Target(BrowseTargetKind.AlbumArtists), "album_artists_"),
+            (Target(BrowseTargetKind.Artists), "artists_"),
+            (Target(BrowseTargetKind.Albums), "albums_"),
+            (Target(BrowseTargetKind.Genres), "genres_"),
+            (Target(BrowseTargetKind.Playlists), "playlists_"),
+            (Target(BrowseTargetKind.RecentlyAddedAlbums), "recent_albums_"),
+            (Target(BrowseTargetKind.Years), "years_"),
+            (Target(BrowseTargetKind.RatingBuckets), "ratings_"),
+            (Target(BrowseTargetKind.AlbumArtistAlbums, "204"), "album_artist_"),
+            (Target(BrowseTargetKind.ArtistAlbums, "204"), "artist_"),
+            (Target(BrowseTargetKind.GenreAlbums, "204"), "genre_"),
+            (Target(BrowseTargetKind.YearAlbums, "204"), "year_"),
+            (Target(BrowseTargetKind.RatingTracks, "4"), "rating_"),
+            (Target(BrowseTargetKind.AlbumArtistAlbums, "204", 50), "albums_"),
+            (Target(BrowseTargetKind.ArtistAlbums, "204", 50), "albums_"),
+            (Target(BrowseTargetKind.GenreAlbums, "204", 50), "albums_"),
+            (Target(BrowseTargetKind.YearAlbums, "204", 50), "albums_"),
+            (Target(BrowseTargetKind.AlbumTracks, "204", 50), "tracks_"),
+            (Target(BrowseTargetKind.PlaylistTracks, "204", 50), "tracks_"),
+            (Target(BrowseTargetKind.RatingTracks, "4", 50), "tracks_"),
+            (Media(MediaEntityKind.Album), "album_"),
+            (Media(MediaEntityKind.Track), "track_"),
+            (Media(MediaEntityKind.Playlist), "playlist_")
+        };
+
+        foreach (var example in examples)
+        {
+            var reference = codec.Encode(example.Value);
+
+            Assert.StartsWith(
+                example.Prefix,
+                reference,
+                StringComparison.Ordinal);
+            Assert.Matches(
+                $"^{example.Prefix}[0-9a-f]{{16}}$",
+                reference);
+            Assert.Equal(example.Value, codec.TryDecode(reference));
+        }
     }
 
     [Fact]

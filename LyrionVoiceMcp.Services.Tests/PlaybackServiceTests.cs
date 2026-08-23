@@ -83,7 +83,9 @@ public sealed class PlaybackServiceTests
         Assert.Equal(10, succeeded.RequestedItemCount);
         Assert.Equal(10, succeeded.CompletedItemCount);
         Assert.Empty(succeeded.SkippedItems);
-        Assert.All(references, reference => Assert.Equal(23, reference.Length));
+        Assert.All(
+            references,
+            reference => Assert.Matches("^track_[0-9a-f]{16}$", reference));
         Assert.Equal(10, playbackClient.Operations.Count(operation =>
             operation.StartsWith("check:", StringComparison.Ordinal)));
         Assert.Equal(1, playbackClient.Operations.Count(operation =>
