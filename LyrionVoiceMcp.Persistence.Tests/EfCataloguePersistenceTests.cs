@@ -106,6 +106,12 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
         Assert.Equal(0, completion.Summary.WarningCount);
         Assert.DoesNotContain(projected, item => item.Title == "Unused Person");
         Assert.Contains(projected, item =>
+            item.Identity.Kind == MediaEntityKind.Album
+            && item.Title == "Fictional Signals"
+            && item.Artist == "The Imaginaries"
+            && item.ArtistIds is not null
+            && item.ArtistIds.SequenceEqual(["artist-1"]));
+        Assert.Contains(projected, item =>
             item.Identity.Kind == MediaEntityKind.Track
             && item.Title == "Night Signal"
             && item.Artist == "The Imaginaries"

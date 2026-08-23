@@ -324,23 +324,31 @@ public sealed class CatalogueProjectionRepository(
     public async Task<IReadOnlyList<EntityCatalogueProjectionRow>> ReadAlbumsAfterAsync(
         string afterSourceId,
         int limit,
-        CancellationToken cancellationToken) =>
-        await DbContext.CatalogueAlbums
+        CancellationToken cancellationToken)
+    {
+        var albums = await DbContext.CatalogueAlbums
             .AsNoTracking()
             .Where(item => string.Compare(item.SourceId, afterSourceId) > 0)
             .OrderBy(item => item.SourceId)
             .Take(limit)
-            .Select(item => new EntityCatalogueProjectionRow(
-                EntityCatalogueProjectionKind.Album,
+            .Select(item => new AlbumProjection(
                 item.SourceId,
                 item.Title,
+                item.AlbumArtistSourceId,
                 DbContext.CatalogueArtists
                     .Where(artist => artist.SourceId == item.AlbumArtistSourceId)
                     .Select(artist => artist.Name)
-                    .SingleOrDefault(),
-                null,
-                0))
+                    .SingleOrDefault()))
             .ToArrayAsync(cancellationToken);
+        return albums.Select(item => new EntityCatalogueProjectionRow(
+            EntityCatalogueProjectionKind.Album,
+            item.SourceId,
+            item.Title,
+            item.Artist,
+            null,
+            0,
+            item.ArtistSourceId is null ? [] : [item.ArtistSourceId])).ToArray();
+    }
 
     public async Task<IReadOnlyList<EntityCatalogueProjectionRow>> ReadTracksAfterAsync(
         string afterSourceId,

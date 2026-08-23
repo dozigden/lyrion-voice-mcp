@@ -134,6 +134,36 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         string artistId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        await foreach (var candidate in ReadArtistMediaAsync(
+            artistId,
+            MediaEntityKind.Track,
+            1_120,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
+        string artistId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var candidate in ReadArtistMediaAsync(
+            artistId,
+            MediaEntityKind.Album,
+            1_300,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    private async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistMediaAsync(
+        string artistId,
+        MediaEntityKind kind,
+        int score,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(artistId);
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -149,11 +179,11 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             INNER JOIN documents
                 ON documents.document_id = document_artists.document_id
             WHERE document_artists.artist_id = $artistId
-              AND documents.kind = $trackKind
+              AND documents.kind = $kind
             ORDER BY documents.document_id;
             """;
         command.Parameters.AddWithValue("$artistId", artistId);
-        command.Parameters.AddWithValue("$trackKind", (int)MediaEntityKind.Track);
+        command.Parameters.AddWithValue("$kind", (int)kind);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -166,11 +196,11 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             }
 
             yield return new CatalogueSearchCandidate(
-                new MediaIdentity(MediaEntityKind.Track, stableKey[(separator + 1)..]),
+                new MediaIdentity(kind, stableKey[(separator + 1)..]),
                 reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2),
                 reader.IsDBNull(3) ? null : reader.GetString(3),
-                1_120,
+                score,
                 reader.GetInt32(4));
         }
     }

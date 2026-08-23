@@ -126,6 +126,13 @@ public interface ICatalogueArtistTrackResolver
         CancellationToken cancellationToken);
 }
 
+public interface ICatalogueArtistAlbumResolver
+{
+    IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
+        string artistId,
+        CancellationToken cancellationToken);
+}
+
 public sealed class CatalogueSearchUnavailableException(string message) : Exception(message);
 
 public static class SearchQueryPolicy
@@ -166,6 +173,7 @@ public static class SearchResultPolicy
     public const int PreparedTrackLimit = TrackLimit + TopTrackLimit;
     public const int TrackCandidateLimit = 80;
     public const int ArtistTrackReservoirLimit = 200;
+    public const int ArtistAlbumReservoirLimit = 200;
     public const int PlaylistLimit = 5;
 }
 

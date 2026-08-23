@@ -132,7 +132,8 @@ internal sealed class SearchObservationRecorder(
             .DefaultIfEmpty()
             .Max();
         var artistExpansionDuration = catalogueRequests
-            .Where(request => request.Source == "catalogue-artist-tracks")
+            .Where(request => request.Source is
+                "catalogue-artist-tracks" or "catalogue-artist-albums")
             .Sum(request => request.DurationMilliseconds);
         return Math.Max(
                 initialCatalogueDuration,

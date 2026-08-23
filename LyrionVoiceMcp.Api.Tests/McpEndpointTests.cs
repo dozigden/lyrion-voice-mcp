@@ -136,7 +136,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
         Assert.Equal(
-            "Search for artists, albums, tracks, or playlists by name. Reports a unique exact artist separately with a complete discography browse reference, returns relevant 4+ top tracks separately, and varies equally relevant track matches. Use rating and ratingMatch to narrow tracks. * is not a wildcard.",
+            "Search for artists, albums, tracks, or playlists by name. Reports a unique exact artist separately with a complete discography reference and varied album preview, returns relevant 4+ top tracks separately, and varies equally relevant track matches. Use rating and ratingMatch to narrow tracks. * is not a wildcard.",
             searchTool.GetProperty("description").GetString());
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         var browseTool = Assert.Single(

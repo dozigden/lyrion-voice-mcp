@@ -9,6 +9,7 @@ namespace LyrionVoiceMcp.Services;
 internal sealed partial class SearchService(
     ICatalogueSearchResolver catalogueSearch,
     ICatalogueArtistTrackResolver artistTracks,
+    ICatalogueArtistAlbumResolver artistAlbums,
     ILmsPlaylistSearchClient playlistSearch,
     ISearchResultReferenceCodec referenceCodec,
     IBrowseReferenceCodec browseReferenceCodec,
@@ -172,10 +173,15 @@ internal sealed partial class SearchService(
                 .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Track)
                 .ToArray();
         var exactArtist = ExactArtist(unconstrainedCatalogueResponse!.Candidates);
+        IReadOnlyList<CatalogueSearchCandidate> selectedAlbums;
         IReadOnlyList<CatalogueSearchCandidate> selectedTopTracks;
         IReadOnlyList<CatalogueSearchCandidate> selectedTracks;
         if (exactArtist is null)
         {
+            selectedAlbums = catalogueCandidates
+                .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Album)
+                .Take(SearchResultPolicy.AlbumLimit)
+                .ToArray();
             selectedTopTracks = candidateSelector.Rotate(
                 (topCatalogueResponse?.Candidates ?? [])
                     .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Track)
@@ -209,6 +215,30 @@ internal sealed partial class SearchService(
 
             selectedTopTracks = selection.TopTracks;
             selectedTracks = selection.Tracks;
+            if (criteria.RatingConstraint is null)
+            {
+                var albumSelection = await SelectArtistAlbumsAsync(
+                    exactArtist.Identity.Id,
+                    cancellationToken);
+                catalogueRequests.Add(albumSelection.Request);
+                if (albumSelection.Failure is not null)
+                {
+                    stopwatch.Stop();
+                    return await HandleCatalogueFailureAsync(
+                        observation,
+                        catalogueRequests,
+                        albumSelection.Failure,
+                        stopwatch.ElapsedMilliseconds,
+                        playlistResponse,
+                        cancellationToken);
+                }
+
+                selectedAlbums = albumSelection.Albums;
+            }
+            else
+            {
+                selectedAlbums = [];
+            }
         }
 
         var exactArtistCandidate = exactArtist is null
@@ -218,9 +248,7 @@ internal sealed partial class SearchService(
             .Where(candidate => exactArtist is null
                 && candidate.Identity.Kind == MediaEntityKind.Artist)
             .Take(SearchResultPolicy.ArtistLimit)
-            .Concat(catalogueCandidates
-                .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Album)
-                .Take(SearchResultPolicy.AlbumLimit))
+            .Concat(selectedAlbums)
             .Select(candidate => new Candidate(
                 candidate.Identity,
                 candidate.Title,
@@ -420,6 +448,54 @@ internal sealed partial class SearchService(
             null);
     }
 
+    private async Task<ArtistAlbumSelection> SelectArtistAlbumsAsync(
+        string artistId,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var observedCount = 0;
+        var reservoir = candidateSelector.CreateReservoir(
+            SearchResultPolicy.ArtistAlbumReservoirLimit);
+        try
+        {
+            await foreach (var candidate in artistAlbums.ReadArtistAlbumsAsync(
+                artistId,
+                cancellationToken))
+            {
+                observedCount++;
+                reservoir.Consider(candidate);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            stopwatch.Stop();
+            return new ArtistAlbumSelection(
+                [],
+                CatalogueRequest(
+                    "catalogue-artist-albums",
+                    "artist-albums",
+                    LmsSearchRequestStatus.Failed,
+                    exception.Message,
+                    stopwatch.ElapsedMilliseconds,
+                    observedCount),
+                exception);
+        }
+
+        stopwatch.Stop();
+        return new ArtistAlbumSelection(
+            candidateSelector.Rotate(
+                reservoir.Candidates,
+                SearchResultPolicy.AlbumLimit),
+            CatalogueRequest(
+                "catalogue-artist-albums",
+                "artist-albums",
+                LmsSearchRequestStatus.Completed,
+                null,
+                stopwatch.ElapsedMilliseconds,
+                observedCount),
+            null);
+    }
+
     private async Task<ObservedCatalogueSearch> ObserveCatalogueSearchAsync(
         string command,
         string query,
@@ -584,6 +660,11 @@ internal sealed partial class SearchService(
     private sealed record ArtistTrackSelection(
         IReadOnlyList<CatalogueSearchCandidate> TopTracks,
         IReadOnlyList<CatalogueSearchCandidate> Tracks,
+        LmsSearchRequestObservation Request,
+        Exception? Failure);
+
+    private sealed record ArtistAlbumSelection(
+        IReadOnlyList<CatalogueSearchCandidate> Albums,
         LmsSearchRequestObservation Request,
         Exception? Failure);
 

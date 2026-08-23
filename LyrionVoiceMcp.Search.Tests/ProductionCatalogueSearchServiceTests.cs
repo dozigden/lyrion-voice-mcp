@@ -87,7 +87,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
             "unrated signal",
             TestContext.Current.CancellationToken);
 
-        Assert.Equal("4", rebuilt.Artifact.ResolverVersion);
+        Assert.Equal("5", rebuilt.Artifact.ResolverVersion);
         Assert.Equal(
             67,
             Assert.Single(rated.Candidates, candidate =>
@@ -251,6 +251,46 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PublishedIndexShouldStreamOnlyAlbumsWithTheCanonicalAlbumArtistIdentity()
+    {
+        var source = new DocumentSource([
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "album-artist-album"),
+                "Fictional Frequencies",
+                "The Imaginaries",
+                null,
+                ArtistIds: ["artist-1"]),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "guest-appearance-album"),
+                "Various Fiction",
+                "Various Artists",
+                null,
+                ArtistIds: ["artist-2"]),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "guest-track"),
+                "Imaginary Guest Signal",
+                "The Imaginaries",
+                "Various Fiction",
+                ArtistIds: ["artist-1"])
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-artist-albums", 50);
+
+        var candidates = new List<CatalogueSearchCandidate>();
+        await foreach (var candidate in service.ReadArtistAlbumsAsync(
+            "artist-1",
+            TestContext.Current.CancellationToken))
+        {
+            candidates.Add(candidate);
+        }
+
+        var result = Assert.Single(candidates);
+        Assert.Equal("album-artist-album", result.Identity.Id);
+        Assert.Equal("The Imaginaries", result.Artist);
+        Assert.Equal(1_300, result.Score);
+    }
+
+    [Fact]
     public async Task RatingConstraintShouldBeAppliedBeforeRetrievalLaneLimits()
     {
         var documents = Enumerable.Range(0, 81)
@@ -369,7 +409,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task VersionThreeArtifactShouldBeIncompatibleWithArtistExpansion()
+    public async Task VersionFourArtifactShouldBeIncompatibleWithArtistAlbumExpansion()
     {
         var source = new DocumentSource([
             new CatalogueSearchDocument(
@@ -394,12 +434,12 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
         var manifest = await File.ReadAllTextAsync(
             manifestPath,
             TestContext.Current.CancellationToken);
-        Assert.Contains("\"resolverVersion\":\"4\"", manifest, StringComparison.Ordinal);
+        Assert.Contains("\"resolverVersion\":\"5\"", manifest, StringComparison.Ordinal);
         await File.WriteAllTextAsync(
             manifestPath,
             manifest.Replace(
+                "\"resolverVersion\":\"5\"",
                 "\"resolverVersion\":\"4\"",
-                "\"resolverVersion\":\"3\"",
                 StringComparison.Ordinal),
             TestContext.Current.CancellationToken);
         await using var restarted = CreateService(source);

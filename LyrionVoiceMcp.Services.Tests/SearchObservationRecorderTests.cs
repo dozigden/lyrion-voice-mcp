@@ -39,7 +39,14 @@ public sealed class SearchObservationRecorderTests
                 LmsSearchRequestStatus.Completed,
                 null,
                 5,
-                30)
+                30),
+            new(
+                "catalogue-artist-albums",
+                "artist-albums",
+                LmsSearchRequestStatus.Completed,
+                null,
+                3,
+                12)
         };
         var playlists = new LmsSearchResponse(
             [],
@@ -79,8 +86,8 @@ public sealed class SearchObservationRecorderTests
         Assert.Equal(descriptor.Version, recorded.ResolverVersion);
         Assert.Equal(SearchObservationStatus.Completed, recorded.Status);
         Assert.Equal(20, recorded.TotalDurationMilliseconds);
-        Assert.Equal(17, recorded.RetrievalDurationMilliseconds);
-        Assert.Equal(3, recorded.ProcessingDurationMilliseconds);
+        Assert.Equal(20, recorded.RetrievalDurationMilliseconds);
+        Assert.Equal(0, recorded.ProcessingDurationMilliseconds);
         Assert.Collection(
             recorded.Requests,
             request =>
@@ -93,6 +100,11 @@ public sealed class SearchObservationRecorderTests
             {
                 Assert.Equal("catalogue-artist-tracks", request.Source);
                 Assert.Equal(30, request.ResultCount);
+            },
+            request =>
+            {
+                Assert.Equal("catalogue-artist-albums", request.Source);
+                Assert.Equal(12, request.ResultCount);
             },
             request => Assert.Equal("playlists", request.Source));
         var candidate = Assert.Single(recorded.Candidates);

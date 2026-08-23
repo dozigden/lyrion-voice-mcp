@@ -22,6 +22,7 @@ public sealed class ProductionCatalogueSearchService :
     ISearchIndexBuilder,
     ICatalogueSearchResolver,
     ICatalogueArtistTrackResolver,
+    ICatalogueArtistAlbumResolver,
     IDiagnosticSearchResolver,
     IRatingBrowseResolver,
     IAsyncDisposable
@@ -31,7 +32,7 @@ public sealed class ProductionCatalogueSearchService :
     private const string PointerFileName = "current.json";
     private static readonly SearchResolverDescriptor DescriptorValue = new(
         "catalogue-phuzzy-sqlite",
-        "4");
+        "5");
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ProductionSearchSettings settings;
@@ -87,6 +88,26 @@ public sealed class ProductionCatalogueSearchService :
         }
 
         await foreach (var candidate in generation.Resolver.ReadArtistTracksAsync(
+            artistId,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
+        string artistId,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+        CancellationToken cancellationToken)
+    {
+        var generation = await GetLoadedAsync(cancellationToken);
+        if (generation is null)
+        {
+            throw new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built.");
+        }
+
+        await foreach (var candidate in generation.Resolver.ReadArtistAlbumsAsync(
             artistId,
             cancellationToken))
         {
