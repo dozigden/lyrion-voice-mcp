@@ -1,29 +1,13 @@
 # Third-party notices
 
-The production catalogue search resolver uses Double Metaphone from these Apache License 2.0 packages:
+The source of truth for product and third-party licence disclosure is the generated manifest and complete offline texts in:
 
-- `Lucene.Net` 4.8.0-beta00018
-- `Lucene.Net.Analysis.Common` 4.8.0-beta00018
-- `Lucene.Net.Analysis.Phonetic` 4.8.0-beta00018
-- `J2N` 2.1.0
+- `LyrionVoiceMcp.Web/compliance/third-party-licenses/MANIFEST.json`
+- `LyrionVoiceMcp.Web/compliance/third-party-licenses/UNRESOLVED.md`
+- `LyrionVoiceMcp.Web/compliance/third-party-licenses/*.txt`
 
-The production image includes the Apache License 2.0 text at
-`/app/licenses/Apache-2.0.txt` and the Lucene.Net notice at
-`/app/licenses/Lucene.Net-NOTICE.txt`.
+The generator includes packages actually present in the production Vite bundle and packages with runtime assets in the restored API graph. Supplementary package notices are included and identical notices are deduplicated by content digest.
 
-The production job scheduler includes Cronos 0.13.0 under the MIT licence.
-The production image includes its licence at `/app/licenses/Cronos-LICENSE.txt`.
+Run `npm run sync:third-party-licences` from `LyrionVoiceMcp.Web` after restoring the API and frontend dependencies. The command also publishes the static mirror under `LyrionVoiceMcp.Web/public/third-party-licenses`, which is distributed in the container and displayed at `/licences`.
 
-> Copyright (c) 2017 Hangfire OÜ
-
-The application persistence foundation uses Microsoft Entity Framework Core
-10.0.11 packages under the MIT licence. The production image includes the
-Microsoft licence at `/app/licenses/EntityFrameworkCore-LICENSE.txt`.
-
-## Lucene.Net notice
-
-> Apache Lucene.Net  
-> Copyright 2006-2026 The Apache Software Foundation  
->  
-> This product includes software developed at  
-> The Apache Software Foundation (http://www.apache.org/).
+CI runs the generator in strict mode and fails when a complete offline text cannot be resolved or committed generated files are stale.

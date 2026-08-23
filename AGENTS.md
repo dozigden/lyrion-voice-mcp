@@ -10,6 +10,7 @@ Read the relevant area guidance before changing that part of the system:
 - [AGENTS/Evaluation.md](AGENTS/Evaluation.md) - private corpus boundary and benchmark rules
 - [AGENTS/Frontend.md](AGENTS/Frontend.md)
 - [AGENTS/Lyrion.md](AGENTS/Lyrion.md) - LMS transport and environment rules
+- [AGENTS/LicenceDisclosure.md](AGENTS/LicenceDisclosure.md) - runtime dependency licence generation and distribution
 - [AGENTS/Mcp.md](AGENTS/Mcp.md) - public MCP transport and tool rules
 - [AGENTS/Operations.md](AGENTS/Operations.md) - durable jobs, schedules, errors, and MCP call history
 - [AGENTS/Search.md](AGENTS/Search.md) - search evolution and observation rules

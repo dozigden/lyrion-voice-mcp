@@ -1,0 +1,616 @@
+{
+  "schemaVersion": 2,
+  "packageSource": "Lyrion Voice MCP product licence + production Vite bundle npm modules + runtime assets from the restored API graph",
+  "copiedLicences": [
+    {
+      "ecosystem": "npm",
+      "entryType": "licence",
+      "packageName": "@vue/reactivity",
+      "version": "3.5.41",
+      "declaredLicence": "MIT",
+      "packageIntegrity": "sha512-rznsqKM0np0x18EjzF8x88MpEhdNsffbvFbckLL5+oUKz1BxAImEmO7J1ArRYSyo6aQaVoBDp7jEkT91OOxydA==",
+      "sourceType": "package",
+      "sourceFile": "node_modules/@vue/reactivity/LICENSE",
+      "outputFile": "compliance/third-party-licenses/npm-vue-reactivity.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "entryType": "licence",
+      "packageName": "@vue/runtime-core",
+      "version": "3.5.41",
+      "declaredLicence": "MIT",
+      "packageIntegrity": "sha512-Vcry58hiAKwGen9Z1jUZE0feFsNArPCMOImYI8el48A9Idf6DuQYD0U05zZIF2Iad1hGhPSvcbBbAOhNr55fhg==",
+      "sourceType": "package",
+      "sourceFile": "node_modules/@vue/runtime-core/LICENSE",
+      "outputFile": "compliance/third-party-licenses/npm-vue-runtime-core.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "entryType": "licence",
+      "packageName": "@vue/runtime-dom",
+      "version": "3.5.41",
+      "declaredLicence": "MIT",
+      "packageIntegrity": "sha512-3vVBahVBS9+U6cmXBLyb8nE6/yYo4J/CGI9eVFs3KiMc0YHuudwKyShTD65jtJy/L9PUUxNAFu4cj4LiJ0UFbw==",
+      "sourceType": "package",
+      "sourceFile": "node_modules/@vue/runtime-dom/LICENSE",
+      "outputFile": "compliance/third-party-licenses/npm-vue-runtime-dom.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "entryType": "licence",
+      "packageName": "@vue/shared",
+      "version": "3.5.41",
+      "declaredLicence": "MIT",
+      "packageIntegrity": "sha512-IOnwSCma8j+9xJT6b8H0dEYidC80NsYmNMlZxRsukYcSoGaDBohog5hDxzeUXdFeGWFA++vWvxqOmrr96VlqMA==",
+      "sourceType": "package",
+      "sourceFile": "node_modules/@vue/shared/LICENSE",
+      "outputFile": "compliance/third-party-licenses/npm-vue-shared.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "entryType": "licence",
+      "packageName": "pinia",
+      "version": "3.0.4",
+      "declaredLicence": "MIT",
+      "packageIntegrity": "sha512-l7pqLUFTI/+ESXn6k3nu30ZIzW5E2WZF/LaHJEpoq6ElcLD+wduZoB2kBN19du6K/4FDpPMazY2wJr+IndBtQw==",
+      "sourceType": "package",
+      "sourceFile": "node_modules/pinia/LICENSE",
+      "outputFile": "compliance/third-party-licenses/npm-pinia.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "entryType": "licence",
+      "packageName": "vue-router",
+      "version": "5.2.0",
+      "declaredLicence": "MIT",
+      "packageIntegrity": "sha512-QAC5i0LEb1GLG0LXDQmHu8L7FX12j0KwU/JTKmLQUJMrn04gQdKP6Du+p0QwpHb3iy71vBlqnHQ8WAfOSAWhqw==",
+      "sourceType": "package",
+      "sourceFile": "node_modules/vue-router/LICENSE",
+      "outputFile": "compliance/third-party-licenses/npm-vue-router.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Cronos",
+      "version": "0.13.0",
+      "declaredLicence": "MIT",
+      "sourceType": "nuget-package-file",
+      "sourceFile": "NuGet/Cronos/0.13.0/LICENSE",
+      "outputFile": "compliance/third-party-licenses/nuget-cronos-0.13.0.txt",
+      "runtimeAssets": [
+        "lib/net6.0/Cronos.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "J2N",
+      "version": "2.1.0",
+      "declaredLicence": "Apache-2.0",
+      "declaredLicenceSource": "LICENSE.txt",
+      "sourceType": "nuget-package-file",
+      "sourceFile": "NuGet/J2N/2.1.0/LICENSE.txt",
+      "outputFile": "compliance/third-party-licenses/nuget-j2n-2.1.0.txt",
+      "runtimeAssets": [
+        "lib/net8.0/J2N.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Lucene.Net",
+      "version": "4.8.0-beta00018",
+      "declaredLicence": "Apache-2.0 and bundled third-party terms",
+      "declaredLicenceSource": "LICENSE.txt",
+      "sourceType": "nuget-package-file",
+      "sourceFile": "NuGet/Lucene.Net/4.8.0-beta00018/LICENSE.txt",
+      "outputFile": "compliance/third-party-licenses/nuget-lucene.net-4.8.0-beta00018.txt",
+      "runtimeAssets": [
+        "lib/net8.0/Lucene.Net.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "notice",
+      "packageName": "Lucene.Net shared third-party notices",
+      "displayName": "Lucene.Net 4.8.0-beta00018 — shared third-party notices (3 packages)",
+      "version": "sha256:73403868ec7a",
+      "sourceType": "nuget-package-notice",
+      "sourceFile": "NuGet/Lucene.Net.Analysis.Common/4.8.0-beta00018/NOTICE.txt",
+      "sourceFiles": [
+        "NuGet/Lucene.Net.Analysis.Common/4.8.0-beta00018/NOTICE.txt",
+        "NuGet/Lucene.Net.Analysis.Phonetic/4.8.0-beta00018/NOTICE.txt",
+        "NuGet/Lucene.Net/4.8.0-beta00018/NOTICE.txt"
+      ],
+      "sourceSha256": "73403868ec7a07e59c6b15b26274eafcd1d377effa3fa3e50bdcd5058096a8e1",
+      "coveredPackages": [
+        {
+          "packageName": "Lucene.Net",
+          "version": "4.8.0-beta00018"
+        },
+        {
+          "packageName": "Lucene.Net.Analysis.Common",
+          "version": "4.8.0-beta00018"
+        },
+        {
+          "packageName": "Lucene.Net.Analysis.Phonetic",
+          "version": "4.8.0-beta00018"
+        }
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-third-party-notices-73403868ec7a.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Lucene.Net.Analysis.Common",
+      "version": "4.8.0-beta00018",
+      "declaredLicence": "Apache-2.0 and bundled third-party terms",
+      "declaredLicenceSource": "LICENSE.txt",
+      "sourceType": "nuget-package-file",
+      "sourceFile": "NuGet/Lucene.Net.Analysis.Common/4.8.0-beta00018/LICENSE.txt",
+      "outputFile": "compliance/third-party-licenses/nuget-lucene.net.analysis.common-4.8.0-beta00018.txt",
+      "runtimeAssets": [
+        "lib/net8.0/Lucene.Net.Analysis.Common.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Lucene.Net.Analysis.Phonetic",
+      "version": "4.8.0-beta00018",
+      "declaredLicence": "Apache-2.0 and bundled third-party terms",
+      "declaredLicenceSource": "LICENSE.txt",
+      "sourceType": "nuget-package-file",
+      "sourceFile": "NuGet/Lucene.Net.Analysis.Phonetic/4.8.0-beta00018/LICENSE.txt",
+      "outputFile": "compliance/third-party-licenses/nuget-lucene.net.analysis.phonetic-4.8.0-beta00018.txt",
+      "runtimeAssets": [
+        "lib/net8.0/Lucene.Net.Analysis.Phonetic.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Microsoft.Data.Sqlite.Core",
+      "version": "10.0.11",
+      "declaredLicence": "MIT",
+      "declaredLicenceSource": "MIT",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/Microsoft.Data.Sqlite.Core/10.0.11/microsoft.data.sqlite.core.nuspec",
+      "sourceFiles": [
+        "NuGet/Microsoft.Data.Sqlite.Core/10.0.11/microsoft.data.sqlite.core.nuspec",
+        "../LICENSE"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-microsoft.data.sqlite.core-10.0.11.txt",
+      "runtimeAssets": [
+        "lib/net8.0/Microsoft.Data.Sqlite.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Microsoft.EntityFrameworkCore",
+      "version": "10.0.11",
+      "declaredLicence": "MIT",
+      "declaredLicenceSource": "MIT",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/Microsoft.EntityFrameworkCore/10.0.11/microsoft.entityframeworkcore.nuspec",
+      "sourceFiles": [
+        "NuGet/Microsoft.EntityFrameworkCore/10.0.11/microsoft.entityframeworkcore.nuspec",
+        "../LICENSE"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-microsoft.entityframeworkcore-10.0.11.txt",
+      "runtimeAssets": [
+        "lib/net10.0/Microsoft.EntityFrameworkCore.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Microsoft.EntityFrameworkCore.Abstractions",
+      "version": "10.0.11",
+      "declaredLicence": "MIT",
+      "declaredLicenceSource": "MIT",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/Microsoft.EntityFrameworkCore.Abstractions/10.0.11/microsoft.entityframeworkcore.abstractions.nuspec",
+      "sourceFiles": [
+        "NuGet/Microsoft.EntityFrameworkCore.Abstractions/10.0.11/microsoft.entityframeworkcore.abstractions.nuspec",
+        "../LICENSE"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-microsoft.entityframeworkcore.abstractions-10.0.11.txt",
+      "runtimeAssets": [
+        "lib/net10.0/Microsoft.EntityFrameworkCore.Abstractions.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Microsoft.EntityFrameworkCore.Relational",
+      "version": "10.0.11",
+      "declaredLicence": "MIT",
+      "declaredLicenceSource": "MIT",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/Microsoft.EntityFrameworkCore.Relational/10.0.11/microsoft.entityframeworkcore.relational.nuspec",
+      "sourceFiles": [
+        "NuGet/Microsoft.EntityFrameworkCore.Relational/10.0.11/microsoft.entityframeworkcore.relational.nuspec",
+        "../LICENSE"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-microsoft.entityframeworkcore.relational-10.0.11.txt",
+      "runtimeAssets": [
+        "lib/net10.0/Microsoft.EntityFrameworkCore.Relational.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Microsoft.EntityFrameworkCore.Sqlite.Core",
+      "version": "10.0.11",
+      "declaredLicence": "MIT",
+      "declaredLicenceSource": "MIT",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/Microsoft.EntityFrameworkCore.Sqlite.Core/10.0.11/microsoft.entityframeworkcore.sqlite.core.nuspec",
+      "sourceFiles": [
+        "NuGet/Microsoft.EntityFrameworkCore.Sqlite.Core/10.0.11/microsoft.entityframeworkcore.sqlite.core.nuspec",
+        "../LICENSE"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-microsoft.entityframeworkcore.sqlite.core-10.0.11.txt",
+      "runtimeAssets": [
+        "lib/net10.0/Microsoft.EntityFrameworkCore.Sqlite.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Microsoft.Extensions.AI.Abstractions",
+      "version": "10.8.3",
+      "declaredLicence": "MIT",
+      "declaredLicenceSource": "MIT",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/Microsoft.Extensions.AI.Abstractions/10.8.3/microsoft.extensions.ai.abstractions.nuspec",
+      "sourceFiles": [
+        "NuGet/Microsoft.Extensions.AI.Abstractions/10.8.3/microsoft.extensions.ai.abstractions.nuspec",
+        "../LICENSE"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-microsoft.extensions.ai.abstractions-10.8.3.txt",
+      "runtimeAssets": [
+        "lib/net10.0/Microsoft.Extensions.AI.Abstractions.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "Microsoft.Extensions.DependencyModel",
+      "version": "10.0.11",
+      "declaredLicence": "MIT",
+      "declaredLicenceSource": "MIT",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/Microsoft.Extensions.DependencyModel/10.0.11/microsoft.extensions.dependencymodel.nuspec",
+      "sourceFiles": [
+        "NuGet/Microsoft.Extensions.DependencyModel/10.0.11/microsoft.extensions.dependencymodel.nuspec",
+        "../LICENSE"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-microsoft.extensions.dependencymodel-10.0.11.txt",
+      "runtimeAssets": [
+        "lib/net10.0/Microsoft.Extensions.DependencyModel.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "notice",
+      "packageName": "Microsoft.Extensions.DependencyModel third-party notices",
+      "displayName": "Microsoft.Extensions.DependencyModel 10.0.11 — third-party notices",
+      "version": "sha256:c6926930d018",
+      "sourceType": "nuget-package-notice",
+      "sourceFile": "NuGet/Microsoft.Extensions.DependencyModel/10.0.11/THIRD-PARTY-NOTICES.TXT",
+      "sourceFiles": [
+        "NuGet/Microsoft.Extensions.DependencyModel/10.0.11/THIRD-PARTY-NOTICES.TXT"
+      ],
+      "sourceSha256": "c6926930d0181fa515076603e1305461b1bce5275a8b35337d75d2eef3acad4a",
+      "coveredPackages": [
+        {
+          "packageName": "Microsoft.Extensions.DependencyModel",
+          "version": "10.0.11"
+        }
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-third-party-notices-c6926930d018.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "ModelContextProtocol",
+      "version": "2.1.0",
+      "declaredLicence": "Apache-2.0",
+      "declaredLicenceSource": "Apache-2.0",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/ModelContextProtocol/2.1.0/modelcontextprotocol.nuspec",
+      "sourceFiles": [
+        "NuGet/ModelContextProtocol/2.1.0/modelcontextprotocol.nuspec",
+        "compliance/licence-texts/Apache-2.0.txt"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-modelcontextprotocol-2.1.0.txt",
+      "runtimeAssets": [
+        "lib/net10.0/ModelContextProtocol.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "ModelContextProtocol.AspNetCore",
+      "version": "2.1.0",
+      "declaredLicence": "Apache-2.0",
+      "declaredLicenceSource": "Apache-2.0",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/ModelContextProtocol.AspNetCore/2.1.0/modelcontextprotocol.aspnetcore.nuspec",
+      "sourceFiles": [
+        "NuGet/ModelContextProtocol.AspNetCore/2.1.0/modelcontextprotocol.aspnetcore.nuspec",
+        "compliance/licence-texts/Apache-2.0.txt"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-modelcontextprotocol.aspnetcore-2.1.0.txt",
+      "runtimeAssets": [
+        "lib/net10.0/ModelContextProtocol.AspNetCore.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "ModelContextProtocol.Core",
+      "version": "2.1.0",
+      "declaredLicence": "Apache-2.0",
+      "declaredLicenceSource": "Apache-2.0",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/ModelContextProtocol.Core/2.1.0/modelcontextprotocol.core.nuspec",
+      "sourceFiles": [
+        "NuGet/ModelContextProtocol.Core/2.1.0/modelcontextprotocol.core.nuspec",
+        "compliance/licence-texts/Apache-2.0.txt"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-modelcontextprotocol.core-2.1.0.txt",
+      "runtimeAssets": [
+        "lib/net10.0/ModelContextProtocol.Core.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "SQLitePCLRaw.bundle_e_sqlite3",
+      "version": "2.1.12",
+      "declaredLicence": "Apache-2.0",
+      "declaredLicenceSource": "Apache-2.0",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/SQLitePCLRaw.bundle_e_sqlite3/2.1.12/sqlitepclraw.bundle_e_sqlite3.nuspec",
+      "sourceFiles": [
+        "NuGet/SQLitePCLRaw.bundle_e_sqlite3/2.1.12/sqlitepclraw.bundle_e_sqlite3.nuspec",
+        "compliance/licence-texts/Apache-2.0.txt"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-sqlitepclraw.bundle-e-sqlite3-2.1.12.txt",
+      "runtimeAssets": [
+        "lib/netstandard2.0/SQLitePCLRaw.batteries_v2.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "SQLitePCLRaw.core",
+      "version": "2.1.12",
+      "declaredLicence": "Apache-2.0",
+      "declaredLicenceSource": "Apache-2.0",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/SQLitePCLRaw.core/2.1.12/sqlitepclraw.core.nuspec",
+      "sourceFiles": [
+        "NuGet/SQLitePCLRaw.core/2.1.12/sqlitepclraw.core.nuspec",
+        "compliance/licence-texts/Apache-2.0.txt"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-sqlitepclraw.core-2.1.12.txt",
+      "runtimeAssets": [
+        "lib/netstandard2.0/SQLitePCLRaw.core.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "SQLitePCLRaw.lib.e_sqlite3",
+      "version": "2.1.12",
+      "declaredLicence": "Apache-2.0",
+      "declaredLicenceSource": "Apache-2.0",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/SQLitePCLRaw.lib.e_sqlite3/2.1.12/sqlitepclraw.lib.e_sqlite3.nuspec",
+      "sourceFiles": [
+        "NuGet/SQLitePCLRaw.lib.e_sqlite3/2.1.12/sqlitepclraw.lib.e_sqlite3.nuspec",
+        "compliance/licence-texts/Apache-2.0.txt"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-sqlitepclraw.lib.e-sqlite3-2.1.12.txt",
+      "runtimeAssets": [
+        "runtimes/browser-wasm/nativeassets/net9.0/e_sqlite3.a",
+        "runtimes/linux-arm/native/libe_sqlite3.so",
+        "runtimes/linux-arm64/native/libe_sqlite3.so",
+        "runtimes/linux-armel/native/libe_sqlite3.so",
+        "runtimes/linux-mips64/native/libe_sqlite3.so",
+        "runtimes/linux-musl-arm/native/libe_sqlite3.so",
+        "runtimes/linux-musl-arm64/native/libe_sqlite3.so",
+        "runtimes/linux-musl-riscv64/native/libe_sqlite3.so",
+        "runtimes/linux-musl-s390x/native/libe_sqlite3.so",
+        "runtimes/linux-musl-x64/native/libe_sqlite3.so",
+        "runtimes/linux-ppc64le/native/libe_sqlite3.so",
+        "runtimes/linux-riscv64/native/libe_sqlite3.so",
+        "runtimes/linux-s390x/native/libe_sqlite3.so",
+        "runtimes/linux-x64/native/libe_sqlite3.so",
+        "runtimes/linux-x86/native/libe_sqlite3.so",
+        "runtimes/maccatalyst-arm64/native/libe_sqlite3.dylib",
+        "runtimes/maccatalyst-x64/native/libe_sqlite3.dylib",
+        "runtimes/osx-arm64/native/libe_sqlite3.dylib",
+        "runtimes/osx-x64/native/libe_sqlite3.dylib",
+        "runtimes/win-arm64/native/e_sqlite3.dll",
+        "runtimes/win-x64/native/e_sqlite3.dll",
+        "runtimes/win-x86/native/e_sqlite3.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "entryType": "licence",
+      "packageName": "SQLitePCLRaw.provider.e_sqlite3",
+      "version": "2.1.12",
+      "declaredLicence": "Apache-2.0",
+      "declaredLicenceSource": "Apache-2.0",
+      "sourceType": "nuget-expression-text",
+      "sourceFile": "NuGet/SQLitePCLRaw.provider.e_sqlite3/2.1.12/sqlitepclraw.provider.e_sqlite3.nuspec",
+      "sourceFiles": [
+        "NuGet/SQLitePCLRaw.provider.e_sqlite3/2.1.12/sqlitepclraw.provider.e_sqlite3.nuspec",
+        "compliance/licence-texts/Apache-2.0.txt"
+      ],
+      "outputFile": "compliance/third-party-licenses/nuget-sqlitepclraw.provider.e-sqlite3-2.1.12.txt",
+      "runtimeAssets": [
+        "lib/net6.0/SQLitePCLRaw.provider.e_sqlite3.dll"
+      ],
+      "targets": [
+        "LyrionVoiceMcp.Api:net10.0"
+      ],
+      "deliverables": [
+        "server-site"
+      ]
+    },
+    {
+      "ecosystem": "product",
+      "entryType": "licence",
+      "packageName": "Lyrion Voice MCP",
+      "version": "0.1.0",
+      "declaredLicence": "MIT",
+      "sourceType": "product",
+      "sourceFile": "../LICENSE",
+      "outputFile": "compliance/third-party-licenses/LICENSE-Lyrion-Voice-MCP.txt",
+      "deliverables": [
+        "server-site"
+      ]
+    }
+  ],
+  "unresolvedPackages": []
+}

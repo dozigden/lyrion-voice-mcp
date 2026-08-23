@@ -8,6 +8,7 @@
       <RouterLink to="/scheduled-jobs">Schedules</RouterLink>
       <RouterLink to="/errors">Errors</RouterLink>
       <RouterLink to="/tool-calls">MCP calls</RouterLink>
+      <RouterLink to="/licences">Licences</RouterLink>
     </nav>
   </header>
   <RouterView />

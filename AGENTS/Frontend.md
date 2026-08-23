@@ -10,3 +10,4 @@
 - Do not use nested ternaries or `$event` expressions in templates; use named handlers and explicit branching.
 - Keep operational warnings concise. The trusted-LAN warning must remain visible wherever connection details are presented.
 - Search-observation pages must keep retention/privacy visible and describe retrieval sources generically; observations may combine the production catalogue resolver with LMS playlist retrieval.
+- Keep `/licences` backed by the committed static `/third-party-licenses` mirror so disclosure remains available without the API or an external network request.

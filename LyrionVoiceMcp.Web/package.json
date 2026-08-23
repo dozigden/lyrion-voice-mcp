@@ -10,6 +10,8 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "build": "vite build",
+    "sync:third-party-licences": "node ./scripts/sync-third-party-licences.mjs --publish-public",
+    "refresh:licence-inventory": "LVM_REFRESH_LICENCE_INVENTORY=1 vite build",
     "check": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
@@ -31,4 +33,3 @@
     "vue-tsc": "^3.2.6"
   }
 }
-

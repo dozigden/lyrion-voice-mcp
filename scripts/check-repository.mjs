@@ -24,7 +24,13 @@ const requiredPaths = [
   'scripts/test-full.sh',
   'Dockerfile',
   'THIRD-PARTY-NOTICES.md',
-  'third-party-licenses/EntityFrameworkCore-LICENSE.txt',
+  'AGENTS/LicenceDisclosure.md',
+  'LyrionVoiceMcp.Web/compliance/licence-texts/Apache-2.0.txt',
+  'LyrionVoiceMcp.Web/compliance/npm-runtime-packages.json',
+  'LyrionVoiceMcp.Web/compliance/third-party-licenses/MANIFEST.json',
+  'LyrionVoiceMcp.Web/compliance/third-party-licenses/UNRESOLVED.md',
+  'LyrionVoiceMcp.Web/public/third-party-licenses/manifest.json',
+  'LyrionVoiceMcp.Web/scripts/sync-third-party-licences.mjs',
   'compose.yml'
 ];
 

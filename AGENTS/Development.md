@@ -50,4 +50,4 @@ Use these configuration keys:
 
 - Check the licence, provenance, transitive dependency set, and redistribution requirements before adding a new package or frontend dependency.
 - Prefer an official or actively maintained implementation when equivalent choices exist. Do not accept a dependency merely because its declared licence is permissive when its package omits required notices or its API does not meet the use case.
-- Record any notices required by dependencies distributed with the application before committing the dependency.
+- Follow `AGENTS/LicenceDisclosure.md`; refresh the relevant runtime inventory and generated disclosure before committing a dependency change.

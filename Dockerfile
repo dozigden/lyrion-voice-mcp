@@ -42,10 +42,6 @@ WORKDIR /app
 RUN mkdir -p /data && chown $APP_UID:$APP_UID /data
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /src/LyrionVoiceMcp.Web/dist ./wwwroot
-COPY --from=backend-build /root/.nuget/packages/lucene.net/4.8.0-beta00018/LICENSE.txt ./licenses/Apache-2.0.txt
-COPY --from=backend-build /root/.nuget/packages/lucene.net/4.8.0-beta00018/NOTICE.txt ./licenses/Lucene.Net-NOTICE.txt
-COPY --from=backend-build /root/.nuget/packages/cronos/0.13.0/LICENSE ./licenses/Cronos-LICENSE.txt
-COPY third-party-licenses/EntityFrameworkCore-LICENSE.txt ./licenses/EntityFrameworkCore-LICENSE.txt
 ENV ASPNETCORE_URLS=http://0.0.0.0:5600
 ENV LyrionVoiceMcpBuild__Version=$LVM_VERSION
 ENV LyrionVoiceMcpBuild__Channel=$LVM_CHANNEL

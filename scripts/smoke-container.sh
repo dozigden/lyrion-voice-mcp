@@ -85,12 +85,17 @@ check_json_endpoint "/api/evaluation" "Evaluation endpoint" \
   '(.schemaVersion | type) == "number" and .schemaVersion >= 1 and .resolvers == ["production"]'
 check_json_endpoint "/api/search/index" "Search index endpoint" \
   '.resolver == "catalogue-phuzzy-sqlite" and .artifact == null'
-docker exec "$container_name" test -r /app/licenses/Apache-2.0.txt
-docker exec "$container_name" test -r /app/licenses/Lucene.Net-NOTICE.txt
-docker exec "$container_name" test -r /app/licenses/Cronos-LICENSE.txt
-docker exec "$container_name" test -r /app/licenses/EntityFrameworkCore-LICENSE.txt
+licence_manifest="$(curl --fail --silent "$base_url/third-party-licenses/manifest.json")"
+assert_json "Licence manifest" \
+  '.unresolvedPackages == [] and any(.copiedLicences[]; .ecosystem == "product") and any(.copiedLicences[]; .ecosystem == "npm") and any(.copiedLicences[]; .ecosystem == "nuget")' \
+  "$licence_manifest"
+while IFS= read -r licence_output; do
+  curl --fail --silent --output /dev/null \
+    "$base_url/third-party-licenses/$(basename "$licence_output")"
+done < <(jq --raw-output '.copiedLicences[].outputFile' <<< "$licence_manifest")
 docker exec "$container_name" test -r /data/lyrion-voice-mcp.db
 curl --fail --silent "$base_url/" | grep --quiet 'Lyrion Voice MCP'
+curl --fail --silent "$base_url/licences" | grep --quiet 'Lyrion Voice MCP'
 
 mcp_status="$(curl --silent --output /tmp/lyrion-voice-mcp-smoke-mcp-$$.json --write-out '%{http_code}' \
   --request POST \

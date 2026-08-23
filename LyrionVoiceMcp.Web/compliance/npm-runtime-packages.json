@@ -1,0 +1,8 @@
+[
+  "@vue/reactivity",
+  "@vue/runtime-core",
+  "@vue/runtime-dom",
+  "@vue/shared",
+  "pinia",
+  "vue-router"
+]

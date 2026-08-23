@@ -5,6 +5,7 @@ import SearchObservationListView from './features/search-observations/SearchObse
 import OperationalRecordListView from './features/operational-history/OperationalRecordListView.vue';
 import OperationalRecordDetailView from './features/operational-history/OperationalRecordDetailView.vue';
 import ScheduledJobsView from './features/operational-history/ScheduledJobsView.vue';
+import LicencesView from './features/licences/LicencesView.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -30,6 +31,7 @@ export const router = createRouter({
     { path: '/errors', name: 'errors', component: OperationalRecordListView, props: { kind: 'errors' } },
     { path: '/errors/:id', name: 'errors-detail', component: OperationalRecordDetailView, props: { kind: 'errors' } },
     { path: '/tool-calls', name: 'tool-calls', component: OperationalRecordListView, props: { kind: 'tool-calls' } },
-    { path: '/tool-calls/:id', name: 'tool-calls-detail', component: OperationalRecordDetailView, props: { kind: 'tool-calls' } }
+    { path: '/tool-calls/:id', name: 'tool-calls-detail', component: OperationalRecordDetailView, props: { kind: 'tool-calls' } },
+    { path: '/licences', name: 'licences', component: LicencesView }
   ]
 });

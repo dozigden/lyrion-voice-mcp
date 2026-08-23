@@ -17,6 +17,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  licences:
+    name: Licence disclosure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: LyrionVoiceMcp.Web/package-lock.json
+      - name: Restore API runtime graph
+        run: dotnet restore LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj --locked-mode -maxcpucount:1 -nodeReuse:false
+      - name: Install frontend dependencies
+        working-directory: LyrionVoiceMcp.Web
+        run: npm ci
+      - name: Verify licence disclosure
+        working-directory: LyrionVoiceMcp.Web
+        run: |
+          npm run sync:third-party-licences -- --strict
+          if [ -n "$(git status --porcelain -- compliance/third-party-licenses public/third-party-licenses)" ]; then
+            echo "Licence disclosure files are out of date. Run: npm run sync:third-party-licences"
+            git status --short -- compliance/third-party-licenses public/third-party-licenses
+            exit 1
+          fi
+
   backend:
     name: Backend (.NET)
     runs-on: ubuntu-latest
@@ -57,6 +90,7 @@ jobs:
   image:
     name: Image (${{ matrix.platform }})
     needs:
+      - licences
       - backend
       - frontend
     strategy:
