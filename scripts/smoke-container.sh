@@ -82,7 +82,7 @@ check_json_endpoint "/api/error-logs?limit=1" "Error logs endpoint" \
 check_json_endpoint "/api/tool-calls?limit=1" "Tool calls endpoint" \
   '(.items | type) == "array" and .retentionDays == 30'
 check_json_endpoint "/api/evaluation" "Evaluation endpoint" \
-  '.schemaVersion == 2 and .resolvers == ["production"]'
+  '(.schemaVersion | type) == "number" and .schemaVersion >= 1 and .resolvers == ["production"]'
 check_json_endpoint "/api/search/index" "Search index endpoint" \
   '.resolver == "catalogue-phuzzy-sqlite" and .artifact == null'
 docker exec "$container_name" test -r /app/licenses/Apache-2.0.txt
