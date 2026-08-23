@@ -161,5 +161,4 @@ Planned, not implemented:
 - [MCP_CONTRACT.md](MCP_CONTRACT.md) — public tool contracts
 - [CATALOGUE_RECONNAISSANCE.md](CATALOGUE_RECONNAISSANCE.md) — LMS ingestion evidence
 - [SEARCH_RESEARCH.md](SEARCH_RESEARCH.md) — matching experiments and backend decision
-- [SCRATCHPAD.md](SCRATCHPAD.md) — product decisions and future requirements
 - [AGENTS.md](AGENTS.md) — implementation guidance index
