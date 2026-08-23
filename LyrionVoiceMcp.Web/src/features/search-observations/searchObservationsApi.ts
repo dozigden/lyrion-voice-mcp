@@ -60,6 +60,11 @@ export interface SearchObservationDetail {
   normalisedQuery: string;
   rating: number | null;
   ratingMatch: 'exact' | 'at_least' | null;
+  genre: string | null;
+  requestedFromYear: number | null;
+  requestedToYear: number | null;
+  effectiveFromYear: number | null;
+  effectiveToYear: number | null;
   requestedKind: string | null;
   provider: string;
   collection: string;
@@ -165,6 +170,9 @@ function isDetail(value: unknown): value is SearchObservationDetail {
     && typeof value.originalQuery === 'string' && typeof value.normalisedQuery === 'string'
     && ((value.rating === null && value.ratingMatch === null)
       || (isRating(value.rating) && (value.ratingMatch === 'exact' || value.ratingMatch === 'at_least')))
+    && (value.genre === null || typeof value.genre === 'string')
+    && isNullableNumber(value.requestedFromYear) && isNullableNumber(value.requestedToYear)
+    && isNullableNumber(value.effectiveFromYear) && isNullableNumber(value.effectiveToYear)
     && typeof value.provider === 'string' && typeof value.collection === 'string'
     && typeof value.resolver === 'string' && typeof value.resolverVersion === 'string'
     && (value.status === 'completed' || value.status === 'failed')
@@ -187,6 +195,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isNullableNumber(value: unknown): value is number | null {
+  return value === null || isNumber(value);
 }
 
 function isRating(value: unknown): value is number {

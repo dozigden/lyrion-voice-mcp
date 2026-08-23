@@ -12,13 +12,17 @@ internal sealed class SearchObservationRecorder(
         string originalQuery,
         string normalisedQuery,
         SearchResolverDescriptor resolver,
-        RatingSearchConstraint? ratingConstraint = null) => new(
+        RatingSearchConstraint? ratingConstraint = null,
+        string? genre = null,
+        YearSearchRange? yearRange = null) => new(
             Guid.NewGuid().ToString("N"),
             timeProvider.GetUtcNow(),
             originalQuery,
             normalisedQuery,
             resolver,
-            ratingConstraint);
+            ratingConstraint,
+            genre,
+            yearRange);
 
     public Task RecordCompletedAsync(
         SearchObservationContext context,
@@ -133,7 +137,8 @@ internal sealed class SearchObservationRecorder(
             .Max();
         var artistExpansionDuration = catalogueRequests
             .Where(request => request.Source is
-                "catalogue-artist-tracks" or "catalogue-artist-albums")
+                "catalogue-artist-tracks" or "catalogue-artist-albums"
+                or "catalogue-filtered-tracks")
             .Sum(request => request.DurationMilliseconds);
         return Math.Max(
                 initialCatalogueDuration,
@@ -153,8 +158,8 @@ internal sealed class SearchObservationRecorder(
             context.CreatedAt,
             context.OriginalQuery,
             context.NormalisedQuery,
-            context.RatingConstraint is null ? null : MediaEntityKind.Track,
-            context.RatingConstraint is null ? "catalogue+lms" : "catalogue",
+            context.HasTrackConstraint ? MediaEntityKind.Track : null,
+            context.HasTrackConstraint ? "catalogue" : "catalogue+lms",
             "whole_library",
             context.Resolver.Name,
             context.Resolver.Version,
@@ -166,7 +171,12 @@ internal sealed class SearchObservationRecorder(
             requests,
             candidates,
             null,
-            context.RatingConstraint);
+            context.RatingConstraint,
+            context.Genre,
+            context.YearRange?.RequestedFromYear,
+            context.YearRange?.RequestedToYear,
+            context.YearRange?.FromYear,
+            context.YearRange?.ToYear);
 
     private async Task TryRecordAsync(
         SearchObservation observation,
@@ -192,7 +202,13 @@ internal sealed record SearchObservationContext(
     string OriginalQuery,
     string NormalisedQuery,
     SearchResolverDescriptor Resolver,
-    RatingSearchConstraint? RatingConstraint);
+    RatingSearchConstraint? RatingConstraint,
+    string? Genre,
+    YearSearchRange? YearRange)
+{
+    public bool HasTrackConstraint =>
+        RatingConstraint is not null || Genre is not null || YearRange is not null;
+}
 
 internal sealed record SearchCandidateOccurrence(
     int Position,

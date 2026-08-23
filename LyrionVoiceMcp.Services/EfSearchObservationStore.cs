@@ -136,6 +136,11 @@ public sealed class EfSearchObservationStore(
         RatingMatch = observation.RatingConstraint is null
             ? null
             : ToEntity(observation.RatingConstraint.Match),
+        Genre = observation.Genre,
+        RequestedFromYear = observation.RequestedFromYear,
+        RequestedToYear = observation.RequestedToYear,
+        EffectiveFromYear = observation.EffectiveFromYear,
+        EffectiveToYear = observation.EffectiveToYear,
         RequestedKind = observation.RequestedKind is null
             ? null
             : ToEntity(observation.RequestedKind.Value),
@@ -249,7 +254,12 @@ public sealed class EfSearchObservationStore(
             ? null
             : new RatingSearchConstraint(
                 observation.Rating.Value,
-                ToModel(observation.RatingMatch.Value)));
+                ToModel(observation.RatingMatch.Value)),
+        observation.Genre,
+        observation.RequestedFromYear,
+        observation.RequestedToYear,
+        observation.EffectiveFromYear,
+        observation.EffectiveToYear);
 
     private static SearchObservationReview ToModel(EntitySearchObservationReview review) =>
         new(
@@ -307,7 +317,12 @@ public sealed class EfSearchObservationStore(
                 ? null
                 : new RatingSearchConstraint(
                     observation.Rating.Value,
-                    ToModel(observation.RatingMatch.Value)));
+                    ToModel(observation.RatingMatch.Value)),
+            observation.Genre,
+            observation.RequestedFromYear,
+            observation.RequestedToYear,
+            observation.EffectiveFromYear,
+            observation.EffectiveToYear);
     }
 
     private static DateTimeOffset ToDateTimeOffset(DateTime value) =>

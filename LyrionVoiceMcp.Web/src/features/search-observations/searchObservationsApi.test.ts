@@ -28,7 +28,8 @@ describe('search observations API', () => {
     // Arrange
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       id: 'one', createdAt: '2026-08-12T18:00:00Z', originalQuery: 'zyrack', normalisedQuery: 'zyrack',
-      rating: null, ratingMatch: null, requestedKind: null, provider: 'lms', collection: 'whole_library', resolver: 'lms-pass-through',
+      rating: null, ratingMatch: null, genre: null, requestedFromYear: null, requestedToYear: null,
+      effectiveFromYear: null, effectiveToYear: null, requestedKind: null, provider: 'lms', collection: 'whole_library', resolver: 'lms-pass-through',
       resolverVersion: '1', status: 'completed', failureMessage: null, totalDurationMilliseconds: 12,
       retrievalDurationMilliseconds: 10, processingDurationMilliseconds: 2, requests: [], candidates: [],
       review: null, retentionDays: 90
@@ -48,7 +49,8 @@ describe('search observations API', () => {
     // Arrange
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       id: 'one', createdAt: '2026-08-23T15:00:00Z', originalQuery: 'The Copper Lines', normalisedQuery: 'The Copper Lines',
-      rating: null, ratingMatch: null, requestedKind: null, provider: 'catalogue+lms', collection: 'whole_library',
+      rating: null, ratingMatch: null, genre: null, requestedFromYear: null, requestedToYear: null,
+      effectiveFromYear: null, effectiveToYear: null, requestedKind: null, provider: 'catalogue+lms', collection: 'whole_library',
       resolver: 'catalogue-phuzzy-sqlite', resolverVersion: '4', status: 'completed', failureMessage: null,
       totalDurationMilliseconds: 12, retrievalDurationMilliseconds: 10, processingDurationMilliseconds: 2, requests: [],
       candidates: [{

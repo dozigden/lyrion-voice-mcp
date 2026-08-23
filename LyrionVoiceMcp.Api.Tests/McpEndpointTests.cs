@@ -59,6 +59,14 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             body,
             StringComparison.Ordinal);
         Assert.Contains(
+            "name may be omitted for genre or year searches",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Genre, year, and rating constraints apply to tracks",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "at_least includes that rating and higher ratings",
             body,
             StringComparison.Ordinal);
@@ -87,7 +95,6 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"name\":\"search\"", body, StringComparison.Ordinal);
-        Assert.Contains("\"required\":[\"name\"]", body, StringComparison.Ordinal);
         using var document = ParseJsonRpcResponse(body);
         var searchTool = Assert.Single(
             document.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray(),
@@ -97,8 +104,15 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("properties");
         Assert.False(searchInputProperties.TryGetProperty("query", out _));
         Assert.Equal(
-            "Artist, album, track, or playlist name text only, up to 500 characters and 20 words. Do not include ratings or search syntax; use rating and ratingMatch instead. Wildcards are not supported.",
+            "Optional artist, album, track, or playlist name text, up to 500 characters and 20 words. Omit it to search tracks by genre or year alone. Do not include constraints or search syntax in the name. Wildcards are not supported.",
             searchInputProperties.GetProperty("name").GetProperty("description").GetString());
+        Assert.True(searchInputProperties.TryGetProperty("genre", out _));
+        Assert.True(searchInputProperties.TryGetProperty("fromYear", out _));
+        Assert.True(searchInputProperties.TryGetProperty("toYear", out _));
+        if (searchTool.GetProperty("inputSchema").TryGetProperty("required", out var required))
+        {
+            Assert.DoesNotContain(required.EnumerateArray(), item => item.GetString() == "name");
+        }
         var ratingInput = searchInputProperties.GetProperty("rating");
         Assert.Equal(
             "Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch; do not put the rating in name.",
@@ -136,7 +150,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
         Assert.Equal(
-            "Search for artists, albums, tracks, or playlists by name. Reports a unique exact artist separately with a complete discography reference and varied album preview, returns relevant 4+ top tracks separately, and varies equally relevant track matches. Use rating and ratingMatch to narrow tracks. * is not a wildcard.",
+            "Search the music library by name, exact genre, inclusive year range, or a combination. Reports a unique exact artist separately, returns relevant 4+ top tracks separately, and varies equally relevant track matches. Genre, years, and rating narrow tracks. * is not a wildcard.",
             searchTool.GetProperty("description").GetString());
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         var browseTool = Assert.Single(
@@ -206,6 +220,36 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Equal("copper lines", search.Criteria?.Query);
         Assert.Equal(4.5m, search.Criteria?.RatingConstraint?.Rating);
         Assert.Equal(RatingMatchMode.AtLeast, search.Criteria?.RatingConstraint?.Match);
+    }
+
+    [Fact]
+    public async Task SearchToolShouldPassNameFreeGenreAndYearConstraintsToTheService()
+    {
+        var search = new CapturingSearchService();
+        await using var searchFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISearchService>();
+                services.AddSingleton<ISearchService>(search);
+            }));
+        using var client = searchFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            33,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"genre":"Pop","fromYear":90,"toYear":99}}
+            """,
+            "search");
+
+        var response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(search.Criteria?.Query);
+        Assert.Equal("Pop", search.Criteria?.Genre);
+        Assert.Equal(90, search.Criteria?.FromYear);
+        Assert.Equal(99, search.Criteria?.ToYear);
     }
 
     [Fact]

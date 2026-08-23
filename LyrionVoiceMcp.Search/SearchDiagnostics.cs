@@ -6,7 +6,11 @@ public interface IDiagnosticSearchResolver
 {
     Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
-        RatingSearchConstraint? ratingConstraint,
+        CatalogueTrackSearchConstraint? constraint,
+        CancellationToken cancellationToken);
+
+    Task<SearchDiagnostics> SearchTracksDetailedAsync(
+        CatalogueTrackSearchConstraint constraint,
         CancellationToken cancellationToken);
 }
 
@@ -20,7 +24,10 @@ public sealed record SearchDiagnostics(
     int RetrievedCandidateCount,
     RatingSearchConstraint? RatingConstraint,
     IReadOnlyList<SearchLaneMeasurement> Lanes,
-    IReadOnlyList<SearchDiagnosticCandidate> Results);
+    IReadOnlyList<SearchDiagnosticCandidate> Results,
+    string? GenreKey = null,
+    int? FromYear = null,
+    int? ToYear = null);
 
 public sealed record SearchLaneMeasurement(
     string Name,
@@ -109,7 +116,7 @@ internal static class SearchDiagnosticResults
         double retrievalDurationMilliseconds,
         double rerankDurationMilliseconds,
         double totalDurationMilliseconds,
-        RatingSearchConstraint? ratingConstraint,
+        CatalogueTrackSearchConstraint? constraint,
         IReadOnlyList<SearchLaneMeasurement> lanes,
         IReadOnlyList<RankedPhuzzyCandidate> ranked,
         IReadOnlyDictionary<string, IReadOnlyList<string>> retrievalLanes)
@@ -139,8 +146,11 @@ internal static class SearchDiagnosticResults
             rerankDurationMilliseconds,
             totalDurationMilliseconds,
             results.Length,
-            ratingConstraint,
+            constraint?.RatingConstraint,
             lanes,
-            results);
+            results,
+            constraint?.GenreKey,
+            constraint?.FromYear,
+            constraint?.ToYear);
     }
 }

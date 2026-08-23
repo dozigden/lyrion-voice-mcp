@@ -56,7 +56,12 @@ public sealed record SearchObservation(
     IReadOnlyList<LmsSearchRequestObservation> Requests,
     IReadOnlyList<SearchObservationCandidate> Candidates,
     SearchObservationReview? Review,
-    RatingSearchConstraint? RatingConstraint = null);
+    RatingSearchConstraint? RatingConstraint = null,
+    string? Genre = null,
+    int? RequestedFromYear = null,
+    int? RequestedToYear = null,
+    int? EffectiveFromYear = null,
+    int? EffectiveToYear = null);
 
 public enum SearchObservationReviewFilter
 {
@@ -119,7 +124,12 @@ public sealed record SearchEvaluationCase(
     string? ExpectedArtist,
     string? ExpectedAlbum,
     IReadOnlyList<EvaluationCandidate> OriginalCandidates,
-    RatingSearchConstraint? RatingConstraint = null);
+    RatingSearchConstraint? RatingConstraint = null,
+    string? Genre = null,
+    int? RequestedFromYear = null,
+    int? RequestedToYear = null,
+    int? EffectiveFromYear = null,
+    int? EffectiveToYear = null);
 
 public interface ISearchObservationStore
 {

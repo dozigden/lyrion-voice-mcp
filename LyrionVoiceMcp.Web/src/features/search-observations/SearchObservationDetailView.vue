@@ -7,10 +7,17 @@
       <header class="detail-heading">
         <div>
           <p class="eyebrow">{{ formatDate(item.createdAt) }}</p>
-          <h1>“{{ item.originalQuery }}”</h1>
+          <h1>{{ item.originalQuery ? `“${item.originalQuery}”` : 'Constraint-only search' }}</h1>
           <p v-if="item.normalisedQuery !== item.originalQuery">Normalised to “{{ item.normalisedQuery }}”</p>
           <p v-if="item.rating !== null">
             Rating {{ item.ratingMatch === 'at_least' ? 'at least' : 'exactly' }} {{ item.rating }}
+          </p>
+          <p v-if="item.genre">Genre “{{ item.genre }}”</p>
+          <p v-if="item.effectiveFromYear !== null">
+            Years {{ item.effectiveFromYear }}–{{ item.effectiveToYear }}
+            <template v-if="item.requestedFromYear !== item.effectiveFromYear || item.requestedToYear !== item.effectiveToYear">
+              (requested {{ item.requestedFromYear }}–{{ item.requestedToYear }})
+            </template>
           </p>
         </div>
         <span class="resolver">{{ item.resolver }} · v{{ item.resolverVersion }}</span>

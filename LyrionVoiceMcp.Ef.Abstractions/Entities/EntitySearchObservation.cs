@@ -16,6 +16,16 @@ public sealed class EntitySearchObservation
 
     public EntityRatingMatchMode? RatingMatch { get; set; }
 
+    public string? Genre { get; set; }
+
+    public int? RequestedFromYear { get; set; }
+
+    public int? RequestedToYear { get; set; }
+
+    public int? EffectiveFromYear { get; set; }
+
+    public int? EffectiveToYear { get; set; }
+
     public EntityMediaKind? RequestedKind { get; set; }
 
     public string Provider { get; set; } = string.Empty;

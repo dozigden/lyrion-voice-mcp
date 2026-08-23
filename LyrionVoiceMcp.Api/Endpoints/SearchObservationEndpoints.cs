@@ -109,12 +109,17 @@ public static class SearchObservationEndpoints
     {
         var cases = await service.ExportAsync(cancellationToken);
         var response = new SearchEvaluationExportResponse(
-            2,
+            3,
             timeProvider.GetUtcNow(),
             cases.Select(item => new SearchEvaluationCaseResponse(
                 item.Query,
                 item.RatingConstraint?.Rating,
                 item.RatingConstraint is null ? null : ToText(item.RatingConstraint.Match),
+                item.Genre,
+                item.RequestedFromYear,
+                item.RequestedToYear,
+                item.EffectiveFromYear,
+                item.EffectiveToYear,
                 ToText(item.Classification),
                 item.ExpectedKind is null ? null : ToText(item.ExpectedKind.Value),
                 item.ExpectedTitle,
@@ -144,6 +149,11 @@ public static class SearchObservationEndpoints
         item.Id, item.CreatedAt, item.OriginalQuery, item.NormalisedQuery,
         item.RatingConstraint?.Rating,
         item.RatingConstraint is null ? null : ToText(item.RatingConstraint.Match),
+        item.Genre,
+        item.RequestedFromYear,
+        item.RequestedToYear,
+        item.EffectiveFromYear,
+        item.EffectiveToYear,
         item.RequestedKind is null ? null : ToText(item.RequestedKind.Value), item.Provider, item.Collection,
         item.Resolver, item.ResolverVersion, ToText(item.Status), item.FailureMessage,
         item.TotalDurationMilliseconds, item.RetrievalDurationMilliseconds, item.ProcessingDurationMilliseconds,

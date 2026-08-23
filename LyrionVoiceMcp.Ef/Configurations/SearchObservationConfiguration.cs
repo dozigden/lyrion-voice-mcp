@@ -17,6 +17,11 @@ public sealed class SearchObservationConfiguration
         builder.Property(item => item.NormalisedQuery).HasMaxLength(500).IsRequired();
         builder.Property(item => item.Rating);
         builder.Property(item => item.RatingMatch);
+        builder.Property(item => item.Genre).HasMaxLength(500);
+        builder.Property(item => item.RequestedFromYear);
+        builder.Property(item => item.RequestedToYear);
+        builder.Property(item => item.EffectiveFromYear);
+        builder.Property(item => item.EffectiveToYear);
         builder.Property(item => item.RequestedKind);
         builder.Property(item => item.Provider).HasMaxLength(128).IsRequired();
         builder.Property(item => item.Collection).HasMaxLength(128).IsRequired();

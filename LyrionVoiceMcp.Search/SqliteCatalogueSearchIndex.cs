@@ -84,11 +84,22 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
     public async Task<CatalogueSearchResponse> SearchCatalogueAsync(
         string query,
         RatingSearchConstraint? ratingConstraint,
+        CancellationToken cancellationToken) =>
+        await SearchCatalogueAsync(
+            query,
+            ratingConstraint is null
+                ? null
+                : new CatalogueTrackSearchConstraint(ratingConstraint),
+            cancellationToken);
+
+    public async Task<CatalogueSearchResponse> SearchCatalogueAsync(
+        string query,
+        CatalogueTrackSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         var execution = await SearchCoreAsync(
             query,
-            ratingConstraint,
+            constraint,
             captureDiagnostics: false,
             cancellationToken);
         var candidates = execution.Ranked
@@ -134,10 +145,25 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         string artistId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var candidate in ReadArtistMediaAsync(
+        await foreach (var candidate in ReadArtistTracksAsync(
+            artistId,
+            null,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
+        string artistId,
+        CatalogueTrackSearchConstraint? constraint,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var candidate in ReadMediaAsync(
             artistId,
             MediaEntityKind.Track,
             1_120,
+            constraint,
             cancellationToken))
         {
             yield return candidate;
@@ -148,41 +174,68 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         string artistId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var candidate in ReadArtistMediaAsync(
+        await foreach (var candidate in ReadMediaAsync(
             artistId,
             MediaEntityKind.Album,
             1_300,
+            null,
             cancellationToken))
         {
             yield return candidate;
         }
     }
 
-    private async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistMediaAsync(
-        string artistId,
-        MediaEntityKind kind,
-        int score,
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadTracksAsync(
+        CatalogueTrackSearchConstraint constraint,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(artistId);
+        ArgumentNullException.ThrowIfNull(constraint);
+        await foreach (var candidate in ReadMediaAsync(
+            null,
+            MediaEntityKind.Track,
+            1_120,
+            constraint,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    private async IAsyncEnumerable<CatalogueSearchCandidate> ReadMediaAsync(
+        string? artistId,
+        MediaEntityKind kind,
+        int score,
+        CatalogueTrackSearchConstraint? constraint,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = """
+        var artistJoin = artistId is null
+            ? string.Empty
+            : "INNER JOIN document_artists ON documents.document_id = document_artists.document_id";
+        var artistClause = artistId is null
+            ? string.Empty
+            : "AND document_artists.artist_id = $artistId";
+        var constraintClause = AddTrackConstraintClause(command, constraint, "documents");
+        command.CommandText = $"""
             SELECT
                 documents.stable_key,
                 documents.title,
                 documents.artist,
                 documents.album,
                 documents.native_rating
-            FROM document_artists
-            INNER JOIN documents
-                ON documents.document_id = document_artists.document_id
-            WHERE document_artists.artist_id = $artistId
-              AND documents.kind = $kind
+            FROM documents
+            {artistJoin}
+            WHERE documents.kind = $kind
+              {artistClause}
+              {constraintClause}
             ORDER BY documents.document_id;
             """;
-        command.Parameters.AddWithValue("$artistId", artistId);
+        if (artistId is not null)
+        {
+            command.Parameters.AddWithValue("$artistId", artistId);
+        }
         command.Parameters.AddWithValue("$kind", (int)kind);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -207,12 +260,12 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
 
     public async Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
-        RatingSearchConstraint? ratingConstraint,
+        CatalogueTrackSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         var execution = await SearchCoreAsync(
             query,
-            ratingConstraint,
+            constraint,
             captureDiagnostics: true,
             cancellationToken);
         return SearchDiagnosticResults.Create(
@@ -220,10 +273,69 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             execution.RetrievalDurationMilliseconds,
             execution.RerankDurationMilliseconds,
             execution.TotalDurationMilliseconds,
-            ratingConstraint,
+            constraint,
             execution.Lanes,
             execution.Ranked,
             execution.RetrievalLanes);
+    }
+
+    public Task<SearchDiagnostics> SearchDetailedAsync(
+        string query,
+        RatingSearchConstraint? ratingConstraint,
+        CancellationToken cancellationToken) =>
+        SearchDetailedAsync(
+            query,
+            ratingConstraint is null
+                ? null
+                : new CatalogueTrackSearchConstraint(ratingConstraint),
+            cancellationToken);
+
+    public async Task<SearchDiagnostics> SearchTracksDetailedAsync(
+        CatalogueTrackSearchConstraint constraint,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var matchedCount = 0;
+        var results = new List<SearchDiagnosticCandidate>(LaneCandidateLimit);
+        await foreach (var candidate in ReadTracksAsync(constraint, cancellationToken))
+        {
+            matchedCount++;
+            if (results.Count < LaneCandidateLimit)
+            {
+                results.Add(new SearchDiagnosticCandidate(
+                    results.Count + 1,
+                    candidate.Identity.Kind,
+                    candidate.Title,
+                    candidate.Artist,
+                    candidate.Album,
+                    candidate.Score,
+                    ["constraint_scan"],
+                    null,
+                    candidate.NativeRating / 20m));
+            }
+        }
+
+        stopwatch.Stop();
+        var duration = stopwatch.Elapsed.TotalMilliseconds;
+        return new SearchDiagnostics(
+            Descriptor.Name,
+            Descriptor.Version,
+            Metrics,
+            duration,
+            0,
+            duration,
+            results.Count,
+            constraint.RatingConstraint,
+            [new SearchLaneMeasurement(
+                "constraint_scan",
+                duration,
+                matchedCount,
+                results.Count,
+                results.Count)],
+            results,
+            constraint.GenreKey,
+            constraint.FromYear,
+            constraint.ToYear);
     }
 
     public async Task<RatingBrowsePage> BrowseRatingsAsync(
@@ -299,7 +411,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
 
     private async Task<ResolverSearchExecution> SearchCoreAsync(
         string query,
-        RatingSearchConstraint? ratingConstraint,
+        CatalogueTrackSearchConstraint? constraint,
         bool captureDiagnostics,
         CancellationToken cancellationToken)
     {
@@ -317,7 +429,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 new Dictionary<string, IReadOnlyList<string>>());
         }
 
-        var nativeRatingFilter = NativeRatingFilter.Create(ratingConstraint);
+        var nativeRatingFilter = NativeRatingFilter.Create(constraint?.RatingConstraint);
         if (nativeRatingFilter is { CanMatch: false })
         {
             return new ResolverSearchExecution(
@@ -345,7 +457,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                     lane.Name,
                     lane.Terms,
                     candidates,
-                    nativeRatingFilter,
+                    constraint,
                     captureDiagnostics,
                     cancellationToken));
         }
@@ -358,7 +470,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 connection,
                 queryForms,
                 candidates,
-                nativeRatingFilter,
+                constraint,
                 captureDiagnostics,
                 cancellationToken));
         await RetrieveLaneAsync(
@@ -369,7 +481,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 connection,
                 queryForms,
                 candidates,
-                nativeRatingFilter,
+                constraint,
                 captureDiagnostics,
                 cancellationToken));
         var read = await ReadCandidatesAsync(
@@ -434,11 +546,14 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                     title TEXT NOT NULL,
                     artist TEXT NULL,
                     album TEXT NULL,
+                    year INTEGER NULL,
                     native_rating INTEGER NOT NULL CHECK (
                         native_rating BETWEEN 0 AND 100)
                 );
                 CREATE INDEX ix_documents_kind_native_rating
                     ON documents (kind, native_rating);
+                CREATE INDEX ix_documents_kind_year
+                    ON documents (kind, year);
                 CREATE TABLE lookup_terms (
                     lane TEXT NOT NULL,
                     term TEXT NOT NULL,
@@ -454,6 +569,13 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 ) WITHOUT ROWID;
                 CREATE INDEX ix_document_artists_artist
                     ON document_artists (artist_id, document_id);
+                CREATE TABLE document_genres (
+                    document_id INTEGER NOT NULL,
+                    genre_key TEXT NOT NULL,
+                    PRIMARY KEY (document_id, genre_key)
+                ) WITHOUT ROWID;
+                CREATE INDEX ix_document_genres_genre
+                    ON document_genres (genre_key, document_id);
                 CREATE VIRTUAL TABLE document_fts USING fts5(
                     document_id UNINDEXED,
                     content,
@@ -523,6 +645,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 title,
                 artist,
                 album,
+                year,
                 native_rating)
             VALUES (
                 $documentId,
@@ -531,6 +654,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 $title,
                 $artist,
                 $album,
+                $year,
                 $nativeRating);
             """;
         var documentIdParameter = insertDocument.Parameters.Add("$documentId", SqliteType.Integer);
@@ -539,6 +663,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         var titleParameter = insertDocument.Parameters.Add("$title", SqliteType.Text);
         var artistParameter = insertDocument.Parameters.Add("$artist", SqliteType.Text);
         var albumParameter = insertDocument.Parameters.Add("$album", SqliteType.Text);
+        var yearParameter = insertDocument.Parameters.Add("$year", SqliteType.Integer);
         var nativeRatingParameter = insertDocument.Parameters.Add(
             "$nativeRating",
             SqliteType.Integer);
@@ -553,6 +678,17 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             "$documentId",
             SqliteType.Integer);
         var artistIdParameter = insertArtist.Parameters.Add("$artistId", SqliteType.Text);
+
+        await using var insertGenre = connection.CreateCommand();
+        insertGenre.Transaction = transaction;
+        insertGenre.CommandText = """
+            INSERT OR IGNORE INTO document_genres (document_id, genre_key)
+            VALUES ($documentId, $genreKey);
+            """;
+        var genreDocumentIdParameter = insertGenre.Parameters.Add(
+            "$documentId",
+            SqliteType.Integer);
+        var genreKeyParameter = insertGenre.Parameters.Add("$genreKey", SqliteType.Text);
 
         await using var insertTerm = connection.CreateCommand();
         insertTerm.Transaction = transaction;
@@ -597,6 +733,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             titleParameter.Value = document.Title;
             artistParameter.Value = document.Artist ?? (object)DBNull.Value;
             albumParameter.Value = document.Album ?? (object)DBNull.Value;
+            yearParameter.Value = document.Year ?? (object)DBNull.Value;
             nativeRatingParameter.Value = document.NativeRating;
             await insertDocument.ExecuteNonQueryAsync(cancellationToken);
 
@@ -607,6 +744,15 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             {
                 artistIdParameter.Value = artistId;
                 await insertArtist.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            genreDocumentIdParameter.Value = documentId;
+            foreach (var genreKey in (document.GenreKeys ?? [])
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal))
+            {
+                genreKeyParameter.Value = genreKey;
+                await insertGenre.ExecuteNonQueryAsync(cancellationToken);
             }
 
             termDocumentIdParameter.Value = documentId;
@@ -717,7 +863,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         string lane,
         IReadOnlyList<string> terms,
         CandidateCollector<long> candidates,
-        NativeRatingFilter? nativeRatingFilter,
+        CatalogueTrackSearchConstraint? constraint,
         bool countMatches,
         CancellationToken cancellationToken)
     {
@@ -731,7 +877,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         {
             await using var count = connection.CreateCommand();
             var countParameters = AddParameters(count, "$countTerm", terms);
-            var ratingClause = AddRatingClause(count, nativeRatingFilter);
+            var constraintClause = AddCandidateConstraintClause(count, constraint);
             count.CommandText = $"""
                 SELECT COUNT(*)
                 FROM (
@@ -739,7 +885,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                     FROM lookup_terms
                     WHERE lane = $lane
                       AND term IN ({string.Join(", ", countParameters)})
-                      {ratingClause}
+                      {constraintClause}
                     GROUP BY document_id
                 );
                 """;
@@ -751,13 +897,13 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
 
         await using var command = connection.CreateCommand();
         var termParameters = AddParameters(command, "$term", terms);
-        var commandRatingClause = AddRatingClause(command, nativeRatingFilter);
+        var commandConstraintClause = AddCandidateConstraintClause(command, constraint);
         command.CommandText = $"""
             SELECT document_id
             FROM lookup_terms
             WHERE lane = $lane
               AND term IN ({string.Join(", ", termParameters)})
-              {commandRatingClause}
+              {commandConstraintClause}
             GROUP BY document_id
             ORDER BY COUNT(*) DESC, document_id
             LIMIT {LaneCandidateLimit};
@@ -777,7 +923,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         SqliteConnection connection,
         PhuzzyTextForms query,
         CandidateCollector<long> candidates,
-        NativeRatingFilter? nativeRatingFilter,
+        CatalogueTrackSearchConstraint? constraint,
         bool countMatches,
         CancellationToken cancellationToken)
     {
@@ -797,16 +943,16 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 connection,
                 "document_fts",
                 expression,
-                nativeRatingFilter,
+                constraint,
                 cancellationToken)
             : 0;
         await using var command = connection.CreateCommand();
-        var ratingClause = AddRatingClause(command, nativeRatingFilter);
+        var constraintClause = AddCandidateConstraintClause(command, constraint);
         command.CommandText = $"""
             SELECT document_id
             FROM document_fts
             WHERE document_fts MATCH $query
-            {ratingClause}
+            {constraintClause}
             ORDER BY bm25(document_fts), document_id
             LIMIT {LaneCandidateLimit};
             """;
@@ -825,7 +971,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         SqliteConnection connection,
         PhuzzyTextForms query,
         CandidateCollector<long> candidates,
-        NativeRatingFilter? nativeRatingFilter,
+        CatalogueTrackSearchConstraint? constraint,
         bool countMatches,
         CancellationToken cancellationToken)
     {
@@ -843,16 +989,16 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 connection,
                 "document_trigram_fts",
                 expression,
-                nativeRatingFilter,
+                constraint,
                 cancellationToken)
             : 0;
         await using var command = connection.CreateCommand();
-        var ratingClause = AddRatingClause(command, nativeRatingFilter);
+        var constraintClause = AddCandidateConstraintClause(command, constraint);
         command.CommandText = $"""
             SELECT document_id
             FROM document_trigram_fts
             WHERE document_trigram_fts MATCH $query
-            {ratingClause}
+            {constraintClause}
             ORDER BY bm25(document_trigram_fts), document_id
             LIMIT {LaneCandidateLimit};
             """;
@@ -871,12 +1017,12 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         SqliteConnection connection,
         string table,
         string expression,
-        NativeRatingFilter? nativeRatingFilter,
+        CatalogueTrackSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
-        var ratingClause = AddRatingClause(command, nativeRatingFilter);
-        command.CommandText = $"SELECT COUNT(*) FROM {table} WHERE {table} MATCH $query {ratingClause};";
+        var constraintClause = AddCandidateConstraintClause(command, constraint);
+        command.CommandText = $"SELECT COUNT(*) FROM {table} WHERE {table} MATCH $query {constraintClause};";
         command.Parameters.AddWithValue("$query", expression);
         return Convert.ToInt32(
             await command.ExecuteScalarAsync(cancellationToken),
@@ -898,20 +1044,69 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         return names;
     }
 
-    private static string AddRatingClause(
+    private static string AddCandidateConstraintClause(
         SqliteCommand command,
-        NativeRatingFilter? filter)
+        CatalogueTrackSearchConstraint? constraint)
     {
-        if (filter is null)
+        if (!HasTrackConstraint(constraint))
         {
             return string.Empty;
         }
 
-        command.Parameters.AddWithValue("$ratingTrackKind", (int)MediaEntityKind.Track);
-        command.Parameters.AddWithValue("$ratingNativeValue", filter.NativeRating);
-        var comparison = filter.Match == RatingMatchMode.Exact ? "=" : ">=";
-        return $"AND document_id IN (SELECT document_id FROM documents WHERE kind = $ratingTrackKind AND native_rating {comparison} $ratingNativeValue)";
+        command.Parameters.AddWithValue("$constraintTrackKind", (int)MediaEntityKind.Track);
+        var predicate = AddTrackConstraintClause(command, constraint, "filtered_documents");
+        return $"AND document_id IN (SELECT filtered_documents.document_id FROM documents AS filtered_documents WHERE filtered_documents.kind = $constraintTrackKind {predicate})";
     }
+
+    private static string AddTrackConstraintClause(
+        SqliteCommand command,
+        CatalogueTrackSearchConstraint? constraint,
+        string documentAlias)
+    {
+        if (!HasTrackConstraint(constraint))
+        {
+            return string.Empty;
+        }
+
+        var clauses = new List<string>();
+        var ratingFilter = NativeRatingFilter.Create(constraint?.RatingConstraint);
+        if (ratingFilter is not null)
+        {
+            if (!ratingFilter.CanMatch)
+            {
+                clauses.Add("1 = 0");
+                return $"AND {string.Join(" AND ", clauses)}";
+            }
+
+            command.Parameters.AddWithValue("$constraintNativeRating", ratingFilter.NativeRating);
+            var comparison = ratingFilter.Match == RatingMatchMode.Exact ? "=" : ">=";
+            clauses.Add($"{documentAlias}.native_rating {comparison} $constraintNativeRating");
+        }
+
+        if (constraint?.GenreKey is not null)
+        {
+            command.Parameters.AddWithValue("$constraintGenreKey", constraint.GenreKey);
+            clauses.Add($"EXISTS (SELECT 1 FROM document_genres WHERE document_genres.document_id = {documentAlias}.document_id AND document_genres.genre_key = $constraintGenreKey)");
+        }
+
+        if (constraint?.FromYear is not null && constraint.ToYear is not null)
+        {
+            command.Parameters.AddWithValue("$constraintFromYear", constraint.FromYear.Value);
+            command.Parameters.AddWithValue("$constraintToYear", constraint.ToYear.Value);
+            clauses.Add($"{documentAlias}.year BETWEEN $constraintFromYear AND $constraintToYear");
+        }
+
+        return clauses.Count == 0
+            ? string.Empty
+            : $"AND {string.Join(" AND ", clauses)}";
+    }
+
+    private static bool HasTrackConstraint(CatalogueTrackSearchConstraint? constraint) =>
+        constraint is not null
+        && (constraint.RatingConstraint is not null
+            || constraint.GenreKey is not null
+            || constraint.FromYear is not null
+            || constraint.ToYear is not null);
 
     private static async Task<int> AddIdsAsync(
         SqliteCommand command,

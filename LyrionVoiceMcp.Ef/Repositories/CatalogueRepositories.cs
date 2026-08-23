@@ -335,6 +335,7 @@ public sealed class CatalogueProjectionRepository(
                 item.SourceId,
                 item.Title,
                 item.AlbumArtistSourceId,
+                item.Year,
                 DbContext.CatalogueArtists
                     .Where(artist => artist.SourceId == item.AlbumArtistSourceId)
                     .Select(artist => artist.Name)
@@ -347,7 +348,8 @@ public sealed class CatalogueProjectionRepository(
             item.Artist,
             null,
             0,
-            item.ArtistSourceId is null ? [] : [item.ArtistSourceId])).ToArray();
+            item.ArtistSourceId is null ? [] : [item.ArtistSourceId],
+            item.Year)).ToArray();
     }
 
     public async Task<IReadOnlyList<EntityCatalogueProjectionRow>> ReadTracksAfterAsync(
@@ -365,6 +367,7 @@ public sealed class CatalogueProjectionRepository(
                 item.SourceId,
                 item.Title,
                 item.AlbumSourceId,
+                item.Year,
                 item.Statistics
                     .Where(statistic => statistic.Source == "lms-core")
                     .Select(statistic => statistic.Rating)
@@ -403,6 +406,25 @@ public sealed class CatalogueProjectionRepository(
                 group => new TrackArtistsProjection(
                     string.Join(", ", group.Select(item => item.Name)),
                     group.Select(item => item.ArtistSourceId).ToArray()));
+        var genreRows = await DbContext.CatalogueTrackGenres
+            .AsNoTracking()
+            .Where(item => trackIds.Contains(item.TrackId))
+            .Join(
+                DbContext.CatalogueGenres,
+                trackGenre => trackGenre.GenreSourceId,
+                genre => genre.SourceId,
+                (trackGenre, genre) => new TrackGenreProjection(
+                    trackGenre.TrackId,
+                    genre.Name))
+            .ToArrayAsync(cancellationToken);
+        var genresByTrack = genreRows
+            .GroupBy(item => item.TrackId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group
+                    .Select(item => item.Name)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray());
         var albums = await DbContext.CatalogueAlbums
             .AsNoTracking()
             .Where(item => albumIds.Contains(item.SourceId))
@@ -410,6 +432,7 @@ public sealed class CatalogueProjectionRepository(
                 item.SourceId,
                 item.Title,
                 item.AlbumArtistSourceId,
+                item.Year,
                 DbContext.CatalogueArtists
                     .Where(artist => artist.SourceId == item.AlbumArtistSourceId)
                     .Select(artist => artist.Name)
@@ -420,6 +443,7 @@ public sealed class CatalogueProjectionRepository(
         {
             albums.TryGetValue(track.AlbumSourceId ?? string.Empty, out var album);
             artistsByTrack.TryGetValue(track.Id, out var artists);
+            genresByTrack.TryGetValue(track.Id, out var genres);
             return new EntityCatalogueProjectionRow(
                 EntityCatalogueProjectionKind.Track,
                 track.SourceId,
@@ -430,7 +454,9 @@ public sealed class CatalogueProjectionRepository(
                 artists?.SourceIds
                     ?? (album?.ArtistSourceId is null
                         ? []
-                        : [album.ArtistSourceId]));
+                        : [album.ArtistSourceId]),
+                track.Year ?? album?.Year,
+                genres ?? []);
         }).ToArray();
     }
 
@@ -439,6 +465,7 @@ public sealed class CatalogueProjectionRepository(
         string SourceId,
         string Title,
         string? AlbumSourceId,
+        int? Year,
         int NativeRating);
 
     private sealed record TrackArtistProjection(
@@ -451,9 +478,14 @@ public sealed class CatalogueProjectionRepository(
         string Names,
         IReadOnlyList<string> SourceIds);
 
+    private sealed record TrackGenreProjection(
+        int TrackId,
+        string Name);
+
     private sealed record AlbumProjection(
         string SourceId,
         string Title,
         string? ArtistSourceId,
+        int? Year,
         string? Artist);
 }

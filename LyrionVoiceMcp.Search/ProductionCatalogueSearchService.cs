@@ -22,6 +22,7 @@ public sealed class ProductionCatalogueSearchService :
     ISearchIndexBuilder,
     ICatalogueSearchResolver,
     ICatalogueArtistTrackResolver,
+    ICatalogueTrackResolver,
     ICatalogueArtistAlbumResolver,
     IDiagnosticSearchResolver,
     IRatingBrowseResolver,
@@ -32,7 +33,7 @@ public sealed class ProductionCatalogueSearchService :
     private const string PointerFileName = "current.json";
     private static readonly SearchResolverDescriptor DescriptorValue = new(
         "catalogue-phuzzy-sqlite",
-        "5");
+        "6");
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ProductionSearchSettings settings;
@@ -55,6 +56,17 @@ public sealed class ProductionCatalogueSearchService :
     public async Task<CatalogueSearchResponse> SearchAsync(
         string query,
         RatingSearchConstraint? ratingConstraint,
+        CancellationToken cancellationToken) =>
+        await SearchAsync(
+            query,
+            ratingConstraint is null
+                ? null
+                : new CatalogueTrackSearchConstraint(ratingConstraint),
+            cancellationToken);
+
+    public async Task<CatalogueSearchResponse> SearchAsync(
+        string query,
+        CatalogueTrackSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         var generation = await GetLoadedAsync(cancellationToken);
@@ -66,14 +78,14 @@ public sealed class ProductionCatalogueSearchService :
 
         return await generation.Resolver.SearchCatalogueAsync(
             query,
-            ratingConstraint,
+            constraint,
             cancellationToken);
     }
 
     public Task<CatalogueSearchResponse> SearchAsync(
         string query,
         CancellationToken cancellationToken) =>
-        SearchAsync(query, null, cancellationToken);
+        SearchAsync(query, (CatalogueTrackSearchConstraint?)null, cancellationToken);
 
     public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
         string artistId,
@@ -89,6 +101,48 @@ public sealed class ProductionCatalogueSearchService :
 
         await foreach (var candidate in generation.Resolver.ReadArtistTracksAsync(
             artistId,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
+        string artistId,
+        CatalogueTrackSearchConstraint? constraint,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+        CancellationToken cancellationToken)
+    {
+        var generation = await GetLoadedAsync(cancellationToken);
+        if (generation is null)
+        {
+            throw new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built.");
+        }
+
+        await foreach (var candidate in generation.Resolver.ReadArtistTracksAsync(
+            artistId,
+            constraint,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadTracksAsync(
+        CatalogueTrackSearchConstraint constraint,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+        CancellationToken cancellationToken)
+    {
+        var generation = await GetLoadedAsync(cancellationToken);
+        if (generation is null)
+        {
+            throw new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built.");
+        }
+
+        await foreach (var candidate in generation.Resolver.ReadTracksAsync(
+            constraint,
             cancellationToken))
         {
             yield return candidate;
@@ -117,7 +171,7 @@ public sealed class ProductionCatalogueSearchService :
 
     public async Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
-        RatingSearchConstraint? ratingConstraint,
+        CatalogueTrackSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         var generation = await GetLoadedAsync(cancellationToken);
@@ -129,14 +183,41 @@ public sealed class ProductionCatalogueSearchService :
 
         return await generation.Resolver.SearchDetailedAsync(
             query,
-            ratingConstraint,
+            constraint,
             cancellationToken);
     }
 
     public Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
+        RatingSearchConstraint? ratingConstraint,
         CancellationToken cancellationToken) =>
-        SearchDetailedAsync(query, null, cancellationToken);
+        SearchDetailedAsync(
+            query,
+            ratingConstraint is null
+                ? null
+                : new CatalogueTrackSearchConstraint(ratingConstraint),
+            cancellationToken);
+
+    public Task<SearchDiagnostics> SearchDetailedAsync(
+        string query,
+        CancellationToken cancellationToken) =>
+        SearchDetailedAsync(query, (CatalogueTrackSearchConstraint?)null, cancellationToken);
+
+    public async Task<SearchDiagnostics> SearchTracksDetailedAsync(
+        CatalogueTrackSearchConstraint constraint,
+        CancellationToken cancellationToken)
+    {
+        var generation = await GetLoadedAsync(cancellationToken);
+        if (generation is null)
+        {
+            throw new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built.");
+        }
+
+        return await generation.Resolver.SearchTracksDetailedAsync(
+            constraint,
+            cancellationToken);
+    }
 
     public async Task<RatingBrowsePage> BrowseAsync(
         int bucket,
@@ -207,7 +288,10 @@ public sealed class ProductionCatalogueSearchService :
                 cancellationToken);
 
             var validated = SqliteCatalogueSearchIndex.Open(indexPath, artifact, Descriptor);
-            await validated.SearchCatalogueAsync("validation", null, cancellationToken);
+            await validated.SearchCatalogueAsync(
+                "validation",
+                (CatalogueTrackSearchConstraint?)null,
+                cancellationToken);
             Directory.Move(stagingDirectory, generationDirectory);
             var publishedResolver = SqliteCatalogueSearchIndex.Open(
                 Path.Combine(generationDirectory, IndexFileName),

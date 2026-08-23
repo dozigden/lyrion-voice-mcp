@@ -74,7 +74,10 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
             refreshId,
             [
                 CreateTrack("track-1", "Night Signal", "album-1", "artist-1", "genre-1"),
-                CreateTrack("track-2", "Album Signal", "album-1", null, "genre-1")
+                CreateTrack("track-2", "Album Signal", "album-1", null, "genre-1") with
+                {
+                    Year = null
+                }
             ],
             TestContext.Current.CancellationToken);
         await writer.WriteArtistsAsync(
@@ -117,6 +120,9 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
             && item.Artist == "The Imaginaries"
             && item.Album == "Fictional Signals"
             && item.NativeRating == 80
+            && item.Year == 2026
+            && item.GenreKeys is not null
+            && item.GenreKeys.SequenceEqual(["IMAGINARY POP"])
             && item.ArtistIds is not null
             && item.ArtistIds.SequenceEqual(["artist-1"]));
         Assert.Contains(projected, item =>
@@ -124,6 +130,9 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
             && item.Title == "Album Signal"
             && item.Artist == "The Imaginaries"
             && item.Album == "Fictional Signals"
+            && item.Year == 2026
+            && item.GenreKeys is not null
+            && item.GenreKeys.SequenceEqual(["IMAGINARY POP"])
             && item.ArtistIds is not null
             && item.ArtistIds.SequenceEqual(["artist-1"]));
 

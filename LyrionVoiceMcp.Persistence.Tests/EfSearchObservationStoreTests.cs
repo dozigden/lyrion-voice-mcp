@@ -160,6 +160,11 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
         {
             Id = "rated-search",
             RatingConstraint = constraint,
+            Genre = "Pop",
+            RequestedFromYear = 99,
+            RequestedToYear = 0,
+            EffectiveFromYear = 1999,
+            EffectiveToYear = 2000,
             Candidates =
             [
                 new SearchObservationCandidate(
@@ -197,8 +202,16 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
             item => item.Query == observation.NormalisedQuery
                 && item.RatingConstraint is not null);
         Assert.Equal(constraint, saved?.RatingConstraint);
+        Assert.Equal("Pop", saved?.Genre);
+        Assert.Equal(99, saved?.RequestedFromYear);
+        Assert.Equal(0, saved?.RequestedToYear);
+        Assert.Equal(1999, saved?.EffectiveFromYear);
+        Assert.Equal(2000, saved?.EffectiveToYear);
         Assert.Equal(4.55m, Assert.Single(saved!.Candidates).Rating);
         Assert.Equal(constraint, exported.RatingConstraint);
+        Assert.Equal("Pop", exported.Genre);
+        Assert.Equal(1999, exported.EffectiveFromYear);
+        Assert.Equal(2000, exported.EffectiveToYear);
         Assert.Equal(4.55m, Assert.Single(exported.OriginalCandidates).Rating);
     }
 

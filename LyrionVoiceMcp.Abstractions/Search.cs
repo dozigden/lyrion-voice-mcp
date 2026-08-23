@@ -63,7 +63,9 @@ public sealed record CatalogueSearchDocument(
     string? Artist,
     string? Album,
     int NativeRating = 0,
-    IReadOnlyList<string>? ArtistIds = null);
+    IReadOnlyList<string>? ArtistIds = null,
+    int? Year = null,
+    IReadOnlyList<string>? GenreKeys = null);
 
 public sealed record CatalogueSearchDocumentBatch(
     string CatalogueRefreshId,
@@ -96,6 +98,12 @@ public sealed record RatingSearchConstraint(
     decimal Rating,
     RatingMatchMode Match);
 
+public sealed record CatalogueTrackSearchConstraint(
+    RatingSearchConstraint? RatingConstraint = null,
+    string? GenreKey = null,
+    int? FromYear = null,
+    int? ToYear = null);
+
 public sealed record CatalogueSearchResponse(
     IReadOnlyList<CatalogueSearchCandidate> Candidates,
     long RetrievalDurationMilliseconds,
@@ -117,12 +125,37 @@ public interface ICatalogueSearchResolver
             ? SearchAsync(query, cancellationToken)
             : throw new NotSupportedException(
                 "This catalogue search resolver does not support rating constraints.");
+
+    Task<CatalogueSearchResponse> SearchAsync(
+        string query,
+        CatalogueTrackSearchConstraint? constraint,
+        CancellationToken cancellationToken) =>
+        constraint is null || constraint is { GenreKey: null, FromYear: null, ToYear: null }
+            ? SearchAsync(query, constraint?.RatingConstraint, cancellationToken)
+            : throw new NotSupportedException(
+                "This catalogue search resolver does not support genre or year constraints.");
 }
 
 public interface ICatalogueArtistTrackResolver
 {
     IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
         string artistId,
+        CancellationToken cancellationToken);
+
+    IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
+        string artistId,
+        CatalogueTrackSearchConstraint? constraint,
+        CancellationToken cancellationToken) =>
+        constraint is null
+            ? ReadArtistTracksAsync(artistId, cancellationToken)
+            : throw new NotSupportedException(
+                "This catalogue artist-track resolver does not support constraints.");
+}
+
+public interface ICatalogueTrackResolver
+{
+    IAsyncEnumerable<CatalogueSearchCandidate> ReadTracksAsync(
+        CatalogueTrackSearchConstraint constraint,
         CancellationToken cancellationToken);
 }
 
@@ -164,6 +197,84 @@ public static class SearchQueryPolicy
     }
 }
 
+public sealed record YearSearchRange(
+    int RequestedFromYear,
+    int RequestedToYear,
+    int FromYear,
+    int ToYear);
+
+public sealed record YearSearchRangeValidation(
+    YearSearchRange? Value,
+    string? Error);
+
+public static class SearchConstraintPolicy
+{
+    public static string? NormaliseGenre(string? genre) =>
+        string.IsNullOrWhiteSpace(genre) ? null : genre.Trim();
+
+    public static string? GenreKey(string? genre) =>
+        NormaliseGenre(genre)?.ToUpperInvariant();
+
+    public static YearSearchRangeValidation NormaliseYearRange(
+        int? fromYear,
+        int? toYear,
+        int currentYear)
+    {
+        if (fromYear is null && toYear is null)
+        {
+            return new YearSearchRangeValidation(null, null);
+        }
+
+        if (fromYear is null || toYear is null)
+        {
+            return new YearSearchRangeValidation(
+                null,
+                "fromYear and toYear must be supplied together.");
+        }
+
+        if (currentYear is < 1000 or > 9999)
+        {
+            throw new ArgumentOutOfRangeException(nameof(currentYear));
+        }
+
+        var normalisedFrom = NormaliseYear(fromYear.Value, currentYear);
+        var normalisedTo = NormaliseYear(toYear.Value, currentYear);
+        if (normalisedFrom is null || normalisedTo is null)
+        {
+            return new YearSearchRangeValidation(
+                null,
+                $"fromYear and toYear must each be 0–99 shorthand or a full year from 1000 to {currentYear + 1}.");
+        }
+
+        return new YearSearchRangeValidation(
+            new YearSearchRange(
+                fromYear.Value,
+                toYear.Value,
+                Math.Min(normalisedFrom.Value, normalisedTo.Value),
+                Math.Max(normalisedFrom.Value, normalisedTo.Value)),
+            null);
+    }
+
+    private static int? NormaliseYear(int year, int currentYear)
+    {
+        if (year is >= 1000 && year <= currentYear + 1)
+        {
+            return year;
+        }
+
+        if (year is < 0 or > 99)
+        {
+            return null;
+        }
+
+        var currentSuffix = currentYear % 100;
+        var currentCentury = currentYear - currentSuffix;
+        return year <= currentSuffix
+            ? currentCentury + year
+            : currentCentury - 100 + year;
+    }
+}
+
 public static class SearchResultPolicy
 {
     public const int ArtistLimit = 5;
@@ -190,8 +301,11 @@ public sealed record ExactArtistMatchResult(
     string DiscographyReference);
 
 public sealed record SearchCriteria(
-    string Query,
-    RatingSearchConstraint? RatingConstraint = null);
+    string? Query,
+    RatingSearchConstraint? RatingConstraint = null,
+    string? Genre = null,
+    int? FromYear = null,
+    int? ToYear = null);
 
 public enum SearchRejectionReason
 {
@@ -219,10 +333,10 @@ public interface ISearchService
     Task<SearchOutcome> SearchAsync(
         SearchCriteria criteria,
         CancellationToken cancellationToken) =>
-        criteria.RatingConstraint is null
+        criteria is { Query: not null, RatingConstraint: null, Genre: null, FromYear: null, ToYear: null }
             ? SearchAsync(criteria.Query, cancellationToken)
             : throw new NotSupportedException(
-                "This search service does not support rating constraints.");
+                "This search service does not support structured constraints.");
 }
 
 public sealed record SearchResultReferenceValue(

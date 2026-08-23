@@ -529,6 +529,71 @@ public sealed class SearchServiceTests
     }
 
     [Fact]
+    public async Task NameFreeGenreAndYearSearchShouldStreamTracksAndRecordNormalisation()
+    {
+        var trackResolver = new StubTrackResolver([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, "track-1"),
+                "Century Pop",
+                "The Imaginaries",
+                "Imaginary Signals",
+                1_120,
+                90)
+        ]);
+        var playlists = new StubPlaylistSearch([]);
+        var observations = new RecordingSearchObservationStore();
+        var service = CreateService(
+            new StubCatalogueSearch([]),
+            playlists,
+            new ReferenceCodecTestContext().Search,
+            observations,
+            tracks: trackResolver);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria(null, Genre: "  Pop  ", FromYear: 99, ToYear: 0),
+            TestContext.Current.CancellationToken));
+
+        Assert.Single(succeeded.TopTracks);
+        Assert.Equal("POP", trackResolver.Constraint?.GenreKey);
+        Assert.Equal(1999, trackResolver.Constraint?.FromYear);
+        Assert.Equal(2000, trackResolver.Constraint?.ToYear);
+        Assert.Null(playlists.Query);
+        Assert.Equal("Pop", observations.Recorded?.Genre);
+        Assert.Equal(99, observations.Recorded?.RequestedFromYear);
+        Assert.Equal(0, observations.Recorded?.RequestedToYear);
+        Assert.Equal(1999, observations.Recorded?.EffectiveFromYear);
+        Assert.Equal(2000, observations.Recorded?.EffectiveToYear);
+        Assert.Equal(MediaEntityKind.Track, observations.Recorded?.RequestedKind);
+    }
+
+    [Theory]
+    [InlineData(1990, null)]
+    [InlineData(null, 1999)]
+    [InlineData(999, 2000)]
+    [InlineData(2000, 999)]
+    public async Task InvalidYearRangesShouldBeRejectedBeforeRetrieval(
+        int? fromYear,
+        int? toYear)
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var trackResolver = new StubTrackResolver([]);
+        var service = CreateService(
+            catalogue,
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(),
+            tracks: trackResolver);
+
+        var outcome = await service.SearchAsync(
+            new SearchCriteria(null, Genre: "Pop", FromYear: fromYear, ToYear: toYear),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<SearchRejected>(outcome);
+        Assert.Null(catalogue.Query);
+        Assert.Null(trackResolver.Constraint);
+    }
+
+    [Fact]
     public async Task RatingConstrainedExactArtistShouldRetainResolvedInterpretation()
     {
         // Arrange
@@ -703,6 +768,49 @@ public sealed class SearchServiceTests
         Assert.Contains("500 characters", rejected.Message, StringComparison.Ordinal);
         Assert.Null(catalogue.Query);
         Assert.Null(playlists.Query);
+    }
+
+    [Fact]
+    public async Task SearchShouldApplyNameLengthLimitBeforeTrimming()
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var playlists = new StubPlaylistSearch([]);
+        var service = CreateService(
+            catalogue,
+            playlists,
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var outcome = await service.SearchAsync(
+            new string(' ', 500) + "x",
+            TestContext.Current.CancellationToken);
+
+        var rejected = Assert.IsType<SearchRejected>(outcome);
+        Assert.Contains("500 characters", rejected.Message, StringComparison.Ordinal);
+        Assert.Null(catalogue.Query);
+        Assert.Null(playlists.Query);
+    }
+
+    [Fact]
+    public async Task SearchShouldApplyGenreLengthLimitBeforeTrimming()
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var tracks = new StubTrackResolver([]);
+        var service = CreateService(
+            catalogue,
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(),
+            tracks: tracks);
+
+        var outcome = await service.SearchAsync(
+            new SearchCriteria(null, Genre: new string(' ', 500) + "x"),
+            TestContext.Current.CancellationToken);
+
+        var rejected = Assert.IsType<SearchRejected>(outcome);
+        Assert.Contains("500 characters", rejected.Message, StringComparison.Ordinal);
+        Assert.Null(catalogue.Query);
+        Assert.Null(tracks.Constraint);
     }
 
     [Theory]
@@ -883,9 +991,11 @@ public sealed class SearchServiceTests
         ISearchObservationStore observations,
         ICatalogueArtistTrackResolver? artistTracks = null,
         IBrowseReferenceCodec? browseCodec = null,
-        ICatalogueArtistAlbumResolver? artistAlbums = null) => new(
+        ICatalogueArtistAlbumResolver? artistAlbums = null,
+        ICatalogueTrackResolver? tracks = null) => new(
             catalogue,
             artistTracks ?? new EmptyArtistTrackResolver(),
+            tracks ?? new EmptyTrackResolver(),
             artistAlbums ?? new EmptyArtistAlbumResolver(),
             playlists,
             codec,
@@ -895,6 +1005,7 @@ public sealed class SearchServiceTests
                 observations,
                 TimeProvider.System,
                 NullLogger<SearchObservationRecorder>.Instance),
+            TimeProvider.System,
             NullLogger<SearchService>.Instance);
 
     private sealed class StubCatalogueSearch(
@@ -906,6 +1017,7 @@ public sealed class SearchServiceTests
 
         public string? Query { get; private set; }
         public RatingSearchConstraint? RatingConstraint { get; private set; }
+        public CatalogueTrackSearchConstraint? Constraint { get; private set; }
 
         public Task<CatalogueSearchResponse> SearchAsync(
             string query,
@@ -932,6 +1044,15 @@ public sealed class SearchServiceTests
                 1));
         }
 
+        public Task<CatalogueSearchResponse> SearchAsync(
+            string query,
+            CatalogueTrackSearchConstraint? constraint,
+            CancellationToken cancellationToken)
+        {
+            Constraint = constraint;
+            return SearchAsync(query, constraint?.RatingConstraint, cancellationToken);
+        }
+
         private static bool Matches(
             int nativeRating,
             RatingSearchConstraint constraint)
@@ -956,6 +1077,36 @@ public sealed class SearchServiceTests
         {
             await Task.CompletedTask;
             yield break;
+        }
+    }
+
+    private sealed class EmptyTrackResolver : ICatalogueTrackResolver
+    {
+        public async IAsyncEnumerable<CatalogueSearchCandidate> ReadTracksAsync(
+            CatalogueTrackSearchConstraint constraint,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
+
+    private sealed class StubTrackResolver(
+        IReadOnlyList<CatalogueSearchCandidate> candidates) : ICatalogueTrackResolver
+    {
+        public CatalogueTrackSearchConstraint? Constraint { get; private set; }
+
+        public async IAsyncEnumerable<CatalogueSearchCandidate> ReadTracksAsync(
+            CatalogueTrackSearchConstraint constraint,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Constraint = constraint;
+            foreach (var candidate in candidates)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return candidate;
+                await Task.Yield();
+            }
         }
     }
 
@@ -1006,6 +1157,32 @@ public sealed class SearchServiceTests
                 await Task.Yield();
             }
         }
+
+        public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
+            string artistId,
+            CatalogueTrackSearchConstraint? constraint,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            ArtistId = artistId;
+            foreach (var candidate in candidates)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (constraint?.RatingConstraint is null
+                    || Matches(candidate.NativeRating, constraint.RatingConstraint))
+                {
+                    yield return candidate;
+                }
+
+                await Task.Yield();
+            }
+        }
+
+        private static bool Matches(
+            int nativeRating,
+            RatingSearchConstraint constraint) =>
+            constraint.Match == RatingMatchMode.Exact
+                ? nativeRating == decimal.ToInt32(constraint.Rating * 20m)
+                : nativeRating >= decimal.ToInt32(constraint.Rating * 20m);
     }
 
     private sealed class FailingArtistTrackResolver(

@@ -6,9 +6,12 @@ namespace LyrionVoiceMcp.Api.Diagnostics;
 
 public sealed record ProductionSearchDiagnosticRequest(
     string Resolver,
-    string Query,
+    string? Query = null,
     decimal? Rating = null,
-    string? RatingMatch = null);
+    string? RatingMatch = null,
+    string? Genre = null,
+    int? FromYear = null,
+    int? ToYear = null);
 
 public sealed record ProductionSearchDiagnosticExecution(
     bool ResolverPreparedForThisRequest,
@@ -34,17 +37,33 @@ public static class ProductionSearchDiagnosticValidation
             return "A JSON request body is required.";
         }
 
-        if (string.IsNullOrWhiteSpace(request.Query))
-        {
-            return "query is required.";
-        }
-
-        if (request.Query.Length > SearchQueryPolicy.MaximumLength)
+        if (request.Query?.Length > SearchQueryPolicy.MaximumLength)
         {
             return $"query must contain no more than {SearchQueryPolicy.MaximumLength} characters.";
         }
 
-        if (SearchQueryPolicy.CountNormalisedTokens(request.Query)
+        if (request.Genre?.Length > SearchQueryPolicy.MaximumLength)
+        {
+            return $"genre must contain no more than {SearchQueryPolicy.MaximumLength} characters.";
+        }
+
+        var query = string.IsNullOrWhiteSpace(request.Query) ? null : request.Query.Trim();
+        var genre = SearchConstraintPolicy.NormaliseGenre(request.Genre);
+        var yearValidation = SearchConstraintPolicy.NormaliseYearRange(
+            request.FromYear,
+            request.ToYear,
+            DateTimeOffset.UtcNow.Year);
+        if (yearValidation.Error is not null)
+        {
+            return yearValidation.Error;
+        }
+
+        if (query is null && genre is null && yearValidation.Value is null)
+        {
+            return "Supply query, genre, or both fromYear and toYear.";
+        }
+
+        if (query is not null && SearchQueryPolicy.CountNormalisedTokens(query)
             > SearchQueryPolicy.MaximumTokenCount)
         {
             return $"query must contain no more than {SearchQueryPolicy.MaximumTokenCount} words.";
@@ -77,7 +96,7 @@ public sealed class ProductionSearchDiagnosticService(
     ISearchIndexBuilder indexBuilder) : IAsyncDisposable
 {
     private static readonly ProductionSearchDiagnosticDescription DescriptionValue = new(
-        2,
+        3,
         ["production"]);
     private readonly SemaphoreSlim gate = new(1, 1);
 
@@ -102,10 +121,21 @@ public sealed class ProductionSearchDiagnosticService(
 
             process.Refresh();
             var afterResolver = process.WorkingSet64;
-            var search = await resolver.SearchDetailedAsync(
-                request.Query,
+            var yearRange = SearchConstraintPolicy.NormaliseYearRange(
+                request.FromYear,
+                request.ToYear,
+                DateTimeOffset.UtcNow.Year).Value;
+            var constraint = new CatalogueTrackSearchConstraint(
                 CreateRatingConstraint(request),
-                cancellationToken);
+                SearchConstraintPolicy.GenreKey(request.Genre),
+                yearRange?.FromYear,
+                yearRange?.ToYear);
+            var query = string.IsNullOrWhiteSpace(request.Query)
+                ? null
+                : request.Query.Trim();
+            var search = query is null
+                ? await resolver.SearchTracksDetailedAsync(constraint, cancellationToken)
+                : await resolver.SearchDetailedAsync(query, constraint, cancellationToken);
             process.Refresh();
             return new ProductionSearchDiagnosticExecution(
                 false,

@@ -9,12 +9,14 @@ namespace LyrionVoiceMcp.Services;
 internal sealed partial class SearchService(
     ICatalogueSearchResolver catalogueSearch,
     ICatalogueArtistTrackResolver artistTracks,
+    ICatalogueTrackResolver tracks,
     ICatalogueArtistAlbumResolver artistAlbums,
     ILmsPlaylistSearchClient playlistSearch,
     ISearchResultReferenceCodec referenceCodec,
     IBrowseReferenceCodec browseReferenceCodec,
     SearchCandidateSelector candidateSelector,
     SearchObservationRecorder observationRecorder,
+    TimeProvider timeProvider,
     ILogger<SearchService> logger) : ISearchService
 {
     public Task<SearchOutcome> SearchAsync(
@@ -27,38 +29,58 @@ internal sealed partial class SearchService(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(criteria);
-        var query = criteria.Query;
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return new SearchRejected(
-                SearchRejectionReason.InvalidQuery,
-                "The search name must not be empty.");
-        }
-
-        if (query.Length > SearchQueryPolicy.MaximumLength)
+        if (criteria.Query?.Length > SearchQueryPolicy.MaximumLength)
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
                 $"The search name must contain no more than {SearchQueryPolicy.MaximumLength} characters.");
         }
 
-        var normalisedQuery = query.Trim();
+        if (criteria.Genre?.Length > SearchQueryPolicy.MaximumLength)
+        {
+            return new SearchRejected(
+                SearchRejectionReason.InvalidQuery,
+                $"The genre must contain no more than {SearchQueryPolicy.MaximumLength} characters.");
+        }
+
+        var query = string.IsNullOrWhiteSpace(criteria.Query) ? null : criteria.Query.Trim();
+        var genre = SearchConstraintPolicy.NormaliseGenre(criteria.Genre);
+        var yearValidation = SearchConstraintPolicy.NormaliseYearRange(
+            criteria.FromYear,
+            criteria.ToYear,
+            timeProvider.GetUtcNow().Year);
+        if (yearValidation.Error is not null)
+        {
+            return new SearchRejected(SearchRejectionReason.InvalidQuery, yearValidation.Error);
+        }
+
+        var yearRange = yearValidation.Value;
+        if (query is null && genre is null && yearRange is null)
+        {
+            return new SearchRejected(
+                SearchRejectionReason.InvalidQuery,
+                criteria.RatingConstraint is null
+                    ? "Supply a media name, genre, or both fromYear and toYear."
+                    : "Rating-only search is not supported yet; supply a media name, genre, or both fromYear and toYear.");
+        }
+
+        var normalisedQuery = query ?? string.Empty;
         var tokenCount = SearchQueryPolicy.CountNormalisedTokens(normalisedQuery);
-        if (tokenCount == 0)
+        if (query is not null && tokenCount == 0)
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
                 "The search name must include media-name text; '*' is not a wildcard. For rating-only exploration, use browse and open Ratings.");
         }
 
-        if (tokenCount > SearchQueryPolicy.MaximumTokenCount)
+        if (query is not null && tokenCount > SearchQueryPolicy.MaximumTokenCount)
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
                 $"The search name must contain no more than {SearchQueryPolicy.MaximumTokenCount} words.");
         }
 
-        if (RatingSyntax().IsMatch(normalisedQuery))
+        if (query is not null && RatingSyntax().IsMatch(normalisedQuery))
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
@@ -74,35 +96,59 @@ internal sealed partial class SearchService(
                 "The rating must be from 0 to 5 and ratingMatch must be exact or at_least.");
         }
 
+        var trackConstraint = new CatalogueTrackSearchConstraint(
+            criteria.RatingConstraint,
+            SearchConstraintPolicy.GenreKey(genre),
+            yearRange?.FromYear,
+            yearRange?.ToYear);
+        var hasTrackConstraint = HasTrackConstraint(trackConstraint);
+        var hasGenreOrYearConstraint = trackConstraint.GenreKey is not null
+            || trackConstraint.FromYear is not null;
+
         var observation = observationRecorder.Begin(
-            query,
+            criteria.Query ?? string.Empty,
             normalisedQuery,
             catalogueSearch.Descriptor,
-            criteria.RatingConstraint);
+            criteria.RatingConstraint,
+            genre,
+            yearRange);
         var stopwatch = Stopwatch.StartNew();
+        if (query is null)
+        {
+            return await SearchWithoutNameAsync(
+                observation,
+                trackConstraint,
+                stopwatch,
+                cancellationToken);
+        }
+
         var unconstrainedCatalogueTask = ObserveCatalogueSearchAsync(
             "search:unconstrained",
             normalisedQuery,
             null,
             cancellationToken);
-        var catalogueTask = criteria.RatingConstraint is null
+        var catalogueTask = !hasTrackConstraint
             ? unconstrainedCatalogueTask
             : ObserveCatalogueSearchAsync(
-                "search:requested-rating",
+                hasGenreOrYearConstraint
+                    ? "search:requested-constraints"
+                    : "search:requested-rating",
                 normalisedQuery,
-                criteria.RatingConstraint,
+                trackConstraint,
                 cancellationToken);
-        var topRatingConstraint = TopRatingConstraint(criteria.RatingConstraint);
-        var topCatalogueTask = topRatingConstraint is null
+        var topTrackConstraint = TopTrackConstraint(trackConstraint);
+        var topCatalogueTask = topTrackConstraint is null
             ? null
-            : topRatingConstraint == criteria.RatingConstraint
+            : topTrackConstraint == trackConstraint
                 ? catalogueTask
                 : ObserveCatalogueSearchAsync(
-                    "search:top-rating",
+                    hasGenreOrYearConstraint
+                        ? "search:top-constraints"
+                        : "search:top-rating",
                     normalisedQuery,
-                    topRatingConstraint,
+                    topTrackConstraint,
                     cancellationToken);
-        var playlistTask = criteria.RatingConstraint is null
+        var playlistTask = !hasTrackConstraint
             ? playlistSearch.SearchPlaylistsAsync(normalisedQuery, cancellationToken)
             : null;
         var catalogueTasks = new List<Task<ObservedCatalogueSearch>>
@@ -167,7 +213,7 @@ internal sealed partial class SearchService(
                 cancellationToken);
         }
 
-        var catalogueCandidates = criteria.RatingConstraint is null
+        var catalogueCandidates = !hasTrackConstraint
             ? catalogueResponse!.Candidates
             : catalogueResponse!.Candidates
                 .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Track)
@@ -198,7 +244,7 @@ internal sealed partial class SearchService(
         {
             var selection = await SelectArtistTracksAsync(
                 exactArtist.Identity.Id,
-                criteria.RatingConstraint,
+                trackConstraint,
                 cancellationToken);
             catalogueRequests.Add(selection.Request);
             if (selection.Failure is not null)
@@ -215,7 +261,7 @@ internal sealed partial class SearchService(
 
             selectedTopTracks = selection.TopTracks;
             selectedTracks = selection.Tracks;
-            if (criteria.RatingConstraint is null)
+            if (!hasTrackConstraint)
             {
                 var albumSelection = await SelectArtistAlbumsAsync(
                     exactArtist.Identity.Id,
@@ -337,19 +383,94 @@ internal sealed partial class SearchService(
         return new SearchSucceeded(results, topResults, exactArtistResult);
     }
 
-    private static RatingSearchConstraint? TopRatingConstraint(
-        RatingSearchConstraint? ratingConstraint) =>
-        ratingConstraint switch
+    private async Task<SearchOutcome> SearchWithoutNameAsync(
+        SearchObservationContext observation,
+        CatalogueTrackSearchConstraint constraint,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        var selection = await SelectFilteredTracksAsync(constraint, cancellationToken);
+        IReadOnlyList<LmsSearchRequestObservation> requests = [selection.Request];
+        if (selection.Failure is not null)
+        {
+            stopwatch.Stop();
+            return await HandleCatalogueFailureAsync(
+                observation,
+                requests,
+                selection.Failure,
+                stopwatch.ElapsedMilliseconds,
+                null,
+                cancellationToken);
+        }
+
+        var candidates = selection.TopTracks
+            .Select(candidate => ToCandidate(candidate, CandidateGroup.TopTrack))
+            .Concat(selection.Tracks.Select(candidate => ToCandidate(
+                candidate,
+                CandidateGroup.Standard)))
+            .Select((candidate, index) => new SelectedCandidate(
+                candidate.Group,
+                new SearchCandidateOccurrence(
+                    index + 1,
+                    Guid.NewGuid().ToString("N"),
+                    candidate.Identity,
+                    candidate.Title,
+                    candidate.Artist,
+                    candidate.Album,
+                    candidate.NativeRating)))
+            .ToArray();
+        var observedCandidates = candidates
+            .Select(candidate => candidate.Occurrence)
+            .ToArray();
+        stopwatch.Stop();
+        await observationRecorder.RecordCompletedAsync(
+            observation,
+            requests,
+            null,
+            observedCandidates,
+            stopwatch.ElapsedMilliseconds,
+            cancellationToken);
+        var results = candidates
+            .Where(candidate => candidate.Group == CandidateGroup.Standard)
+            .Select(candidate => ToResult(candidate.Occurrence))
+            .ToArray();
+        var topResults = candidates
+            .Where(candidate => candidate.Group == CandidateGroup.TopTrack)
+            .Select(candidate => ToResult(candidate.Occurrence))
+            .ToArray();
+
+        logger.LogInformation(
+            "Name-free constrained media search returned {TopTrackCount} top tracks and {TrackCount} tracks in {ElapsedMilliseconds} ms.",
+            topResults.Length,
+            results.Length,
+            stopwatch.ElapsedMilliseconds);
+        return new SearchSucceeded(results, topResults);
+    }
+
+    private static CatalogueTrackSearchConstraint? TopTrackConstraint(
+        CatalogueTrackSearchConstraint constraint)
+    {
+        var topRating = constraint.RatingConstraint switch
         {
             null => new RatingSearchConstraint(4, RatingMatchMode.AtLeast),
             { Match: RatingMatchMode.Exact, Rating: < 4 } => null,
-            { Match: RatingMatchMode.Exact } => ratingConstraint,
-            { Match: RatingMatchMode.AtLeast, Rating: >= 4 } => ratingConstraint,
+            { Match: RatingMatchMode.Exact } exact => exact,
+            { Match: RatingMatchMode.AtLeast, Rating: >= 4 } minimum => minimum,
             { Match: RatingMatchMode.AtLeast } => new RatingSearchConstraint(
                 4,
                 RatingMatchMode.AtLeast),
             _ => null
         };
+        return topRating is null
+            ? null
+            : constraint with { RatingConstraint = topRating };
+    }
+
+    private static bool HasTrackConstraint(CatalogueTrackSearchConstraint constraint) =>
+        constraint.RatingConstraint is not null
+        || constraint.GenreKey is not null
+        || constraint.FromYear is not null
+        || constraint.ToYear is not null;
 
     private static CatalogueSearchCandidate? ExactArtist(
         IReadOnlyList<CatalogueSearchCandidate> catalogueCandidates)
@@ -386,7 +507,33 @@ internal sealed partial class SearchService(
 
     private async Task<ArtistTrackSelection> SelectArtistTracksAsync(
         string artistId,
-        RatingSearchConstraint? ratingConstraint,
+        CatalogueTrackSearchConstraint constraint,
+        CancellationToken cancellationToken)
+    {
+        var effectiveConstraint = HasTrackConstraint(constraint) ? constraint : null;
+        return await SelectTracksAsync(
+            artistTracks.ReadArtistTracksAsync(
+                artistId,
+                effectiveConstraint,
+                cancellationToken),
+            "catalogue-artist-tracks",
+            "artist-tracks",
+            cancellationToken);
+    }
+
+    private async Task<ArtistTrackSelection> SelectFilteredTracksAsync(
+        CatalogueTrackSearchConstraint constraint,
+        CancellationToken cancellationToken) =>
+        await SelectTracksAsync(
+            tracks.ReadTracksAsync(constraint, cancellationToken),
+            "catalogue-filtered-tracks",
+            "filtered-tracks",
+            cancellationToken);
+
+    private async Task<ArtistTrackSelection> SelectTracksAsync(
+        IAsyncEnumerable<CatalogueSearchCandidate> candidates,
+        string source,
+        string command,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -397,16 +544,9 @@ internal sealed partial class SearchService(
             SearchResultPolicy.ArtistTrackReservoirLimit);
         try
         {
-            await foreach (var candidate in artistTracks.ReadArtistTracksAsync(
-                artistId,
-                cancellationToken))
+            await foreach (var candidate in candidates.WithCancellation(cancellationToken))
             {
                 observedCount++;
-                if (!MatchesRating(candidate.NativeRating, ratingConstraint))
-                {
-                    continue;
-                }
-
                 regularReservoir.Consider(candidate);
                 if (candidate.NativeRating >= 80)
                 {
@@ -421,8 +561,8 @@ internal sealed partial class SearchService(
                 [],
                 [],
                 CatalogueRequest(
-                    "catalogue-artist-tracks",
-                    "artist-tracks",
+                    source,
+                    command,
                     LmsSearchRequestStatus.Failed,
                     exception.Message,
                     stopwatch.ElapsedMilliseconds,
@@ -439,8 +579,8 @@ internal sealed partial class SearchService(
             topTracks,
             SelectRegularTracks(regularReservoir.Candidates, topTracks),
             CatalogueRequest(
-                "catalogue-artist-tracks",
-                "artist-tracks",
+                source,
+                command,
                 LmsSearchRequestStatus.Completed,
                 null,
                 stopwatch.ElapsedMilliseconds,
@@ -499,7 +639,7 @@ internal sealed partial class SearchService(
     private async Task<ObservedCatalogueSearch> ObserveCatalogueSearchAsync(
         string command,
         string query,
-        RatingSearchConstraint? ratingConstraint,
+        CatalogueTrackSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -507,7 +647,7 @@ internal sealed partial class SearchService(
         {
             var response = await catalogueSearch.SearchAsync(
                 query,
-                ratingConstraint,
+                constraint,
                 cancellationToken);
             stopwatch.Stop();
             return new ObservedCatalogueSearch(
@@ -577,26 +717,6 @@ internal sealed partial class SearchService(
             failureMessage,
             durationMilliseconds,
             resultCount);
-
-    private static bool MatchesRating(
-        int nativeRating,
-        RatingSearchConstraint? ratingConstraint)
-    {
-        if (ratingConstraint is null)
-        {
-            return true;
-        }
-
-        var nativeThreshold = ratingConstraint.Rating * 20;
-        return ratingConstraint.Match switch
-        {
-            RatingMatchMode.Exact => decimal.IsInteger(nativeThreshold)
-                && nativeRating == decimal.ToInt32(nativeThreshold),
-            RatingMatchMode.AtLeast => nativeRating >= decimal.ToInt32(
-                decimal.Ceiling(nativeThreshold)),
-            _ => false
-        };
-    }
 
     private static double TopTrackWeight(CatalogueSearchCandidate candidate) =>
         1 + Math.Max(0, candidate.NativeRating - 80) / 10d;

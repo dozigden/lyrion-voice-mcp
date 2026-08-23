@@ -106,5 +106,12 @@ public sealed class CatalogueSearchDocumentSource(
         row.Artist,
         row.Album,
         row.NativeRating,
-        row.ArtistSourceIds);
+        row.ArtistSourceIds,
+        row.Year,
+        (row.GenreNames ?? [])
+            .Select(SearchConstraintPolicy.GenreKey)
+            .Where(key => key is not null)
+            .Select(key => key!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray());
 }

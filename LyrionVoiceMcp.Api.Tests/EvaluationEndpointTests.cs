@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Api.Diagnostics;
 using LyrionVoiceMcp.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,6 +18,28 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
     }
 
     [Fact]
+    public void DiagnosticValidationShouldApplyRawInputLengthLimitsBeforeTrimming()
+    {
+        var oversizedQuery = ProductionSearchDiagnosticValidation.Validate(
+            new ProductionSearchDiagnosticRequest(
+                "production",
+                Query: new string(' ', 500) + "x"));
+        var oversizedGenre = ProductionSearchDiagnosticValidation.Validate(
+            new ProductionSearchDiagnosticRequest(
+                "production",
+                Genre: new string(' ', 500) + "x"));
+
+        Assert.Contains(
+            "500 characters",
+            Assert.IsType<string>(oversizedQuery),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "500 characters",
+            Assert.IsType<string>(oversizedGenre),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DiscoveryShouldAdvertiseOnlyTheProductionResolver()
     {
         using var client = factory.CreateClient();
@@ -29,7 +52,7 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(2, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(3, document.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(
             "production",
             Assert.Single(document.RootElement.GetProperty("resolvers").EnumerateArray())

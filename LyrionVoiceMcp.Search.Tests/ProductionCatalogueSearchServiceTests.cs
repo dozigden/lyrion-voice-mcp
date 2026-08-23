@@ -87,7 +87,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
             "unrated signal",
             TestContext.Current.CancellationToken);
 
-        Assert.Equal("5", rebuilt.Artifact.ResolverVersion);
+        Assert.Equal("6", rebuilt.Artifact.ResolverVersion);
         Assert.Equal(
             67,
             Assert.Single(rated.Candidates, candidate =>
@@ -312,6 +312,94 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GenreAndYearConstraintsShouldBeAppliedBeforeRetrievalLaneLimits()
+    {
+        var documents = Enumerable.Range(0, 81)
+            .Select(index => new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, $"other-{index}"),
+                $"Copper Era Signal {index}",
+                "The Imaginaries",
+                "Imaginary Signals",
+                Year: 1995,
+                GenreKeys: ["ROCK"]))
+            .Append(new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "eligible"),
+                "Copper Era Signal Eligible",
+                "The Imaginaries",
+                "Imaginary Signals",
+                Year: 1996,
+                GenreKeys: ["POP"]))
+            .ToArray();
+        await using var service = CreateService(new DocumentSource(documents));
+        await RebuildAsync(service, "refresh-genre-year-limits", 53);
+
+        var response = await service.SearchAsync(
+            "copper era signal",
+            new CatalogueTrackSearchConstraint(
+                GenreKey: "POP",
+                FromYear: 1990,
+                ToYear: 1999),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["eligible"], Ids(response));
+    }
+
+    [Fact]
+    public async Task TrackStreamShouldCombineRatingGenreAndInclusiveYearConstraints()
+    {
+        var source = new DocumentSource([
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "eligible"),
+                "Eligible",
+                "The Imaginaries",
+                "Imaginary Signals",
+                90,
+                Year: 2000,
+                GenreKeys: ["POP"]),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "wrong-rating"),
+                "Wrong Rating",
+                "The Imaginaries",
+                "Imaginary Signals",
+                79,
+                Year: 2000,
+                GenreKeys: ["POP"]),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "wrong-year"),
+                "Wrong Year",
+                "The Imaginaries",
+                "Imaginary Signals",
+                100,
+                Year: 2001,
+                GenreKeys: ["POP"]),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "wrong-genre"),
+                "Wrong Genre",
+                "The Imaginaries",
+                "Imaginary Signals",
+                100,
+                Year: 2000,
+                GenreKeys: ["ROCK"])
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-track-constraints", 54);
+
+        var candidates = new List<CatalogueSearchCandidate>();
+        await foreach (var candidate in service.ReadTracksAsync(
+            new CatalogueTrackSearchConstraint(
+                new RatingSearchConstraint(4m, RatingMatchMode.AtLeast),
+                "POP",
+                2000,
+                2000),
+            TestContext.Current.CancellationToken))
+        {
+            candidates.Add(candidate);
+        }
+
+        Assert.Equal("eligible", Assert.Single(candidates).Identity.Id);
+    }
+
+    [Fact]
     public async Task RatingBrowseShouldFloorBucketsAndOrderByNativeRatingThenTitle()
     {
         var source = new DocumentSource([
@@ -409,7 +497,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task VersionFourArtifactShouldBeIncompatibleWithArtistAlbumExpansion()
+    public async Task VersionFiveArtifactShouldBeIncompatibleWithTrackConstraints()
     {
         var source = new DocumentSource([
             new CatalogueSearchDocument(
@@ -434,12 +522,12 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
         var manifest = await File.ReadAllTextAsync(
             manifestPath,
             TestContext.Current.CancellationToken);
-        Assert.Contains("\"resolverVersion\":\"5\"", manifest, StringComparison.Ordinal);
+        Assert.Contains("\"resolverVersion\":\"6\"", manifest, StringComparison.Ordinal);
         await File.WriteAllTextAsync(
             manifestPath,
             manifest.Replace(
+                "\"resolverVersion\":\"6\"",
                 "\"resolverVersion\":\"5\"",
-                "\"resolverVersion\":\"4\"",
                 StringComparison.Ordinal),
             TestContext.Current.CancellationToken);
         await using var restarted = CreateService(source);

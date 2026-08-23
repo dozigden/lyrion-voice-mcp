@@ -52,7 +52,7 @@
         :to="{ name: 'search-observation-detail', params: { id: item.id } }"
       >
         <div>
-          <span class="query">{{ item.originalQuery }}</span>
+          <span class="query">{{ item.originalQuery || 'Constraint-only search' }}</span>
           <span class="meta">{{ formatDate(item.createdAt) }} · {{ item.resolver }} v{{ item.resolverVersion }}</span>
         </div>
         <div class="signals">
