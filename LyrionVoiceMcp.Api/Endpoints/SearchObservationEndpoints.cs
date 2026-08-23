@@ -152,7 +152,8 @@ public static class SearchObservationEndpoints
             request.DurationMilliseconds, request.ResultCount)).ToArray(),
         item.Candidates.Select(candidate => new SearchCandidateObservationResponse(
             candidate.Position, candidate.CorrelationId, ToText(candidate.Identity.Kind), candidate.Title,
-            candidate.Artist, candidate.Album, candidate.Rating, candidate.SelectedAt)).ToArray(),
+            candidate.Artist, candidate.Album, candidate.Rating, candidate.SelectedAt,
+            candidate.IsExactArtistMatch)).ToArray(),
         item.Review is null ? null : new SearchObservationReviewResponse(
             ToText(item.Review.Classification), item.Review.ExpectedCorrelationId,
             item.Review.ExpectedKind is null ? null : ToText(item.Review.ExpectedKind.Value),

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { browseSearchObservations, saveSearchReview } from './searchObservationsApi';
+import { browseSearchObservations, getSearchObservation, saveSearchReview } from './searchObservationsApi';
 
 describe('search observations API', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -42,5 +42,26 @@ describe('search observations API', () => {
 
     // Assert
     expect(fetch).toHaveBeenCalledWith('/api/search-observations/one/review', expect.objectContaining({ method: 'PUT' }));
+  });
+
+  it('requires the exact artist interpretation marker on candidates', async () => {
+    // Arrange
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      id: 'one', createdAt: '2026-08-23T15:00:00Z', originalQuery: 'The Copper Lines', normalisedQuery: 'The Copper Lines',
+      rating: null, ratingMatch: null, requestedKind: null, provider: 'catalogue+lms', collection: 'whole_library',
+      resolver: 'catalogue-phuzzy-sqlite', resolverVersion: '4', status: 'completed', failureMessage: null,
+      totalDurationMilliseconds: 12, retrievalDurationMilliseconds: 10, processingDurationMilliseconds: 2, requests: [],
+      candidates: [{
+        position: 1, correlationId: 'exact-artist-correlation', kind: 'artist', title: 'The Copper Lines',
+        artist: null, album: null, rating: null, selectedAt: null, isExactArtistMatch: true
+      }],
+      review: null, retentionDays: 90
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    // Act
+    const detail = await getSearchObservation('one');
+
+    // Assert
+    expect(detail.candidates[0]?.isExactArtistMatch).toBe(true);
   });
 });

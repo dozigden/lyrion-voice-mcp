@@ -168,6 +168,7 @@ public sealed class EfSearchObservationStore(
             Artist = candidate.Artist,
             Album = candidate.Album,
             Rating = candidate.Rating,
+            IsExactArtistMatch = candidate.IsExactArtistMatch,
             Selection = candidate.SelectedAt is null
                 ? null
                 : new EntitySearchObservationSelection
@@ -240,7 +241,8 @@ public sealed class EfSearchObservationStore(
                 item.Selection is null
                     ? null
                     : ToDateTimeOffset(item.Selection.SelectedAtUtc),
-                item.Rating))
+                item.Rating,
+                item.IsExactArtistMatch))
             .ToArray(),
         observation.Review is null ? null : ToModel(observation.Review),
         observation.Rating is null || observation.RatingMatch is null

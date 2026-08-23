@@ -24,5 +24,7 @@ public sealed class EntitySearchObservationCandidate
 
     public decimal? Rating { get; set; }
 
+    public bool IsExactArtistMatch { get; set; }
+
     public EntitySearchObservationSelection? Selection { get; set; }
 }

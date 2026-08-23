@@ -59,7 +59,8 @@ public sealed class SearchObservationRecorderTests
                 new MediaIdentity(MediaEntityKind.Artist, "artist-7"),
                 "Copper Lines",
                 null,
-                null)
+                null,
+                IsExactArtistMatch: true)
         };
 
         await recorder.RecordCompletedAsync(
@@ -97,6 +98,7 @@ public sealed class SearchObservationRecorderTests
         var candidate = Assert.Single(recorded.Candidates);
         Assert.Equal("candidate-correlation", candidate.CorrelationId);
         Assert.Equal("Copper Lines", candidate.Title);
+        Assert.True(candidate.IsExactArtistMatch);
     }
 
     [Fact]

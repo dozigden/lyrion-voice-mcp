@@ -8,6 +8,10 @@ public sealed record SearchRequest(string Query);
 
 public sealed record SearchArtist(string Name, string BrowseRef);
 
+public sealed record SearchExactArtistMatch(
+    string Name,
+    string DiscographyBrowseRef);
+
 public sealed record SearchAlbum(
     string Title,
     string? Artist,
@@ -29,6 +33,7 @@ public sealed record SearchPlaylist(
 
 public sealed record SearchResponse(
     string Guidance,
+    SearchExactArtistMatch? ExactArtistMatch,
     IReadOnlyList<SearchArtist> Artists,
     IReadOnlyList<SearchAlbum> Albums,
     IReadOnlyList<SearchTrack> TopTracks,

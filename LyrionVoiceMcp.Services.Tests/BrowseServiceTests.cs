@@ -327,6 +327,50 @@ public sealed class BrowseServiceTests
     }
 
     [Fact]
+    public async Task DiscographyReferenceShouldBrowseOnlyAlbumArtistAlbums()
+    {
+        // Arrange
+        var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage(
+        [
+            new LmsBrowseItem(
+                BrowseItemKind.Album,
+                "201",
+                "Fictional Frequencies",
+                "The Paper Comets",
+                null)
+        ],
+        2));
+        var references = new ReferenceCodecTestContext();
+        var correlationId = "123456781234123412341234567890ab";
+        var reference = references.Browse.Encode(new BrowseReferenceValue(
+            new BrowseTarget(BrowseTargetKind.AlbumArtistAlbums, "101", 0),
+            null,
+            correlationId));
+        var service = new BrowseService(
+            lmsClient,
+            NullRatingBrowseResolver.Instance,
+            references.Browse,
+            references.Search);
+
+        // Act
+        var outcome = await service.BrowseAsync(
+            reference,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var result = Assert.IsType<BrowseSucceeded>(outcome);
+        Assert.Equal(LmsBrowseQueryKind.AlbumArtistAlbums, lmsClient.Request?.Kind);
+        Assert.Equal("101", lmsClient.Request?.FilterId);
+        Assert.Equal(
+            correlationId,
+            references.Browse.TryDecode(Assert.Single(result.Items).Reference)
+                ?.SearchCorrelationId);
+        Assert.Equal(
+            correlationId,
+            references.Browse.TryDecode(result.Continuation!)?.SearchCorrelationId);
+    }
+
+    [Fact]
     public async Task TrackSearchReferenceShouldReturnANotBrowsableError()
     {
         // Arrange

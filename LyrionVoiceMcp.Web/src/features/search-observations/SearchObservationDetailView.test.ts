@@ -65,4 +65,59 @@ describe('SearchObservationDetailView', () => {
     expect(wrapper.get('input[type="checkbox"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('select').element.value).toBe('other');
   });
+
+  it('labels a resolved exact artist candidate', async () => {
+    // Arrange
+    vi.spyOn(api, 'getSearchObservation').mockResolvedValue({
+      id: 'exact-artist-search',
+      createdAt: '2026-08-23T15:00:00Z',
+      originalQuery: 'The Copper Lines',
+      normalisedQuery: 'The Copper Lines',
+      rating: null,
+      ratingMatch: null,
+      requestedKind: null,
+      provider: 'catalogue+lms',
+      collection: 'whole_library',
+      resolver: 'catalogue-phuzzy-sqlite',
+      resolverVersion: '4',
+      status: 'completed',
+      failureMessage: null,
+      totalDurationMilliseconds: 12,
+      retrievalDurationMilliseconds: 10,
+      processingDurationMilliseconds: 2,
+      requests: [],
+      candidates: [{
+        position: 1,
+        correlationId: 'exact-artist-correlation',
+        kind: 'artist',
+        title: 'The Copper Lines',
+        artist: null,
+        album: null,
+        rating: null,
+        selectedAt: null,
+        isExactArtistMatch: true
+      }],
+      review: null,
+      retentionDays: 90
+    });
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/search-observations', name: 'search-observations', component: { template: '<div />' } },
+        { path: '/search-observations/:id', name: 'detail', component: SearchObservationDetailView }
+      ]
+    });
+    await router.push('/search-observations/exact-artist-search');
+    await router.isReady();
+
+    // Act
+    const wrapper = mount(SearchObservationDetailView, {
+      global: { plugins: [createPinia(), router] }
+    });
+    await flushPromises();
+
+    // Assert
+    expect(wrapper.text()).toContain('The Copper Lines');
+    expect(wrapper.text()).toContain('exact artist match');
+  });
 });

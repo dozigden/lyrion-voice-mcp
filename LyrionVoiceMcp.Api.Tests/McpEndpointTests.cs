@@ -51,11 +51,11 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Search results are separated into artists, albums, tracks, and playlists",
+            "When search returns exactArtistMatch",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Pass browseRef values to browse",
+            "Pass browse references to browse",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -114,6 +114,16 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("properties")
             .GetProperty("topTracks")
             .GetProperty("items");
+        var searchOutput = searchTool.GetProperty("outputSchema");
+        var exactArtistSchema = searchOutput
+            .GetProperty("properties")
+            .GetProperty("exactArtistMatch");
+        Assert.Contains(
+            searchOutput.GetProperty("required").EnumerateArray(),
+            property => property.GetString() == "exactArtistMatch");
+        Assert.Contains(
+            exactArtistSchema.GetProperty("type").EnumerateArray(),
+            type => type.GetString() == "null");
         Assert.True(searchTool
             .GetProperty("outputSchema")
             .GetProperty("properties")
@@ -126,7 +136,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
         Assert.Equal(
-            "Search for artists, albums, tracks, or playlists by name. Returns relevant 4+ top tracks separately and varies equally relevant track matches. Use the separate rating and ratingMatch fields to narrow track results. * is not a wildcard.",
+            "Search for artists, albums, tracks, or playlists by name. Reports a unique exact artist separately with a complete discography browse reference, returns relevant 4+ top tracks separately, and varies equally relevant track matches. Use rating and ratingMatch to narrow tracks. * is not a wildcard.",
             searchTool.GetProperty("description").GetString());
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         var browseTool = Assert.Single(
@@ -268,6 +278,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         var structuredContent = document.RootElement
             .GetProperty("result")
             .GetProperty("structuredContent");
+        Assert.Equal(JsonValueKind.Null, structuredContent.GetProperty("exactArtistMatch").ValueKind);
         var artist = Assert.Single(structuredContent.GetProperty("artists").EnumerateArray());
         Assert.Equal("The Copper Lines", artist.GetProperty("name").GetString());
         Assert.Equal("opaque-reference", artist.GetProperty("browseRef").GetString());
@@ -310,6 +321,54 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Equal("succeeded", recorded!.Status);
         Assert.Contains("copper lines", recorded.ArgumentsJson, StringComparison.Ordinal);
         Assert.Contains("The Copper Lines", recorded.ResultJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SearchToolShouldExposeAResolvedExactArtistSeparately()
+    {
+        // Arrange
+        var outcome = new SearchSucceeded(
+            [],
+            [],
+            new ExactArtistMatchResult(
+                "The Copper Lines",
+                "album_artist_discography-reference"));
+        await using var searchFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISearchService>();
+                services.AddSingleton<ISearchService>(new StubSearchService(outcome));
+            }));
+        using var client = searchFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            33,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"name":"copper lines"}}
+            """,
+            "search");
+
+        // Act
+        var response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected an OK MCP response but received {(int)response.StatusCode}: {body}");
+        using var document = ParseJsonRpcResponse(body);
+        var structuredContent = document.RootElement
+            .GetProperty("result")
+            .GetProperty("structuredContent");
+        var exactArtist = structuredContent.GetProperty("exactArtistMatch");
+        Assert.Equal("The Copper Lines", exactArtist.GetProperty("name").GetString());
+        Assert.Equal(
+            "album_artist_discography-reference",
+            exactArtist.GetProperty("discographyBrowseRef").GetString());
+        Assert.Empty(structuredContent.GetProperty("artists").EnumerateArray());
     }
 
     [Fact]

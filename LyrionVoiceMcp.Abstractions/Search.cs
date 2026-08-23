@@ -177,6 +177,10 @@ public sealed record SearchCandidateResult(
     string? Album,
     int NativeRating = 0);
 
+public sealed record ExactArtistMatchResult(
+    string Name,
+    string DiscographyReference);
+
 public sealed record SearchCriteria(
     string Query,
     RatingSearchConstraint? RatingConstraint = null);
@@ -191,7 +195,8 @@ public abstract record SearchOutcome;
 
 public sealed record SearchSucceeded(
     IReadOnlyList<SearchCandidateResult> Results,
-    IReadOnlyList<SearchCandidateResult> TopTracks) : SearchOutcome;
+    IReadOnlyList<SearchCandidateResult> TopTracks,
+    ExactArtistMatchResult? ExactArtistMatch = null) : SearchOutcome;
 
 public sealed record SearchRejected(
     SearchRejectionReason Reason,

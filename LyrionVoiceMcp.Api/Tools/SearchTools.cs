@@ -12,7 +12,7 @@ namespace LyrionVoiceMcp.Api.Tools;
 public sealed class SearchTools(ISearchService searchService)
 {
     private const string ReferenceGuidance =
-        "topTracks are relevant tracks rated 4 or higher; tracks are varied matches and exclude tracks already shown in topTracks. Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating.";
+        "When exactArtistMatch is present, the query resolved to that artist, artists is empty, and discographyBrowseRef opens every album credited to that album artist. Otherwise artists contains unresolved artist candidates. topTracks are relevant tracks rated 4 or higher; tracks are varied matches and exclude tracks already shown in topTracks. Pass a browseRef to browse to continue navigating.";
 
     [McpServerTool(
         Name = "search",
@@ -23,7 +23,7 @@ public sealed class SearchTools(ISearchService searchService)
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(SearchResponse))]
-    [Description("Search for artists, albums, tracks, or playlists by name. Returns relevant 4+ top tracks separately and varies equally relevant track matches. Use the separate rating and ratingMatch fields to narrow track results. * is not a wildcard.")]
+    [Description("Search for artists, albums, tracks, or playlists by name. Reports a unique exact artist separately with a complete discography browse reference, returns relevant 4+ top tracks separately, and varies equally relevant track matches. Use rating and ratingMatch to narrow tracks. * is not a wildcard.")]
     public async Task<CallToolResult> SearchAsync(
         [Description("Artist, album, track, or playlist name text only, up to 500 characters and 20 words. Do not include ratings or search syntax; use rating and ratingMatch instead. Wildcards are not supported.")] string name,
         [Description("Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch; do not put the rating in name.")] decimal? rating = null,
@@ -45,7 +45,8 @@ public sealed class SearchTools(ISearchService searchService)
             {
                 SearchSucceeded succeeded => SuccessResult(MapResponse(
                     succeeded.Results,
-                    succeeded.TopTracks)),
+                    succeeded.TopTracks,
+                    succeeded.ExactArtistMatch)),
                 SearchRejected rejected => ErrorResult(rejected.Message),
                 _ => throw new UnreachableException(
                     $"Unsupported search outcome {outcome.GetType().Name}.")
@@ -76,9 +77,15 @@ public sealed class SearchTools(ISearchService searchService)
 
     private static SearchResponse MapResponse(
         IReadOnlyList<SearchCandidateResult> candidates,
-        IReadOnlyList<SearchCandidateResult> topTracks) =>
+        IReadOnlyList<SearchCandidateResult> topTracks,
+        ExactArtistMatchResult? exactArtistMatch) =>
         new(
             ReferenceGuidance,
+            exactArtistMatch is null
+                ? null
+                : new SearchExactArtistMatch(
+                    exactArtistMatch.Name,
+                    exactArtistMatch.DiscographyReference),
             candidates
                 .Where(candidate => candidate.Kind == MediaEntityKind.Artist)
                 .Select(candidate => new SearchArtist(

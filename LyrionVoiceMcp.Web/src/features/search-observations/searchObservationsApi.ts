@@ -38,6 +38,7 @@ export interface SearchCandidateObservation {
   album: string | null;
   rating: number | null;
   selectedAt: string | null;
+  isExactArtistMatch: boolean;
 }
 
 export interface SearchReview {
@@ -170,7 +171,8 @@ function isDetail(value: unknown): value is SearchObservationDetail {
     && isNumber(value.totalDurationMilliseconds) && isNumber(value.retrievalDurationMilliseconds)
     && isNumber(value.processingDurationMilliseconds) && Array.isArray(value.requests)
     && Array.isArray(value.candidates) && value.candidates.every(candidate =>
-      isRecord(candidate) && (candidate.rating === null || isRating(candidate.rating)))
+      isRecord(candidate) && (candidate.rating === null || isRating(candidate.rating))
+        && typeof candidate.isExactArtistMatch === 'boolean')
     && isNumber(value.retentionDays)
     && (value.review === null || isRecord(value.review));
 }

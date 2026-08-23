@@ -11,6 +11,7 @@ internal sealed partial class SearchService(
     ICatalogueArtistTrackResolver artistTracks,
     ILmsPlaylistSearchClient playlistSearch,
     ISearchResultReferenceCodec referenceCodec,
+    IBrowseReferenceCodec browseReferenceCodec,
     SearchCandidateSelector candidateSelector,
     SearchObservationRecorder observationRecorder,
     ILogger<SearchService> logger) : ISearchService
@@ -210,8 +211,12 @@ internal sealed partial class SearchService(
             selectedTracks = selection.Tracks;
         }
 
+        var exactArtistCandidate = exactArtist is null
+            ? Array.Empty<Candidate>()
+            : [ToCandidate(exactArtist, CandidateGroup.ExactArtist)];
         var nonTrackCandidates = catalogueCandidates
-            .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Artist)
+            .Where(candidate => exactArtist is null
+                && candidate.Identity.Kind == MediaEntityKind.Artist)
             .Take(SearchResultPolicy.ArtistLimit)
             .Concat(catalogueCandidates
                 .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Album)
@@ -235,7 +240,8 @@ internal sealed partial class SearchService(
         var topCandidates = selectedTopTracks
             .Select(candidate => ToCandidate(candidate, CandidateGroup.TopTrack))
             .ToArray();
-        var candidates = nonTrackCandidates
+        var candidates = exactArtistCandidate
+            .Concat(nonTrackCandidates)
             .Concat(topCandidates)
             .Concat(selectedTracks.Select(candidate => ToCandidate(candidate, CandidateGroup.Standard)))
             .Concat(playlistCandidates)
@@ -248,7 +254,8 @@ internal sealed partial class SearchService(
                     candidate.Title,
                     candidate.Artist,
                     candidate.Album,
-                    candidate.NativeRating)))
+                    candidate.NativeRating,
+                    candidate.Group == CandidateGroup.ExactArtist)))
             .ToArray();
         var observedCandidates = candidates
             .Select(candidate => candidate.Occurrence)
@@ -277,6 +284,10 @@ internal sealed partial class SearchService(
             .Where(candidate => candidate.Group == CandidateGroup.TopTrack)
             .Select(candidate => ToResult(candidate.Occurrence))
             .ToArray();
+        var exactArtistResult = candidates
+            .Where(candidate => candidate.Group == CandidateGroup.ExactArtist)
+            .Select(candidate => ToExactArtistMatch(candidate.Occurrence))
+            .SingleOrDefault();
         await observationRecorder.RecordCompletedAsync(
             observation,
             catalogueRequests,
@@ -286,15 +297,16 @@ internal sealed partial class SearchService(
             cancellationToken);
 
         logger.LogInformation(
-            "Media search for {Query} returned {ArtistCount} artists, {AlbumCount} albums, {TopTrackCount} top tracks, {TrackCount} tracks, and {PlaylistCount} playlists in {ElapsedMilliseconds} ms.",
+            "Media search for {Query} resolved exact artist {ExactArtist}, and returned {ArtistCount} artist candidates, {AlbumCount} albums, {TopTrackCount} top tracks, {TrackCount} tracks, and {PlaylistCount} playlists in {ElapsedMilliseconds} ms.",
             normalisedQuery,
+            exactArtistResult?.Name,
             results.Count(result => result.Kind == MediaEntityKind.Artist),
             results.Count(result => result.Kind == MediaEntityKind.Album),
             topResults.Length,
             results.Count(result => result.Kind == MediaEntityKind.Track),
             results.Count(result => result.Kind == MediaEntityKind.Playlist),
             stopwatch.ElapsedMilliseconds);
-        return new SearchSucceeded(results, topResults);
+        return new SearchSucceeded(results, topResults, exactArtistResult);
     }
 
     private static RatingSearchConstraint? TopRatingConstraint(
@@ -535,6 +547,17 @@ internal sealed partial class SearchService(
             candidate.Album,
             candidate.NativeRating);
 
+    private ExactArtistMatchResult ToExactArtistMatch(
+        SearchCandidateOccurrence candidate) => new(
+            candidate.Title,
+            browseReferenceCodec.Encode(new BrowseReferenceValue(
+                new BrowseTarget(
+                    BrowseTargetKind.AlbumArtistAlbums,
+                    candidate.Identity.Id,
+                    0),
+                null,
+                candidate.CorrelationId)));
+
     [GeneratedRegex(
         @"(?:\b(?:rating|rated)\s*(?:(?:at\s+least|exactly|of)\s*)?(?::|=)?\s*\d+(?:\.\d+)?(?:\s*(?:\+|/5))?|\b\d+(?:\.\d+)?\s*(?:\+|/5)?\s*(?:star(?:s)?|rating)\b|\b[0-5](?:\.\d+)?\s*\+(?=\s|$))",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
@@ -566,6 +589,7 @@ internal sealed partial class SearchService(
 
     private enum CandidateGroup
     {
+        ExactArtist,
         Standard,
         TopTrack
     }

@@ -20,7 +20,7 @@ During MCP initialisation, the server supplies concise agent guidance connecting
 
 ## Result references
 
-Every candidate returned by `search` has one opaque result handle which the caller passes back unchanged. The response exposes that handle as `browseRef`, `playRef`, or both according to the candidate's capabilities. An album or playlist uses the same handle for both fields.
+Every ordinary candidate returned by `search` has one opaque result handle which the caller passes back unchanged. The response exposes that handle as `browseRef`, `playRef`, or both according to the candidate's capabilities. An album or playlist uses the same handle for both fields. A resolved `exactArtistMatch` instead exposes a dedicated correlated `discographyBrowseRef`.
 
 That single reference combines:
 
@@ -41,11 +41,11 @@ Every item returned by `browse` can contain a `browseRef`, a `playRef`, or both.
 
 The input has a required `name` field containing only meaningful artist, album, track, or playlist name text of at most 500 characters and 20 words. Optional `rating` and `ratingMatch` fields must be supplied together. `rating` is a decimal number from 0 to 5; `ratingMatch` is `exact` for exactly that rating or `at_least` for that rating and higher, so rating 4 with `at_least` means 4+. Ratings and rating syntax belong in those separate fields, never in `name`; recognisable misplaced numeric rating syntax returns a corrective tool error. Without a rating constraint, search uses the production catalogue resolver followed by isolated LMS playlist discovery. With one, search returns catalogue tracks only and does not query playlists.
 
-The structured response contains concise recursive-browse guidance and five required lists. `artists` contain `name` and `browseRef`; `albums` contain title, nullable artist, `browseRef`, and `playRef`; `topTracks` and `tracks` contain title, nullable artist and album, numeric 0–5 `rating`, and `playRef`; `playlists` contain title, `browseRef`, and `playRef`. Empty lists represent no matches.
+The structured response contains concise recursive-browse guidance, a required nullable `exactArtistMatch`, and five required lists. When present, `exactArtistMatch` contains the resolved artist `name` and a `discographyBrowseRef`; `artists` is then empty. Otherwise `exactArtistMatch` is explicit JSON `null` and `artists` contains unresolved candidates with `name` and `browseRef`. `albums` contain title, nullable artist, `browseRef`, and `playRef`; `topTracks` and `tracks` contain title, nullable artist and album, numeric 0–5 `rating`, and `playRef`; `playlists` contain title, `browseRef`, and `playRef`. Empty lists represent no matches.
 
 Search returns up to 5 artists, 5 albums, 5 top tracks, 30 tracks, and 5 playlists; playlists preserve LMS order. `topTracks` contains relevant tracks rated 4 or above, intersected with any explicit rating constraint. Within an equal-relevance band, higher ratings improve top-track selection odds, but rating is not a strict ordering and eligible four-star tracks retain a chance of appearing. The ordinary `tracks` population still includes highly rated tracks, but the particular selected `topTracks` are removed from `tracks` in the final response. Track ordering preserves relevance score bands, varies candidates within equal-score bands, and spreads albums within a band. These are central internal caps rather than request parameters. Search has no continuation or caller-selected limit.
 
-When the whole query uniquely and exactly identifies an artist, with no equally exact album or track, search draws from that artist's canonical complete track relationship instead of the bounded text-retrieval lanes. This expansion is streamed through bounded rotating pools. Duplicate exact artists and fuzzy artist matches retain ordinary search behaviour.
+When the whole query uniquely and exactly identifies an artist, with no equally exact album or track, search draws from that artist's canonical complete track relationship instead of the bounded text-retrieval lanes and populates `exactArtistMatch`. Its `discographyBrowseRef` opens every album where that identity is the album artist, excluding compilations and guest appearances where it occurs only as a track artist. This expansion is streamed through bounded rotating pools. Rating-constrained searches preserve the same exact-artist representation. Duplicate exact artists, fuzzy artist matches, and exact album or track conflicts—including self-titled albums—retain ordinary search behaviour.
 
 Native LMS zero, including a missing rating normalised during import, is public rating `0`; there is no separate unrated value. The native LMS 0–100 value is not public.
 
@@ -72,7 +72,7 @@ Passing a browsable item reference descends through the local library:
 
 Rating buckets floor the public decimal: native 0–19 appears under `0`, 20–39 under `1`, 40–59 under `2`, 60–79 under `3`, 80–99 under `4`, and 100 under `5`. Rating-only 4+ exploration therefore combines buckets 4 and 5. Tracks within a bucket are ordered by native rating descending, then title, artist, album, and stable identity.
 
-Artist, album, and playlist `browseRef` values returned by `search` can enter the same hierarchy directly. Artist search results lead to albums, album results lead to tracks, and playlist results lead to playlist tracks. Track results contain only a `playRef`. Search-derived descendants and continuations retain the originating candidate correlation until a playable result is used.
+Artist, album, and playlist `browseRef` values returned by `search` can enter the same hierarchy directly. Unresolved artist search results lead to their albums; an exact artist's `discographyBrowseRef` leads specifically to every album credited to that album artist. Album results lead to tracks, and playlist results lead to playlist tracks. Track results contain only a `playRef`. Search-derived descendants and continuations retain the originating candidate correlation until a playable result is used.
 
 Pages use an internal 50-item size. The caller cannot select an offset, limit, filter, or sort order. When more results remain, the response contains an opaque `nextBrowseRef` which is passed back to `browse`.
 

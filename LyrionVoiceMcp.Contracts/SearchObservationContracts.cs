@@ -58,7 +58,8 @@ public sealed record SearchCandidateObservationResponse(
     string? Artist,
     string? Album,
     decimal? Rating,
-    DateTimeOffset? SelectedAt);
+    DateTimeOffset? SelectedAt,
+    bool IsExactArtistMatch);
 
 public sealed record SearchObservationReviewResponse(
     string Classification,

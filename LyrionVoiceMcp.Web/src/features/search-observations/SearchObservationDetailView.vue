@@ -52,7 +52,7 @@
         <ol v-else class="candidate-list">
           <li v-for="candidate in item.candidates" :key="candidate.correlationId" :class="{ selected: candidate.selectedAt }">
             <span class="position">{{ candidate.position }}</span>
-            <div><strong>{{ candidate.title }}</strong><span>{{ candidate.kind }}<template v-if="candidate.artist"> · {{ candidate.artist }}</template><template v-if="candidate.album"> · {{ candidate.album }}</template><template v-if="candidate.rating !== null"> · rating {{ candidate.rating }}</template></span></div>
+            <div><strong>{{ candidate.title }}</strong><span>{{ candidate.kind }}<template v-if="candidate.isExactArtistMatch"> · exact artist match</template><template v-if="candidate.artist"> · {{ candidate.artist }}</template><template v-if="candidate.album"> · {{ candidate.album }}</template><template v-if="candidate.rating !== null"> · rating {{ candidate.rating }}</template></span></div>
             <span v-if="candidate.selectedAt" class="played">Played</span>
           </li>
         </ol>

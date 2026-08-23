@@ -71,8 +71,10 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
             observation.Id,
             TestContext.Current.CancellationToken);
         Assert.NotNull(saved);
+        Assert.True(saved.Candidates[0].IsExactArtistMatch);
         var selected = Assert.Single(saved.Candidates, item => item.Position == 2);
         Assert.Equal(Now, selected.SelectedAt);
+        Assert.False(selected.IsExactArtistMatch);
         Assert.Equal(LmsSearchRequestStatus.Failed, saved.Requests[1].Status);
         Assert.Equal("Playlist provider unavailable.", saved.Requests[1].FailureMessage);
         Assert.Equal(SearchReviewClassification.WrongOrder, saved.Review?.Classification);
@@ -264,7 +266,8 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
                 "ZYRAQ",
                 null,
                 null,
-                null),
+                null,
+                IsExactArtistMatch: true),
             new SearchObservationCandidate(
                 2,
                 "correlation-2",
