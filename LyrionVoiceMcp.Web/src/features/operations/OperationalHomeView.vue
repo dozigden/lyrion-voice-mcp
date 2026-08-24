@@ -7,49 +7,10 @@
         <span></span>
         <span></span>
       </div>
-      <div>
-        <p class="eyebrow">Lyrion Music Server · Model Context Protocol</p>
-        <h1 id="page-title">Lyrion Voice MCP</h1>
-        <p class="hero__summary">
-          A voice-oriented bridge to your music library and players.
-        </p>
-      </div>
+      <h1 id="page-title">Lyrion Voice MCP</h1>
     </section>
 
     <section class="status-grid" aria-label="Service status">
-      <article class="status-card status-card--primary">
-        <div class="status-card__heading">
-          <div>
-            <p class="status-card__label">Service</p>
-            <h2>Runtime</h2>
-          </div>
-          <span
-            class="status-pill"
-            :class="statusPillClass"
-            role="status"
-          >
-            <span class="status-pill__dot" aria-hidden="true"></span>
-            {{ statusLabel }}
-          </span>
-        </div>
-
-        <p v-if="operations.errorMessage" class="error-message">
-          {{ operations.errorMessage }}
-        </p>
-        <p v-else class="status-card__copy">
-          The HTTP service is responding and ready for MCP clients on this network.
-        </p>
-
-        <button
-          class="refresh-button"
-          type="button"
-          :disabled="operations.loading"
-          @click="refresh"
-        >
-          Refresh status
-        </button>
-      </article>
-
       <article class="status-card">
         <div class="status-card__heading">
           <div>
@@ -71,144 +32,106 @@
         <p class="status-card__copy">
           {{ operations.lmsConnection?.message ?? 'LMS connection status is unavailable.' }}
         </p>
+        <p v-if="operations.errorMessage" class="error-message" role="alert">
+          {{ operations.errorMessage }}
+        </p>
         <p v-if="operations.lmsConnection?.serverVersion" class="server-version">
           LMS {{ operations.lmsConnection.serverVersion }}
         </p>
       </article>
 
-      <article class="status-card">
-        <p class="status-card__label">MCP endpoint</p>
-        <h2>Streamable HTTP</h2>
-        <code>/mcp</code>
-        <p class="status-card__copy">Stateless transport using the official C# SDK.</p>
+      <article class="status-card status-card--endpoint" aria-labelledby="mcp-endpoint-title">
+        <p id="mcp-endpoint-title" class="status-card__label">MCP endpoint</p>
+        <code>{{ mcpEndpoint }}</code>
       </article>
 
-      <article class="status-card">
-        <p class="status-card__label">Build</p>
-        <h2>{{ operations.version?.version ?? 'Unavailable' }}</h2>
-        <dl class="build-details">
-          <div>
-            <dt>Channel</dt>
-            <dd>{{ operations.version?.channel ?? '—' }}</dd>
-          </div>
-          <div>
-            <dt>Build</dt>
-            <dd>{{ operations.version?.build ?? '—' }}</dd>
-          </div>
-          <div>
-            <dt>Commit</dt>
-            <dd>{{ operations.version?.commit ?? '—' }}</dd>
-          </div>
-        </dl>
-      </article>
-
-      <article class="status-card status-card--catalogue">
-        <div class="status-card__heading">
-          <div>
-            <p class="status-card__label">Canonical catalogue</p>
-            <h2>Library snapshot</h2>
-          </div>
-          <span class="status-pill" :class="catalogueStatusPillClass" role="status">
-            <span class="status-pill__dot" aria-hidden="true"></span>
-            {{ catalogueStatusLabel }}
-          </span>
-        </div>
-
-        <p v-if="operations.catalogueErrorMessage" class="error-message" role="alert">
-          {{ operations.catalogueErrorMessage }}
-        </p>
-        <p v-else-if="operations.catalogue?.summary" class="status-card__copy">
-          {{ formatCount(operations.catalogue.summary.trackCount) }} tracks. Last rebuilt
-          <time :datetime="operations.catalogue.summary.refreshedAt">
-            {{ formatDate(operations.catalogue.summary.refreshedAt) }}.
-          </time>
-        </p>
-        <p v-else-if="!operations.catalogueLoading" class="catalogue-empty">
-          The catalogue has not been built yet. Rebuilding reads LMS metadata without altering media or playback.
-        </p>
-        <p v-if="operations.catalogue?.latestRefresh?.failureMessage" class="error-message">
-          {{ operations.catalogue.latestRefresh.failureMessage }}
-        </p>
-
-        <button
-          class="refresh-button catalogue-rebuild"
-          type="button"
-          :disabled="catalogueButtonDisabled"
-          @click="rebuildCatalogue"
-        >
-          {{ catalogueButtonLabel }}
-        </button>
-      </article>
-
-      <article class="status-card status-card--indexes">
-        <div class="status-card__heading">
-          <div>
-            <p class="status-card__label">Production search</p>
-            <h2>Catalogue resolver</h2>
-          </div>
-          <span class="status-pill" :class="indexStatusPillClass" role="status">
-            <span class="status-pill__dot" aria-hidden="true"></span>
-            {{ indexStatusLabel }}
-          </span>
-        </div>
-
-        <p v-if="operations.searchIndexesErrorMessage" class="error-message" role="alert">
-          {{ operations.searchIndexesErrorMessage }}
-        </p>
-        <p v-else-if="operations.searchIndexesLoading && !operations.searchIndex" class="status-card__copy">
-          Reading search-index status…
-        </p>
-        <div v-else-if="operations.searchIndex" class="index-list">
-          <section class="index-row">
-            <div class="index-row__summary">
-              <h3>{{ operations.searchIndex.resolver }}</h3>
-              <p v-if="operations.searchIndex.artifact">
-                {{ formatCount(operations.searchIndex.artifact.candidateCount) }} candidates ·
-                {{ formatBytes(operations.searchIndex.artifact.indexSizeBytes) }} · built
-                <time :datetime="operations.searchIndex.artifact.builtAt">{{ formatDate(operations.searchIndex.artifact.builtAt) }}</time>
-              </p>
-              <p v-else>No published artifact.</p>
-              <p v-if="operations.searchIndex.latestJob?.errorMessage" class="index-row__error">
-                {{ operations.searchIndex.latestJob.errorMessage }}
-              </p>
+      <article class="status-card status-card--maintenance" aria-label="Catalogue maintenance">
+        <section class="operation-row">
+          <div class="operation-row__summary">
+            <div class="operation-row__title">
+              <h2>Catalogue sync</h2>
+              <span class="status-pill" :class="catalogueStatusPillClass" role="status">
+                <span class="status-pill__dot" aria-hidden="true"></span>
+                {{ catalogueStatusLabel }}
+              </span>
             </div>
-            <div class="index-row__actions">
-              <a
-                v-if="operations.searchIndex.latestJob"
-                class="job-link"
-                :href="`/jobs/${operations.searchIndex.latestJob.id}`"
-              >
-                Job {{ operations.searchIndex.latestJob.id }} · {{ operations.searchIndex.latestJob.status }}
-              </a>
-              <button
-                class="refresh-button index-rebuild"
-                type="button"
-                :disabled="indexButtonDisabled(operations.searchIndex.latestJob?.status)"
-                @click="rebuildIndex()"
-              >
-                {{ indexButtonLabel(operations.searchIndex.latestJob?.status) }}
-              </button>
+            <p v-if="operations.catalogueErrorMessage" class="error-message" role="alert">
+              {{ operations.catalogueErrorMessage }}
+            </p>
+            <p v-else-if="operations.catalogue?.summary">
+              {{ formatCount(operations.catalogue.summary.trackCount) }} tracks ·
+              <time :datetime="operations.catalogue.summary.refreshedAt">
+                {{ formatDate(operations.catalogue.summary.refreshedAt) }}
+              </time>
+            </p>
+            <p v-else-if="!operations.catalogueLoading">Not built.</p>
+            <p v-if="operations.catalogue?.latestRefresh?.failureMessage" class="error-message">
+              {{ operations.catalogue.latestRefresh.failureMessage }}
+            </p>
+          </div>
+          <button
+            class="refresh-button catalogue-rebuild"
+            type="button"
+            :disabled="catalogueButtonDisabled"
+            @click="rebuildCatalogue"
+          >
+            Rebuild
+          </button>
+        </section>
+
+        <section class="operation-row">
+          <div class="operation-row__summary">
+            <div class="operation-row__title">
+              <h2>Search index</h2>
+              <span class="status-pill" :class="indexStatusPillClass" role="status">
+                <span class="status-pill__dot" aria-hidden="true"></span>
+                {{ indexStatusLabel }}
+              </span>
             </div>
-          </section>
-        </div>
-        <p v-else class="catalogue-empty">The production search index has not been built.</p>
+            <p v-if="operations.searchIndexesErrorMessage" class="error-message" role="alert">
+              {{ operations.searchIndexesErrorMessage }}
+            </p>
+            <p v-else-if="operations.searchIndexesLoading && !operations.searchIndex">
+              Checking…
+            </p>
+            <p v-else-if="operations.searchIndex?.artifact">
+              {{ operations.searchIndex.resolver }} ·
+              {{ formatCount(operations.searchIndex.artifact.candidateCount) }} candidates ·
+              {{ formatBytes(operations.searchIndex.artifact.indexSizeBytes) }} ·
+              <time :datetime="operations.searchIndex.artifact.builtAt">
+                {{ formatDate(operations.searchIndex.artifact.builtAt) }}
+              </time>
+            </p>
+            <p v-else>Not built.</p>
+            <p v-if="operations.searchIndex?.latestJob?.errorMessage" class="error-message">
+              {{ operations.searchIndex.latestJob.errorMessage }}
+            </p>
+          </div>
+          <div class="operation-row__actions">
+            <a
+              v-if="operations.searchIndex?.latestJob"
+              class="job-link"
+              :href="`/jobs/${operations.searchIndex.latestJob.id}`"
+            >
+              Job {{ operations.searchIndex.latestJob.id }} · {{ operations.searchIndex.latestJob.status }}
+            </a>
+            <button
+              class="refresh-button index-rebuild"
+              type="button"
+              :disabled="indexButtonDisabled(operations.searchIndex?.latestJob?.status)"
+              @click="rebuildIndex()"
+            >
+              Rebuild
+            </button>
+          </div>
+        </section>
       </article>
     </section>
 
-    <aside class="trust-notice" aria-labelledby="trust-title">
-      <span class="trust-notice__icon" aria-hidden="true">!</span>
-      <div>
-        <h2 id="trust-title">Trusted network only</h2>
-        <p>
-          This service has no authentication and can control discovered players. Keep it on a trusted LAN and do not expose it to the public internet.
-        </p>
-      </div>
-    </aside>
-
     <footer>
-      <span>Trusted-LAN service</span>
+      <span>Trusted LAN only</span>
       <span aria-hidden="true">·</span>
-      <span>Search, player status and playback available</span>
+      <span>{{ operations.version?.version ?? 'Version unavailable' }}</span>
     </footer>
   </main>
 </template>
@@ -218,25 +141,9 @@ import { computed, onMounted, onUnmounted } from 'vue';
 import { useOperationsStore } from './operationsStore';
 
 const operations = useOperationsStore();
+const mcpEndpoint = new URL('/mcp', window.location.origin).href;
 let operationPollTimer: ReturnType<typeof setTimeout> | undefined;
 let operationPollingActive = false;
-
-const statusLabel = computed(() => {
-  if (operations.loading) {
-    return 'Checking';
-  }
-
-  if (operations.isHealthy) {
-    return 'Online';
-  }
-
-  return 'Unavailable';
-});
-
-const statusPillClass = computed(() => ({
-  'status-pill--online': operations.isHealthy,
-  'status-pill--error': !operations.loading && !operations.isHealthy
-}));
 
 const lmsStatusLabel = computed(() => {
   if (operations.loading) {
@@ -295,18 +202,6 @@ const catalogueButtonDisabled = computed(() =>
   || operations.catalogueRebuildPending
   || operations.catalogueRebuilding);
 
-const catalogueButtonLabel = computed(() => {
-  if (operations.catalogueRebuildPending) {
-    return 'Starting rebuild…';
-  }
-
-  if (operations.catalogueRebuilding) {
-    return 'Rebuild in progress…';
-  }
-
-  return 'Rebuild catalogue';
-});
-
 const indexStatusLabel = computed(() => {
   if (operations.searchIndexesLoading && !operations.searchIndex) {
     return 'Checking';
@@ -348,10 +243,6 @@ onUnmounted(() => {
   operationPollingActive = false;
   clearOperationPoll();
 });
-
-async function refresh(): Promise<void> {
-  await operations.load();
-}
 
 async function rebuildCatalogue(): Promise<void> {
   await operations.rebuild();
@@ -395,18 +286,6 @@ function indexButtonDisabled(status: string | undefined): boolean {
     || !operations.catalogue?.summary;
 }
 
-function indexButtonLabel(status: string | undefined): string {
-  if (operations.searchIndexRebuildPending) {
-    return 'Starting…';
-  }
-
-  if (status === 'pending' || status === 'running') {
-    return 'Rebuilding…';
-  }
-
-  return 'Rebuild';
-}
-
 function formatCount(value: number): string {
   return value.toLocaleString('en-GB');
 }
@@ -435,14 +314,14 @@ function formatBytes(value: number): string {
 .operations-page {
   width: min(1120px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 72px 0 36px;
+  padding: 60px 0 36px;
 }
 
 .hero {
   display: flex;
   align-items: center;
   gap: 28px;
-  margin-bottom: 52px;
+  margin-bottom: 38px;
 }
 
 .hero__mark {
@@ -479,7 +358,6 @@ function formatBytes(value: number): string {
   height: 36px;
 }
 
-.eyebrow,
 .status-card__label {
   margin: 0 0 8px;
   color: var(--accent);
@@ -496,18 +374,12 @@ p {
 }
 
 h1 {
-  margin-bottom: 10px;
+  margin-bottom: 0;
   font-family: var(--font-display);
   font-size: clamp(2.5rem, 6vw, 4.7rem);
   font-weight: 620;
   letter-spacing: -0.055em;
   line-height: 0.98;
-}
-
-.hero__summary {
-  margin-bottom: 0;
-  color: var(--text-muted);
-  font-size: 1.08rem;
 }
 
 .status-grid {
@@ -517,16 +389,11 @@ h1 {
 }
 
 .status-card {
-  min-height: 235px;
   padding: 26px;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--surface);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16);
-}
-
-.status-card--primary {
-  background: linear-gradient(145deg, rgba(38, 34, 27, 0.98), rgba(25, 23, 19, 0.98));
 }
 
 .status-card__heading {
@@ -536,8 +403,7 @@ h1 {
   gap: 16px;
 }
 
-.status-card h2,
-.trust-notice h2 {
+.status-card h2 {
   margin-bottom: 18px;
   font-size: 1.22rem;
   font-weight: 650;
@@ -545,7 +411,6 @@ h1 {
 
 .status-card__copy,
 .error-message {
-  min-height: 48px;
   color: var(--text-muted);
   line-height: 1.55;
 }
@@ -611,14 +476,16 @@ h1 {
 }
 
 code {
-  display: inline-block;
-  margin: 0 0 18px;
+  display: block;
+  max-width: 100%;
+  margin: 0;
   padding: 9px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--accent-soft);
   background: rgba(0, 0, 0, 0.22);
   font-size: 1rem;
+  overflow-wrap: anywhere;
 }
 
 .connection-url {
@@ -634,77 +501,51 @@ code {
   font-size: 0.78rem;
 }
 
-.build-details {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-}
-
-.build-details div {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  gap: 10px;
-}
-
-.build-details dt {
-  color: var(--text-dim);
-}
-
-.build-details dd {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.status-card--catalogue {
-  min-height: 190px;
+.status-card--maintenance {
   grid-column: 1 / -1;
   background: linear-gradient(145deg, rgba(38, 34, 27, 0.96), rgba(25, 23, 19, 0.98));
 }
 
-.status-card--indexes {
-  min-height: 190px;
-  grid-column: 1 / -1;
-}
-
-.index-list {
+.operation-row {
   display: grid;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  padding: 4px 0 22px;
 }
 
-.index-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 15px 0;
+.operation-row + .operation-row {
+  padding: 22px 0 4px;
   border-top: 1px solid var(--border);
 }
 
-.index-row:first-child {
-  border-top: 0;
+.operation-row__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 7px;
 }
 
-.index-row h3 {
-  margin: 0 0 5px;
-  font-size: 0.98rem;
+.operation-row h2 {
+  margin: 0;
 }
 
-.index-row p {
+.operation-row p {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.83rem;
+  line-height: 1.55;
 }
 
-.index-row .index-row__error {
+.operation-row .error-message + .error-message {
   margin-top: 5px;
+}
+
+.operation-row .error-message {
   color: var(--danger-text);
 }
 
-.index-row__actions {
+.operation-row__actions {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -720,47 +561,8 @@ code {
   min-width: 92px;
 }
 
-.catalogue-empty {
-  min-height: 48px;
-  color: var(--text-muted);
-  line-height: 1.55;
-}
-
 .catalogue-rebuild {
   min-width: 170px;
-}
-
-.trust-notice {
-  display: flex;
-  gap: 18px;
-  margin-top: 18px;
-  padding: 22px 24px;
-  border: 1px solid rgba(244, 175, 65, 0.25);
-  border-radius: 16px;
-  background: rgba(244, 175, 65, 0.055);
-}
-
-.trust-notice__icon {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(244, 175, 65, 0.5);
-  border-radius: 50%;
-  color: var(--accent);
-  font-weight: 800;
-}
-
-.trust-notice h2 {
-  margin-bottom: 5px;
-  font-size: 0.95rem;
-}
-
-.trust-notice p {
-  margin-bottom: 0;
-  color: var(--text-muted);
-  line-height: 1.5;
 }
 
 footer {
@@ -818,17 +620,19 @@ footer {
     height: 25px;
   }
 
-  .eyebrow {
-    font-size: 0.65rem;
-  }
-
   .status-grid {
     grid-template-columns: 1fr;
   }
 
-  .index-row {
+  .operation-row {
+    grid-template-columns: 1fr;
     align-items: flex-start;
-    flex-direction: column;
+    gap: 16px;
+  }
+
+  .operation-row__actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   footer {

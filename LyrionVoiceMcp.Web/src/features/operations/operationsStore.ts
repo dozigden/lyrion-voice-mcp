@@ -2,7 +2,6 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
   getCatalogue,
-  getHealth,
   getLmsConnection,
   getSearchIndex,
   getVersion,
@@ -16,7 +15,6 @@ import {
 
 export const useOperationsStore = defineStore('operations', () => {
   const loading = ref(false);
-  const status = ref<string | null>(null);
   const version = ref<VersionResponse | null>(null);
   const lmsConnection = ref<LmsConnectionResponse | null>(null);
   const errorMessage = ref<string | null>(null);
@@ -29,7 +27,6 @@ export const useOperationsStore = defineStore('operations', () => {
   const searchIndexRebuildPending = ref(false);
   const searchIndexesErrorMessage = ref<string | null>(null);
 
-  const isHealthy = computed(() => status.value === 'ok' && errorMessage.value === null);
   const catalogueRebuilding = computed(
     () => catalogue.value?.latestRefresh?.status === 'running');
   const searchIndexesRebuilding = computed(() =>
@@ -41,16 +38,13 @@ export const useOperationsStore = defineStore('operations', () => {
     errorMessage.value = null;
 
     try {
-      const [healthResult, versionResult, lmsResult] = await Promise.all([
-        getHealth(signal),
+      const [versionResult, lmsResult] = await Promise.all([
         getVersion(signal),
         getLmsConnection(signal)
       ]);
-      status.value = healthResult.status;
       version.value = versionResult;
       lmsConnection.value = lmsResult;
     } catch (error) {
-      status.value = null;
       version.value = null;
       lmsConnection.value = null;
       errorMessage.value = describeError(error);
@@ -113,7 +107,6 @@ export const useOperationsStore = defineStore('operations', () => {
 
   return {
     loading,
-    status,
     version,
     lmsConnection,
     errorMessage,
@@ -125,7 +118,6 @@ export const useOperationsStore = defineStore('operations', () => {
     searchIndexesLoading,
     searchIndexRebuildPending,
     searchIndexesErrorMessage,
-    isHealthy,
     catalogueRebuilding,
     searchIndexesRebuilding,
     load,

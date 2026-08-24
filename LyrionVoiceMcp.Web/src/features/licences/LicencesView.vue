@@ -1,9 +1,7 @@
 <template>
   <main class="licences-page">
     <header class="licences-header">
-      <p class="eyebrow">Open-source software</p>
       <h1>Licences</h1>
-      <p>Lyrion Voice MCP product and third-party licence information for this server and site.</p>
     </header>
 
     <p v-if="loading" class="licences-state" role="status">Loading licences…</p>
@@ -171,28 +169,17 @@ async function loadLicences() {
 }
 
 .licences-header h1,
-.licences-header p,
 .unresolved h2 {
   margin: 0;
 }
 
 .licences-header h1 {
-  margin-top: 5px;
   font: 600 clamp(2rem, 6vw, 3.4rem)/1 var(--font-display);
 }
 
-.licences-header > p:last-child,
 .licences-state {
   margin-top: 12px;
   color: var(--text-muted);
-}
-
-.eyebrow {
-  color: var(--accent);
-  font-size: .72rem;
-  font-weight: 700;
-  letter-spacing: .14em;
-  text-transform: uppercase;
 }
 
 .licences-list {

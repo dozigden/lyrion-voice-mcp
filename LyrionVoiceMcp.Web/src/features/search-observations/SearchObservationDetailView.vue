@@ -52,7 +52,7 @@
       </section>
 
       <section class="panel">
-        <div class="panel-title"><h2>Ordered candidates</h2><span>Order returned to the calling agent</span></div>
+        <div class="panel-title"><h2>Ordered candidates</h2></div>
         <div v-if="!item.candidates.length" class="no-results">
           {{ item.status === 'failed' ? 'No candidates were recovered before the request failed.' : 'Search returned no candidates.' }}
         </div>
@@ -66,7 +66,7 @@
       </section>
 
       <form class="panel review-form" @submit.prevent="save">
-        <div class="panel-title"><h2>Human review</h2><span>Corrections can become regression cases</span></div>
+        <div class="panel-title"><h2>Human review</h2></div>
         <div class="form-grid">
           <label>Classification
             <select v-model="classification" required>

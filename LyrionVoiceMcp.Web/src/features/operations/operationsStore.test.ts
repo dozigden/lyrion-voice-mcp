@@ -9,9 +9,8 @@ describe('operationsStore', () => {
     vi.restoreAllMocks();
   });
 
-  it('loads healthy runtime details', async () => {
+  it('loads version and LMS details', async () => {
     // Arrange
-    vi.spyOn(api, 'getHealth').mockResolvedValue({ status: 'ok' });
     vi.spyOn(api, 'getVersion').mockResolvedValue({
       version: '0.1.0',
       channel: 'test',
@@ -31,7 +30,6 @@ describe('operationsStore', () => {
     await store.load();
 
     // Assert
-    expect(store.isHealthy).toBe(true);
     expect(store.version?.commit).toBe('abcdef0');
     expect(store.lmsConnection?.status).toBe('online');
     expect(store.errorMessage).toBeNull();
@@ -39,13 +37,7 @@ describe('operationsStore', () => {
 
   it('clears stale data when the API fails', async () => {
     // Arrange
-    vi.spyOn(api, 'getHealth').mockRejectedValue(new Error('Network unavailable.'));
-    vi.spyOn(api, 'getVersion').mockResolvedValue({
-      version: '0.1.0',
-      channel: 'test',
-      build: 'local',
-      commit: 'abcdef0'
-    });
+    vi.spyOn(api, 'getVersion').mockRejectedValue(new Error('Network unavailable.'));
     vi.spyOn(api, 'getLmsConnection').mockResolvedValue({
       status: 'not_configured',
       serverId: null,
@@ -59,7 +51,6 @@ describe('operationsStore', () => {
     await store.load();
 
     // Assert
-    expect(store.isHealthy).toBe(false);
     expect(store.version).toBeNull();
     expect(store.lmsConnection).toBeNull();
     expect(store.errorMessage).toBe('Network unavailable.');

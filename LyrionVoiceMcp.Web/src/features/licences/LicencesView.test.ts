@@ -36,7 +36,8 @@ describe('LicencesView', () => {
     const wrapper = mount(LicencesView);
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Lyrion Voice MCP product and third-party licence information');
+    expect(wrapper.get('h1').text()).toBe('Licences');
+    expect(wrapper.text()).not.toContain('Open-source software');
     expect(wrapper.findAll('summary').map(summary => summary.text())).toEqual([
       'LVMLyrion Voice MCPv0.1.0MIT',
       'NPMvuev3.5.41MIT',

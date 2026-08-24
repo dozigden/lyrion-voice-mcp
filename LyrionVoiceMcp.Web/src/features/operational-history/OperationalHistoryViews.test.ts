@@ -39,6 +39,8 @@ describe('operational history views', () => {
     expect(list).toHaveBeenNthCalledWith(2, '?offset=50&limit=50');
     expect(wrapper.text()).toContain('51–51 of 51');
     expect(wrapper.text()).toContain('#1 · test.work');
+    expect(wrapper.text()).not.toContain('Operational history');
+    expect(wrapper.text()).not.toContain('Inspect queued and completed work');
   });
 
   it('shows scheduler state and queues a run-now job', async () => {
@@ -73,6 +75,8 @@ describe('operational history views', () => {
 
     expect(run).toHaveBeenCalledWith('catalogue-refresh');
     expect(list).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).not.toContain('Operational automation');
+    expect(wrapper.text()).not.toContain('Review every schedule');
   });
 });
 

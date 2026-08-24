@@ -1,7 +1,3 @@
-export interface HealthResponse {
-  status: string;
-}
-
 export interface VersionResponse {
   version: string;
   channel: string;
@@ -78,15 +74,6 @@ export interface SearchIndexStatusResponse {
   resolver: string;
   artifact: SearchIndexArtifactResponse | null;
   latestJob: SearchIndexJobResponse | null;
-}
-
-export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
-  const result = await getJson('/api/health', signal);
-  if (!isRecord(result) || typeof result.status !== 'string') {
-    throw new Error('/api/health returned an invalid response.');
-  }
-
-  return { status: result.status };
 }
 
 export async function getVersion(signal?: AbortSignal): Promise<VersionResponse> {

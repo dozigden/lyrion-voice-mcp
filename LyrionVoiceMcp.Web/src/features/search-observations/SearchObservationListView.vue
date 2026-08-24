@@ -1,18 +1,11 @@
 <template>
   <main class="review-page">
     <header class="page-heading">
-      <div>
-        <p class="eyebrow">Search evidence</p>
-        <h1>Observation log</h1>
-        <p>Inspect how each resolver searched and which ordered candidates it returned.</p>
-      </div>
+      <h1>Observation log</h1>
       <a class="export-link" href="/api/search-observations/export">Export evaluation cases</a>
     </header>
 
-    <aside class="privacy-notice">
-      Search terms and library metadata may be sensitive. They remain in the local operational database
-      for {{ observations.page?.retentionDays ?? 90 }} days; only cases you explicitly include are exported.
-    </aside>
+    <p class="retention">Retained locally for {{ observations.page?.retentionDays ?? 90 }} days.</p>
 
     <form class="filters" @submit.prevent="refresh">
       <label>
@@ -42,7 +35,7 @@
     <p v-if="observations.errorMessage" class="error" role="alert">{{ observations.errorMessage }}</p>
     <div v-else-if="observations.loading" class="empty">Loading observations…</div>
     <div v-else-if="!observations.page?.items.length" class="empty">
-      No searches match these filters. New MCP searches will appear here automatically.
+      No searches match these filters.
     </div>
     <section v-else class="result-list" aria-label="Search observations">
       <RouterLink
@@ -95,12 +88,10 @@ function label(value: string): string {
 <style scoped>
 .review-page { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 48px 0 64px; }
 .page-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 28px; }
-.eyebrow { margin: 0 0 8px; color: var(--accent); font-size: .75rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
-h1 { margin: 0 0 8px; font: 620 clamp(2.2rem, 5vw, 4rem)/1 var(--font-display); letter-spacing: -.045em; }
-.page-heading p:last-child { margin: 0; color: var(--text-muted); }
+h1 { margin: 0; font: 620 clamp(2.2rem, 5vw, 4rem)/1 var(--font-display); letter-spacing: -.045em; }
 .export-link, button { border: 1px solid var(--border-strong); border-radius: 10px; color: var(--text); background: transparent; font: inherit; padding: 11px 14px; text-decoration: none; cursor: pointer; }
 .export-link:hover, button:hover { border-color: var(--accent); color: var(--accent); }
-.privacy-notice { margin-bottom: 22px; padding: 14px 17px; border-left: 3px solid var(--accent); color: var(--text-muted); background: rgba(244,175,65,.06); line-height: 1.5; }
+.retention { margin: -12px 0 22px; color: var(--text-muted); font-size: .8rem; }
 .filters { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 12px; align-items: end; margin-bottom: 22px; }
 label { display: grid; gap: 7px; color: var(--text-muted); font-size: .8rem; font-weight: 700; }
 input, select { min-width: 0; padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px; color: var(--text); background: #211e19; font: inherit; }

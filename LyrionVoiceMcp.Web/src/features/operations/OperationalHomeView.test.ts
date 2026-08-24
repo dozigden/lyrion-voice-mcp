@@ -15,9 +15,8 @@ describe('OperationalHomeView', () => {
     vi.spyOn(api, 'getSearchIndex').mockResolvedValue(searchIndexStatus('succeeded'));
   });
 
-  it('shows a healthy build', async () => {
+  it('shows connection details and the release version without the removed cards', async () => {
     // Arrange
-    vi.spyOn(api, 'getHealth').mockResolvedValue({ status: 'ok' });
     vi.spyOn(api, 'getVersion').mockResolvedValue({
       version: '0.1.0',
       channel: 'test',
@@ -41,16 +40,22 @@ describe('OperationalHomeView', () => {
     // Assert
     expect(wrapper.text()).toContain('Online');
     expect(wrapper.text()).toContain('0.1.0');
-    expect(wrapper.text()).toContain('/mcp');
+    expect(wrapper.text()).toContain(new URL('/mcp', window.location.origin).href);
     expect(wrapper.text()).toContain('development');
     expect(wrapper.text()).toContain('LMS 9.0.1');
-    expect(wrapper.text()).toContain('Trusted network only');
-    expect(wrapper.text()).toContain('Rebuild catalogue');
+    expect(wrapper.text()).toContain('Trusted LAN only');
+    expect(wrapper.findAll('.operation-row button').map(button => button.text())).toEqual([
+      'Rebuild',
+      'Rebuild'
+    ]);
+    expect(wrapper.text()).not.toContain('A voice-oriented bridge');
+    expect(wrapper.text()).not.toContain('Streamable HTTP');
+    expect(wrapper.text()).not.toContain('Channel');
+    expect(wrapper.findAll('.operation-row')).toHaveLength(2);
   });
 
-  it('shows an unavailable service', async () => {
+  it('shows an unavailable operational API', async () => {
     // Arrange
-    vi.spyOn(api, 'getHealth').mockRejectedValue(new Error('API unavailable.'));
     vi.spyOn(api, 'getVersion').mockRejectedValue(new Error('API unavailable.'));
     vi.spyOn(api, 'getLmsConnection').mockRejectedValue(new Error('API unavailable.'));
 
@@ -61,13 +66,12 @@ describe('OperationalHomeView', () => {
     await flushPromises();
 
     // Assert
-    expect(wrapper.text()).toContain('Unavailable');
     expect(wrapper.text()).toContain('API unavailable.');
+    expect(wrapper.text()).toContain('Version unavailable');
   });
 
   it('shows catalogue contents and starts a rebuild', async () => {
     // Arrange
-    vi.spyOn(api, 'getHealth').mockResolvedValue({ status: 'ok' });
     vi.spyOn(api, 'getVersion').mockResolvedValue({
       version: '0.1.0',
       channel: 'test',
@@ -94,14 +98,13 @@ describe('OperationalHomeView', () => {
 
     // Assert
     expect(wrapper.text()).toContain('12,345');
-    expect(wrapper.text()).toContain('Rebuild in progress…');
+    expect(wrapper.get('.catalogue-rebuild').text()).toBe('Rebuild');
     expect(api.rebuildCatalogue).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
 
   it('shows the production search index and starts its rebuild', async () => {
     // Arrange
-    vi.spyOn(api, 'getHealth').mockResolvedValue({ status: 'ok' });
     vi.spyOn(api, 'getVersion').mockResolvedValue({
       version: '0.1.0',
       channel: 'test',
