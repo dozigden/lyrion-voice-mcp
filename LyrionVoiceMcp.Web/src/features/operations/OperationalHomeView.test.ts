@@ -51,6 +51,7 @@ describe('OperationalHomeView', () => {
     expect(wrapper.text()).not.toContain('A voice-oriented bridge');
     expect(wrapper.text()).not.toContain('Streamable HTTP');
     expect(wrapper.text()).not.toContain('Channel');
+    expect(wrapper.find('.hero__icon').exists()).toBe(true);
     expect(wrapper.findAll('.operation-row')).toHaveLength(2);
   });
 

@@ -2,10 +2,7 @@
   <main class="operations-page">
     <section class="hero" aria-labelledby="page-title">
       <div class="hero__mark" aria-hidden="true">
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
+        <span class="hero__icon"></span>
       </div>
       <h1 id="page-title">Lyrion Voice MCP</h1>
     </section>
@@ -338,24 +335,13 @@ function formatBytes(value: number): string {
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.28);
 }
 
-.hero__mark span {
-  width: 7px;
-  border-radius: 99px;
+.hero__icon {
+  width: 44px;
+  height: 62px;
   background: var(--accent);
-  box-shadow: 0 0 22px rgba(244, 175, 65, 0.4);
-}
-
-.hero__mark span:nth-child(1),
-.hero__mark span:nth-child(4) {
-  height: 24px;
-}
-
-.hero__mark span:nth-child(2) {
-  height: 48px;
-}
-
-.hero__mark span:nth-child(3) {
-  height: 36px;
+  filter: drop-shadow(0 0 12px rgba(244, 175, 65, 0.4));
+  -webkit-mask: url('../../assets/fuzzy-music-match-icon.svg') center / contain no-repeat;
+  mask: url('../../assets/fuzzy-music-match-icon.svg') center / contain no-repeat;
 }
 
 .status-card__label {
@@ -603,21 +589,9 @@ footer {
     border-radius: 18px;
   }
 
-  .hero__mark span {
-    width: 5px;
-  }
-
-  .hero__mark span:nth-child(1),
-  .hero__mark span:nth-child(4) {
-    height: 16px;
-  }
-
-  .hero__mark span:nth-child(2) {
-    height: 34px;
-  }
-
-  .hero__mark span:nth-child(3) {
-    height: 25px;
+  .hero__icon {
+    width: 31px;
+    height: 43px;
   }
 
   .status-grid {
