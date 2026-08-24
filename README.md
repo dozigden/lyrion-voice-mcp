@@ -1,6 +1,6 @@
 # Lyrion Voice MCP
 
-Lyrion Voice MCP is early prerelease software providing an MCP server for Lyrion Music Server (LMS). It maintains a local catalogue and search index for phonetic and fuzzy matching, helping voice agents resolve artist and track names that have been transcribed poorly.
+Lyrion Voice MCP is an MCP server for Lyrion Music Server (LMS). It maintains a local catalogue and search index for phonetic and fuzzy matching, helping voice agents resolve artist and track names that have been transcribed poorly. It's mainly been tested with Home Assistants voice assistant.
 
 It provides more structured search results than LMS itself to help an agent reach the result you want with fewer calls and tokens.
 
@@ -16,15 +16,46 @@ The LMS library must be imported before searching. A catalogue refresh can be st
 The web frontend includes search-observation and MCP-call logs to help diagnose unexpected behaviour.
 
 > [!WARNING]
-> The application has no authentication. It is intended for a trusted local network and must not be exposed directly to the public internet.
+> The application has no authentication. It is not suitable for internet use.
 
-## Requirements
+## Container
+
+Save the following as `compose.yml`, replacing the LMS settings for your installation:
+
+```yaml
+services:
+  lyrion-voice-mcp:
+    image: dozigden/lyrion-voice-mcp:0.1.0
+    ports:
+      - "5600:5600"
+    environment:
+      LyrionVoiceMcpLms__ServerId: "primary"
+      LyrionVoiceMcpLms__BaseUrl: "http://lms-hostname-or-address:9000"
+    volumes:
+      - application-data:/data
+    restart: unless-stopped
+
+volumes:
+  application-data:
+```
+
+Start the application in the background:
+
+```sh
+docker compose up -d
+```
+
+The image serves the complete application on port `5600` and supports `linux/amd64` and `linux/arm64`. Compose persists the application database and search-index artifacts under `/data` in the `application-data` named volume.
+
+## Development
+
+### Requirements
 
 - .NET SDK 10.0.302 or a compatible 10.0 patch
 - Node.js 24
 - Docker 29 or later for container validation
 
-## Development
+### Running locally
 
 Install frontend dependencies once:
 
@@ -46,7 +77,8 @@ The launchers load ignored machine-local LMS settings from `.data/dev/appsetting
   }
 }
 ```
-## Validation
+
+### Validation
 
 ```sh
 ./scripts/test-fast.sh
@@ -54,16 +86,6 @@ The launchers load ignored machine-local LMS settings from `.data/dev/appsetting
 ```
 
 The fast script selects affected lanes when Git history is available. The full script restores, builds, tests backend and frontend projects, and runs repository checks.
-
-## Container
-
-```sh
-LVM_LMS_SERVER_ID=development \
-LVM_LMS_BASE_URL=http://lms-hostname-or-address:9000 \
-docker compose up --build
-```
-
-The image serves the complete application on port `5600`. CI validates `linux/amd64` and `linux/arm64` builds. Compose persists the application database and search-index artifacts under `/data` in the `application-data` named volume.
 
 ## Licence
 
