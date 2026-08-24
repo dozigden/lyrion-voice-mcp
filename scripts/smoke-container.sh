@@ -69,7 +69,28 @@ if [[ -z "$health_json" ]]; then
 fi
 
 assert_json "Health endpoint" '.status == "ok"' "$health_json"
-check_json_endpoint "/api/version" "Version endpoint" '.version and .channel and .build and .commit'
+version_json="$(curl --fail --silent --show-error "$base_url/api/version")"
+if [[ -n "${EXPECTED_VERSION:-}${EXPECTED_CHANNEL:-}${EXPECTED_BUILD:-}${EXPECTED_COMMIT:-}" ]]; then
+  if [[ -z "${EXPECTED_VERSION:-}" || -z "${EXPECTED_CHANNEL:-}" \
+    || -z "${EXPECTED_BUILD:-}" || -z "${EXPECTED_COMMIT:-}" ]]; then
+    echo "Expected version, channel, build and commit must all be supplied together." >&2
+    exit 1
+  fi
+
+  if ! jq --exit-status \
+    --arg version "$EXPECTED_VERSION" \
+    --arg channel "$EXPECTED_CHANNEL" \
+    --arg build "$EXPECTED_BUILD" \
+    --arg commit "$EXPECTED_COMMIT" \
+    '.version == $version and .channel == $channel and .build == $build and .commit == $commit' \
+    <<< "$version_json" >/dev/null; then
+    echo "Version endpoint returned unexpected build metadata:" >&2
+    echo "$version_json" >&2
+    exit 1
+  fi
+else
+  assert_json "Version endpoint" '.version and .channel and .build and .commit' "$version_json"
+fi
 check_json_endpoint "/api/lms" "LMS endpoint" '.status == "not_configured"'
 check_json_endpoint "/api/search-observations?limit=1" "Search observation endpoint" \
   '.items == [] and .retentionDays == 90'

@@ -24,7 +24,11 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 - The EF application database and disposable production search index live under `/data`; keep that path on a persistent volume.
 - Supported architectures are `linux/amd64` and `linux/arm64` only.
 - Do not bake LMS environment addresses or local credentials into an image.
-- The current CI builds and smoke-tests images but does not publish them.
+- Ordinary CI builds and smoke-tests native images without publishing them.
+- A `v<semver>` tag matching `Directory.Build.props` runs the complete validation, builds and smoke-tests both supported architectures, and publishes verified multi-architecture manifests to GHCR and Docker Hub. Release images carry the tag version, `release` channel, tag build identifier, and tagged commit.
+- Nightly publication runs on its schedule or by manual dispatch, skips an unchanged commit unless forced, and publishes `nightly` and `nightly-<short-sha>` multi-architecture tags to both registries. The successful source commit is recorded by the `nightly-last-build` repository tag.
+- Docker Hub publication requires the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets. GHCR publication uses `GITHUB_TOKEN` with package-write permission. Registry repository visibility is configured outside the workflow.
+- Scheduled Docker Hub cleanup retains the ten newest `nightly-<sha>` tags by default; manual dispatch may select another positive retention count. The moving `nightly` tag and release tags are not removed.
 
 ## LMS runtime configuration
 

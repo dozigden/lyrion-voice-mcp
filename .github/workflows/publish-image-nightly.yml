@@ -1,0 +1,300 @@
+name: Publish Nightly Docker Image
+
+on:
+  schedule:
+    - cron: "45 22 * * *"
+      timezone: "Europe/London"
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Force a nightly publish even if no commits changed since last nightly"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: publish-image-nightly
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare Nightly Build
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    outputs:
+      current_sha: ${{ steps.changes.outputs.current_sha }}
+      short_sha: ${{ steps.changes.outputs.short_sha }}
+      should_build: ${{ steps.changes.outputs.should_build }}
+      version: ${{ steps.app_version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve app version
+        id: app_version
+        run: |
+          VERSION="$(grep -oPm1 '(?<=<Version>)[^<]+' Directory.Build.props || true)"
+          if [ -z "$VERSION" ]; then
+            echo "Failed to resolve <Version> from Directory.Build.props"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Detect changes since last nightly build
+        id: changes
+        run: |
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          LAST_SHA="$(git rev-list -n 1 refs/tags/nightly-last-build 2>/dev/null || true)"
+          FORCE_REBUILD="${{ github.event.inputs.force_rebuild || 'false' }}"
+
+          echo "current_sha=${CURRENT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+          if [ "$FORCE_REBUILD" = "true" ]; then
+            echo "Manual force rebuild requested. Publishing nightly image for ${CURRENT_SHA}."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$LAST_SHA" ] && [ "$LAST_SHA" = "$CURRENT_SHA" ]; then
+            echo "No changes since last nightly build (${CURRENT_SHA}). Skipping publish."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            if [ -z "$LAST_SHA" ]; then
+              echo "No previous nightly marker found. Publishing nightly image."
+            else
+              echo "Detected changes since last nightly build (${LAST_SHA} -> ${CURRENT_SHA})."
+            fi
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-platform:
+    name: Build Nightly (${{ matrix.platform }})
+    needs: prepare
+    if: needs.prepare.outputs.should_build == 'true'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Compute image name
+        id: image
+        run: |
+          REPO_LOWER="${GITHUB_REPOSITORY,,}"
+          REPO_NAME_LOWER="${GITHUB_REPOSITORY##*/}"
+          REPO_NAME_LOWER="${REPO_NAME_LOWER,,}"
+          GHCR_IMAGE="ghcr.io/${REPO_LOWER}"
+          DOCKERHUB_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME_LOWER}"
+
+          echo "ghcr_name=${GHCR_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "dockerhub_name=${DOCKERHUB_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.image.outputs.ghcr_name }}
+            ${{ steps.image.outputs.dockerhub_name }}
+          tags: |
+            type=raw,value=nightly
+            type=raw,value=nightly-${{ needs.prepare.outputs.short_sha }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Push platform image by digest
+        id: nightly
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,"name=${{ steps.image.outputs.ghcr_name }},${{ steps.image.outputs.dockerhub_name }}",push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            LVM_VERSION=${{ needs.prepare.outputs.version }}
+            LVM_CHANNEL=nightly
+            LVM_BUILD=nightly-${{ needs.prepare.outputs.short_sha }}
+            LVM_COMMIT=${{ needs.prepare.outputs.current_sha }}
+
+      - name: Export platform digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/nightly-digests"
+          digest="${{ steps.nightly.outputs.digest }}"
+          touch "$RUNNER_TEMP/nightly-digests/${digest#sha256:}"
+
+      - name: Upload platform digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-digests-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/nightly-digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish Multi-Architecture Nightly Manifests
+    needs:
+      - prepare
+      - build-platform
+    if: needs.prepare.outputs.should_build == 'true'
+    permissions:
+      contents: write
+      packages: write
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute image name
+        id: image
+        run: |
+          REPO_LOWER="${GITHUB_REPOSITORY,,}"
+          REPO_NAME_LOWER="${GITHUB_REPOSITORY##*/}"
+          REPO_NAME_LOWER="${REPO_NAME_LOWER,,}"
+          GHCR_IMAGE="ghcr.io/${REPO_LOWER}"
+          DOCKERHUB_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME_LOWER}"
+
+          echo "ghcr_name=${GHCR_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "dockerhub_name=${DOCKERHUB_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.image.outputs.ghcr_name }}
+            ${{ steps.image.outputs.dockerhub_name }}
+          tags: |
+            type=raw,value=nightly
+            type=raw,value=nightly-${{ needs.prepare.outputs.short_sha }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Download platform digests
+        uses: actions/download-artifact@v8
+        with:
+          pattern: nightly-digests-*
+          path: ${{ runner.temp }}/nightly-digests
+          merge-multiple: true
+
+      - name: Create and verify nightly manifests
+        env:
+          DOCKERHUB_IMAGE: ${{ steps.image.outputs.dockerhub_name }}
+          GHCR_IMAGE: ${{ steps.image.outputs.ghcr_name }}
+          METADATA_JSON: ${{ steps.meta.outputs.json }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          digest_files=("$RUNNER_TEMP"/nightly-digests/*)
+          if [ "${#digest_files[@]}" -ne 2 ]; then
+            echo "Expected two platform digests, found ${#digest_files[@]}."
+            exit 1
+          fi
+
+          digests=()
+          for digest_file in "${digest_files[@]}"; do
+            digest_name="$(basename "$digest_file")"
+            if ! [[ "$digest_name" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "Invalid platform digest artifact: ${digest_name}"
+              exit 1
+            fi
+            digests+=("sha256:${digest_name}")
+          done
+
+          publish_manifest() {
+            local image="$1"
+            local sources=()
+            local tag_args=()
+            local tags=()
+
+            mapfile -t tags < <(
+              jq -r --arg image "$image" \
+                '.tags[] | select(startswith($image + ":"))' \
+                <<< "$METADATA_JSON"
+            )
+
+            if [ "${#tags[@]}" -eq 0 ]; then
+              echo "No generated tags found for ${image}."
+              exit 1
+            fi
+
+            for tag in "${tags[@]}"; do
+              tag_args+=(--tag "$tag")
+            done
+            for digest in "${digests[@]}"; do
+              sources+=("${image}@${digest}")
+            done
+
+            docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+
+            raw_manifest="$(docker buildx imagetools inspect --raw "${tags[0]}")"
+            jq --exit-status '
+              [.manifests[].platform
+                | select(.os == "linux")
+                | .architecture] as $architectures
+              | ($architectures | index("amd64") != null)
+                and ($architectures | index("arm64") != null)
+            ' <<< "$raw_manifest"
+          }
+
+          publish_manifest "$GHCR_IMAGE"
+          publish_manifest "$DOCKERHUB_IMAGE"
+
+      - name: Update nightly build marker tag
+        run: |
+          git tag -f nightly-last-build "${{ needs.prepare.outputs.current_sha }}"
+          git push origin refs/tags/nightly-last-build --force
