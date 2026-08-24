@@ -33,7 +33,7 @@ cd LyrionVoiceMcp.Web
 npm ci
 ```
 
-From the repository root, run `./dev.sh` and press `A` to start the API and Vite. The API listens on `5600` and Vite on `5175`, deliberately differing from neighbouring BoardOil and KST projects. `./dev-startall.sh` provides an unattended equivalent; PowerShell variants are included.
+From the repository root, run `./dev.sh` and press `A` to start the API and Vite. The API listens on `5600` and Vite on `5175`. `./dev-startall.sh` provides an unattended equivalent; PowerShell variants are included.
 
 The launchers load ignored machine-local LMS settings from `.data/dev/appsettings.local.json`:
 

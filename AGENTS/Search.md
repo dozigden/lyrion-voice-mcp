@@ -30,4 +30,13 @@ Read this before changing search contracts, ranking, observation capture, catalo
 - Evaluation exports contain only explicitly included cases and omit observation IDs, LMS media IDs, correlation references, timestamps, and private notes. The canonical real corpus lives only in the private sibling repository.
 - Spotify may be used only in a later offline experiment over recorded misses. It is not a runtime fallback or dependency.
 - `GET /api/evaluation` and `POST /api/evaluation/search` expose diagnostics for the actual production resolver under the external name `production`, including named constrained retrieval and a bounded `constraint_scan` lane for name-free genre/year diagnostics. Keep lane and scoring evidence available without accepting or persisting corpus cases.
-- Historical comparator evidence and the SQLite selection rationale live in `SEARCH_RESEARCH.md`; retired comparator implementations do not belong in production or Evaluation.
+- Retired comparator implementations do not belong in production or Evaluation.
+
+## Decision rationale
+
+- Private evaluation compared a lexical baseline, full-scan phuzzy scoring, bounded SQLite retrieval lanes, shared-scoring Lucene lanes, and native Lucene ranking. The bounded SQLite lane resolver retained the relevant observed quality while materially reducing query latency against both the full scan and Lucene variants, so it became the first production engine.
+- The comparator measurements are historical private evidence, not a general quality claim. Continue evaluating the published production artifact against the private corpus; do not restore retired comparators merely to preserve their history.
+- Keep the application database, rebuildable search artifact, and application-owned resolver as separate boundaries even though the first two currently use SQLite. Backend retrieval scores are ranking evidence, not confidence or probabilities.
+- Lucene remains only as the source of Double Metaphone analysis. Numeric tokens must be expanded to spoken forms before phonetic encoding, and complete spans must remain distinct from pooled token codes so ignored tokens cannot masquerade as complete phonetic evidence.
+- The primary Home Assistant path supplies recognised text rather than N-best alternatives or recognition confidence. Do not make runtime search depend on either signal unless the caller contract changes.
+- Preserve aliases, pronunciations, and reviewed corrections as portable application-owned data when implemented; do not bury them in backend-specific tokenizer configuration.

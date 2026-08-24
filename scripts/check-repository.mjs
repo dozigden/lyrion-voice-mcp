@@ -4,7 +4,6 @@ import process from 'node:process';
 const requiredPaths = [
   'LyrionVoiceMcp.slnx',
   '.config/dotnet-tools.json',
-  'MCP_CONTRACT.md',
   'LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj',
   'LyrionVoiceMcp.Contracts/LyrionVoiceMcp.Contracts.csproj',
   'LyrionVoiceMcp.Abstractions/LyrionVoiceMcp.Abstractions.csproj',

@@ -5,7 +5,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 ## Implemented solution layers
 
 - `LyrionVoiceMcp.Api`: ASP.NET composition root, HTTP endpoints, MCP transport, and built Vue hosting.
-- `LyrionVoiceMcp.Contracts`: public HTTP DTOs and, later, stable MCP input/output DTOs.
+- `LyrionVoiceMcp.Contracts`: public HTTP and MCP input/output DTOs.
 - `LyrionVoiceMcp.Abstractions`: domain-facing interfaces and transport-neutral models.
 - `LyrionVoiceMcp.Services`: application orchestration and policy.
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
@@ -32,6 +32,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 ## Runtime shape
 
 - One ASP.NET process serves `/api`, including the search-evaluation diagnostics, `/mcp`, and the compiled Vue SPA.
+- Public MCP calls flow through the official SDK, the central tool-call history filter, a thin Api handler, Services policy, and an LMS, search, or persistence adapter before returning a structured result. Expected validation and business rejection remain tool errors; unexpected failures are linked to the durable error log.
 - A deployment targets one configured LMS server. Do not build cross-server routing into the initial runtime.
 - Health is process liveness and must not depend on LMS availability.
 - LMS connectivity is reported separately by `/api/lms`; an unavailable LMS must not make `/api/health` fail.

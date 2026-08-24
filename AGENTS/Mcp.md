@@ -27,7 +27,7 @@ The first three-tool delivery slice was not a permanent limit. Add cohesive user
 
 - Keep tool handlers thin and use application services.
 - Advertise concise server instructions during MCP initialisation for relationships that span tools: player discovery, search versus browse, opaque-reference routing, play versus queue-management semantics, and genuine ambiguity. Do not duplicate complete tool descriptions there.
-- Treat [MCP_CONTRACT.md](../MCP_CONTRACT.md) as the working public contract until implemented schemas replace it.
+- Treat the registered tool schemas and public records in Contracts as the authoritative MCP contract. Keep this guidance aligned with non-obvious cross-tool behaviour, but do not maintain a duplicate prose specification of every field.
 - Return structured, agent-friendly results and opaque result references.
 - Structured tool results must validate against their advertised output schemas. Emit required nullable properties explicitly as JSON `null`; do not omit them through serializer defaults.
 - Propagate cancellation and map expected validation/upstream failures to useful tool errors without leaking stack traces.

@@ -2,7 +2,7 @@
 
 Read this before changing catalogue models, LMS ingestion, provider metadata, catalogue persistence, or refresh orchestration.
 
-The import contracts, bounded LMS reader/writer pipeline, durable reconciliation, refresh job, queryable canonical catalogue, and bounded production-search document source are implemented. The evidence and provisional data shape are recorded in [CATALOGUE_RECONNAISSANCE.md](../CATALOGUE_RECONNAISSANCE.md).
+The import contracts, bounded LMS reader/writer pipeline, durable reconciliation, refresh job, queryable canonical catalogue, and bounded production-search document source are implemented.
 
 ## Boundaries
 
@@ -27,6 +27,8 @@ The import contracts, bounded LMS reader/writer pipeline, durable reconciliation
 - Preserve remote/local state, URL, extension identity, release type, main track artists, album artists, disc/track ordering, dates, and current LMS IDs even when a field is absent on the initial library.
 - Treat a current numeric LMS media ID as a source locator needed for browse and playback, not as the application's only durable identity across destructive rescans.
 - Core LMS stores a last-played value but the supported `titles`/`songinfo` tag surface does not return it. Keep last-played optional until a supported capability adapter is proven; do not reach into the LMS database or expose raw SQL.
+- Validate LMS command and tag assumptions against the supported [database CLI](https://lyrion.org/reference/cli/database/), the current [query implementation](https://github.com/LMS-Community/slimserver/blob/public/9.1/Slim/Control/Queries.pm), and the [persistent track-statistics schema](https://github.com/LMS-Community/slimserver/blob/public/9.1/Slim/Schema/TrackPersistent.pm). Do not infer ingestion contracts from the web UI alone.
+- Read-only integration evidence may establish qualitative behaviour and household-library feasibility, but never record private media names, paths, LMS addresses, virtual-library names, identifiers, or exact private-library measurements in this repository.
 
 ## Refresh
 
