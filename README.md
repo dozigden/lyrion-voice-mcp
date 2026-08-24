@@ -1,13 +1,22 @@
 # Lyrion Voice MCP
 
-This is very early pre release code. It aims to provide a MCP server for Lyrion / LMS that maintains its own index so that it can do phoenetic and fuzzy searches to account for voice agents struggling with artist and tack names.
+Lyrion Voice MCP is early prerelease software providing an MCP server for Lyrion Music Server (LMS). It maintains a local catalogue and search index for phonetic and fuzzy matching, helping voice agents resolve artist and track names that have been transcribed poorly.
 
-To do this is has to scan and index the libray first - this is currently a manual process that has to be initiated from its website.
+It provides more structured search results than LMS itself to help an agent reach the result you want with fewer calls and tokens.
 
+Example requests it aims to let an agent answer quickly:
+
+- "Play 90s pop."
+- "Play the live album by [artist], I can't remember the title."
+- "Append top-rated [artist] tracks to the current queue."
+- "Play the original album version of the live track currently playing."
+
+The LMS library must be imported before searching. A catalogue refresh can be started from the web UI; automatic refresh scheduling is available but disabled by default.
+
+The web frontend includes search-observation and MCP-call logs to help diagnose unexpected behaviour.
 
 > [!WARNING]
 > The application has no authentication. It is intended for a trusted local network and must not be exposed directly to the public internet.
-
 
 ## Requirements
 
@@ -59,3 +68,5 @@ The image serves the complete application on port `5600`. CI validates `linux/am
 ## Licence
 
 Lyrion Voice MCP is released under the [MIT licence](LICENSE).
+
+Third-party licence notices are available from the application's `/licences` page.
