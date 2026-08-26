@@ -45,7 +45,7 @@
         :to="{ name: 'search-observation-detail', params: { id: item.id } }"
       >
         <div>
-          <span class="query">{{ item.originalQuery || 'Constraint-only search' }}</span>
+          <span class="query">{{ observationTitle(item) }}</span>
           <span class="meta">{{ formatDate(item.createdAt) }} · {{ item.resolver }} v{{ item.resolverVersion }}</span>
         </div>
         <div class="signals">
@@ -63,6 +63,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
+import type { SearchObservationSummary } from './searchObservationsApi';
 import { useSearchObservationsStore } from './searchObservationsStore';
 
 const observations = useSearchObservationsStore();
@@ -74,6 +75,12 @@ onMounted(refresh);
 
 async function refresh(): Promise<void> {
   await observations.browse({ query: query.value, review: review.value, result: result.value });
+}
+
+function observationTitle(item: SearchObservationSummary): string {
+  if (item.interpretation === 'broad_discovery') return 'Broad discovery';
+  if (item.interpretation === 'name_free_filtered') return 'Name-free filtered search';
+  return item.originalQuery.trim() || 'Constraint-only search';
 }
 
 function formatDate(value: string): string {

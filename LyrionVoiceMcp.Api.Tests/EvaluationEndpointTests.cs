@@ -40,6 +40,36 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
     }
 
     [Fact]
+    public void DiagnosticValidationShouldAllowBroadAndRatingOnlySearches()
+    {
+        var broad = ProductionSearchDiagnosticValidation.Validate(
+            new ProductionSearchDiagnosticRequest("production"));
+        var blank = ProductionSearchDiagnosticValidation.Validate(
+            new ProductionSearchDiagnosticRequest("production", Query: "   "));
+        var ratingOnly = ProductionSearchDiagnosticValidation.Validate(
+            new ProductionSearchDiagnosticRequest(
+                "production",
+                Rating: 4.5m,
+                RatingMatch: "at_least"));
+
+        Assert.Null(broad);
+        Assert.Null(blank);
+        Assert.Null(ratingOnly);
+    }
+
+    [Fact]
+    public void DiagnosticValidationShouldStillRejectWildcardNames()
+    {
+        var error = ProductionSearchDiagnosticValidation.Validate(
+            new ProductionSearchDiagnosticRequest("production", Query: "*"));
+
+        Assert.Contains(
+            "not a wildcard",
+            Assert.IsType<string>(error),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DiscoveryShouldAdvertiseOnlyTheProductionResolver()
     {
         using var client = factory.CreateClient();

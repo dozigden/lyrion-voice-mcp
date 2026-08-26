@@ -6,6 +6,13 @@ public enum SearchObservationStatus
     Failed
 }
 
+public enum SearchObservationInterpretation
+{
+    Named,
+    NameFreeFiltered,
+    BroadDiscovery
+}
+
 public enum SearchReviewClassification
 {
     Good,
@@ -61,7 +68,8 @@ public sealed record SearchObservation(
     int? RequestedFromYear = null,
     int? RequestedToYear = null,
     int? EffectiveFromYear = null,
-    int? EffectiveToYear = null);
+    int? EffectiveToYear = null,
+    SearchObservationInterpretation? Interpretation = null);
 
 public enum SearchObservationReviewFilter
 {
@@ -89,6 +97,7 @@ public sealed record SearchObservationSummary(
     string Id,
     DateTimeOffset CreatedAt,
     string OriginalQuery,
+    SearchObservationInterpretation? Interpretation,
     string Resolver,
     string ResolverVersion,
     SearchObservationStatus Status,

@@ -10,8 +10,11 @@ public sealed class EvaluationRunner(
         string corpusHash,
         CancellationToken cancellationToken)
     {
-        var results = new List<EvaluationCaseResult>(corpus.Cases.Count);
-        foreach (var item in corpus.Cases)
+        var textCases = corpus.Cases
+            .Where(item => !string.IsNullOrWhiteSpace(item.Query))
+            .ToArray();
+        var results = new List<EvaluationCaseResult>(textCases.Length);
+        foreach (var item in textCases)
         {
             results.Add(await RunCaseAsync(item, cancellationToken));
         }
@@ -100,6 +103,11 @@ public sealed class EvaluationRunner(
 
     private static EvaluationSummary Summarise(IReadOnlyList<EvaluationCaseResult> results)
     {
+        if (results.Count == 0)
+        {
+            return new EvaluationSummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
+
         var positive = results.Where(item => !item.IsNoMatchCase).ToArray();
         var noMatch = results.Where(item => item.IsNoMatchCase).ToArray();
         var orderedDurations = results

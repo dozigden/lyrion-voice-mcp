@@ -65,6 +65,31 @@ public sealed class EvaluationRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_discards_cases_without_query_text()
+    {
+        var resolverCalls = 0;
+        var resolver = new StubSearchResolver(_ =>
+        {
+            resolverCalls++;
+            return [];
+        });
+        var corpus = new EvaluationCorpus(1, [
+            new EvaluationCase("broad", string.Empty, [], "observation", null),
+            new EvaluationCase("blank", "   ", [], "observation", null)
+        ]);
+        var runner = new EvaluationRunner(resolver, TimeProvider.System);
+
+        var report = await runner.RunAsync(
+            corpus,
+            "corpus-hash",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, resolverCalls);
+        Assert.Empty(report.Cases);
+        Assert.Equal(0, report.Summary.TotalCases);
+    }
+
+    [Fact]
     public async Task RunAsync_report_omits_lms_ids_and_private_corpus_notes()
     {
         var resolver = new StubSearchResolver(_ => [

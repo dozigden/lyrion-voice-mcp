@@ -7,7 +7,7 @@
       <header class="detail-heading">
         <div>
           <p class="eyebrow">{{ formatDate(item.createdAt) }}</p>
-          <h1>{{ item.originalQuery ? `“${item.originalQuery}”` : 'Constraint-only search' }}</h1>
+          <h1>{{ observationTitle }}</h1>
           <p v-if="item.normalisedQuery !== item.originalQuery">Normalised to “{{ item.normalisedQuery }}”</p>
           <p v-if="item.rating !== null">
             Rating {{ item.ratingMatch === 'at_least' ? 'at least' : 'exactly' }} {{ item.rating }}
@@ -113,6 +113,12 @@ import { useSearchObservationsStore } from './searchObservationsStore';
 const route = useRoute();
 const observations = useSearchObservationsStore();
 const item = computed(() => observations.selected);
+const observationTitle = computed(() => {
+  if (!item.value) return '';
+  if (item.value.interpretation === 'broad_discovery') return 'Broad discovery';
+  if (item.value.interpretation === 'name_free_filtered') return 'Name-free filtered search';
+  return item.value.originalQuery ? `“${item.value.originalQuery}”` : 'Constraint-only search';
+});
 const classification = ref<SearchClassification>('good');
 const expectedCorrelationId = ref('');
 const expectedKind = ref('');

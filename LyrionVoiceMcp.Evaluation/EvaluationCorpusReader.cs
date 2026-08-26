@@ -97,9 +97,9 @@ public sealed class EvaluationCorpusReader
                 errors.Add($"{location}.id duplicates '{item.Id}'.");
             }
 
-            if (string.IsNullOrWhiteSpace(item.Query) || item.Query != item.Query.Trim())
+            if (!string.IsNullOrWhiteSpace(item.Query) && item.Query != item.Query.Trim())
             {
-                errors.Add($"{location}.query must be non-empty and have no surrounding whitespace.");
+                errors.Add($"{location}.query must have no surrounding whitespace.");
             }
 
             if (string.IsNullOrWhiteSpace(item.Category)

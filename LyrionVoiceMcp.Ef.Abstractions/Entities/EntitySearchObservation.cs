@@ -12,6 +12,8 @@ public sealed class EntitySearchObservation
 
     public string NormalisedQuery { get; set; } = string.Empty;
 
+    public EntitySearchObservationInterpretation? Interpretation { get; set; }
+
     public decimal? Rating { get; set; }
 
     public EntityRatingMatchMode? RatingMatch { get; set; }
@@ -57,6 +59,13 @@ public enum EntitySearchObservationStatus
 {
     Completed,
     Failed
+}
+
+public enum EntitySearchObservationInterpretation
+{
+    Named,
+    NameFreeFiltered,
+    BroadDiscovery
 }
 
 public enum EntityMediaKind

@@ -50,6 +50,7 @@ public sealed class SearchObservationRepository(
                 item.ObservationId,
                 item.CreatedAtUtc,
                 item.OriginalQuery,
+                item.Interpretation,
                 item.Resolver,
                 item.ResolverVersion,
                 item.Status,

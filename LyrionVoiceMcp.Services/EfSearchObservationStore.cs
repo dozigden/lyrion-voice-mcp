@@ -132,6 +132,9 @@ public sealed class EfSearchObservationStore(
         CreatedAtUtc = observation.CreatedAt.UtcDateTime,
         OriginalQuery = observation.OriginalQuery,
         NormalisedQuery = observation.NormalisedQuery,
+        Interpretation = observation.Interpretation is null
+            ? null
+            : ToEntity(observation.Interpretation.Value),
         Rating = observation.RatingConstraint?.Rating,
         RatingMatch = observation.RatingConstraint is null
             ? null
@@ -259,7 +262,10 @@ public sealed class EfSearchObservationStore(
         observation.RequestedFromYear,
         observation.RequestedToYear,
         observation.EffectiveFromYear,
-        observation.EffectiveToYear);
+        observation.EffectiveToYear,
+        observation.Interpretation is null
+            ? null
+            : ToModel(observation.Interpretation.Value));
 
     private static SearchObservationReview ToModel(EntitySearchObservationReview review) =>
         new(
@@ -278,6 +284,9 @@ public sealed class EfSearchObservationStore(
             summary.ObservationId,
             ToDateTimeOffset(summary.CreatedAtUtc),
             summary.OriginalQuery,
+            summary.Interpretation is null
+                ? null
+                : ToModel(summary.Interpretation.Value),
             summary.Resolver,
             summary.ResolverVersion,
             ToModel(summary.Status),
@@ -348,6 +357,18 @@ public sealed class EfSearchObservationStore(
             _ => throw new InvalidOperationException("Unknown search observation status.")
         };
 
+    private static EntitySearchObservationInterpretation ToEntity(
+        SearchObservationInterpretation value) => value switch
+        {
+            SearchObservationInterpretation.Named =>
+                EntitySearchObservationInterpretation.Named,
+            SearchObservationInterpretation.NameFreeFiltered =>
+                EntitySearchObservationInterpretation.NameFreeFiltered,
+            SearchObservationInterpretation.BroadDiscovery =>
+                EntitySearchObservationInterpretation.BroadDiscovery,
+            _ => throw new InvalidOperationException("Unknown search interpretation.")
+        };
+
     private static EntityRatingMatchMode ToEntity(RatingMatchMode value) => value switch
     {
         RatingMatchMode.Exact => EntityRatingMatchMode.Exact,
@@ -368,6 +389,18 @@ public sealed class EfSearchObservationStore(
             EntitySearchObservationStatus.Completed => SearchObservationStatus.Completed,
             EntitySearchObservationStatus.Failed => SearchObservationStatus.Failed,
             _ => throw new InvalidOperationException("Unknown stored search observation status.")
+        };
+
+    private static SearchObservationInterpretation ToModel(
+        EntitySearchObservationInterpretation value) => value switch
+        {
+            EntitySearchObservationInterpretation.Named =>
+                SearchObservationInterpretation.Named,
+            EntitySearchObservationInterpretation.NameFreeFiltered =>
+                SearchObservationInterpretation.NameFreeFiltered,
+            EntitySearchObservationInterpretation.BroadDiscovery =>
+                SearchObservationInterpretation.BroadDiscovery,
+            _ => throw new InvalidOperationException("Unknown stored search interpretation.")
         };
 
     private static EntitySearchObservationRequestStatus ToEntity(

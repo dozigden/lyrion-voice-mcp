@@ -141,12 +141,15 @@ public static class SearchObservationEndpoints
     }
 
     private static SearchObservationSummaryResponse ToSummaryResponse(SearchObservationSummary item) => new(
-        item.Id, item.CreatedAt, item.OriginalQuery, item.Resolver, item.ResolverVersion,
+        item.Id, item.CreatedAt, item.OriginalQuery,
+        item.Interpretation is null ? null : ToText(item.Interpretation.Value),
+        item.Resolver, item.ResolverVersion,
         ToText(item.Status), item.ResultCount, item.SelectedPosition, item.TotalDurationMilliseconds,
         item.Classification is null ? null : ToText(item.Classification.Value), item.IncludeInEvaluation);
 
     private static SearchObservationDetailResponse ToDetailResponse(SearchObservation item, int retentionDays) => new(
         item.Id, item.CreatedAt, item.OriginalQuery, item.NormalisedQuery,
+        item.Interpretation is null ? null : ToText(item.Interpretation.Value),
         item.RatingConstraint?.Rating,
         item.RatingConstraint is null ? null : ToText(item.RatingConstraint.Match),
         item.Genre,
@@ -207,6 +210,13 @@ public static class SearchObservationEndpoints
     private static string ToText(MediaEntityKind value) => value.ToString().ToLowerInvariant();
     private static string ToText(LmsSearchRequestStatus value) => value.ToString().ToLowerInvariant();
     private static string ToText(SearchObservationStatus value) => value.ToString().ToLowerInvariant();
+    private static string ToText(SearchObservationInterpretation value) => value switch
+    {
+        SearchObservationInterpretation.Named => "named",
+        SearchObservationInterpretation.NameFreeFiltered => "name_free_filtered",
+        SearchObservationInterpretation.BroadDiscovery => "broad_discovery",
+        _ => throw new InvalidOperationException("Unknown search interpretation.")
+    };
     private static string ToText(RatingMatchMode value) => value switch
     {
         RatingMatchMode.Exact => "exact",

@@ -55,22 +55,13 @@ internal sealed partial class SearchService(
         }
 
         var yearRange = yearValidation.Value;
-        if (query is null && genre is null && yearRange is null)
-        {
-            return new SearchRejected(
-                SearchRejectionReason.InvalidQuery,
-                criteria.RatingConstraint is null
-                    ? "Supply a media name, genre, or both fromYear and toYear."
-                    : "Rating-only search is not supported yet; supply a media name, genre, or both fromYear and toYear.");
-        }
-
         var normalisedQuery = query ?? string.Empty;
         var tokenCount = SearchQueryPolicy.CountNormalisedTokens(normalisedQuery);
         if (query is not null && tokenCount == 0)
         {
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
-                "The search name must include media-name text; '*' is not a wildcard. For rating-only exploration, use browse and open Ratings.");
+                "The search name must include media-name text; '*' is not a wildcard. Omit name for broad or filtered track discovery.");
         }
 
         if (query is not null && tokenCount > SearchQueryPolicy.MaximumTokenCount)
@@ -104,6 +95,11 @@ internal sealed partial class SearchService(
         var hasTrackConstraint = HasTrackConstraint(trackConstraint);
         var hasGenreOrYearConstraint = trackConstraint.GenreKey is not null
             || trackConstraint.FromYear is not null;
+        var interpretation = query is not null
+            ? SearchObservationInterpretation.Named
+            : hasTrackConstraint
+                ? SearchObservationInterpretation.NameFreeFiltered
+                : SearchObservationInterpretation.BroadDiscovery;
 
         var observation = observationRecorder.Begin(
             criteria.Query ?? string.Empty,
@@ -111,7 +107,8 @@ internal sealed partial class SearchService(
             catalogueSearch.Descriptor,
             criteria.RatingConstraint,
             genre,
-            yearRange);
+            yearRange,
+            interpretation);
         var stopwatch = Stopwatch.StartNew();
         if (query is null)
         {
@@ -389,7 +386,12 @@ internal sealed partial class SearchService(
         Stopwatch stopwatch,
         CancellationToken cancellationToken)
     {
-        var selection = await SelectFilteredTracksAsync(constraint, cancellationToken);
+        var isBroadDiscovery = observation.Interpretation
+            == SearchObservationInterpretation.BroadDiscovery;
+        var selection = await SelectNameFreeTracksAsync(
+            constraint,
+            isBroadDiscovery,
+            cancellationToken);
         IReadOnlyList<LmsSearchRequestObservation> requests = [selection.Request];
         if (selection.Failure is not null)
         {
@@ -440,7 +442,8 @@ internal sealed partial class SearchService(
             .ToArray();
 
         logger.LogInformation(
-            "Name-free constrained media search returned {TopTrackCount} top tracks and {TrackCount} tracks in {ElapsedMilliseconds} ms.",
+            "Name-free {Interpretation} media search returned {TopTrackCount} top tracks and {TrackCount} tracks in {ElapsedMilliseconds} ms.",
+            isBroadDiscovery ? "broad" : "filtered",
             topResults.Length,
             results.Length,
             stopwatch.ElapsedMilliseconds);
@@ -521,13 +524,14 @@ internal sealed partial class SearchService(
             cancellationToken);
     }
 
-    private async Task<ArtistTrackSelection> SelectFilteredTracksAsync(
+    private async Task<ArtistTrackSelection> SelectNameFreeTracksAsync(
         CatalogueTrackSearchConstraint constraint,
+        bool isBroadDiscovery,
         CancellationToken cancellationToken) =>
         await SelectTracksAsync(
             tracks.ReadTracksAsync(constraint, cancellationToken),
-            "catalogue-filtered-tracks",
-            "filtered-tracks",
+            isBroadDiscovery ? "catalogue-broad-tracks" : "catalogue-filtered-tracks",
+            isBroadDiscovery ? "broad-tracks" : "filtered-tracks",
             cancellationToken);
 
     private async Task<ArtistTrackSelection> SelectTracksAsync(

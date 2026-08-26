@@ -6,10 +6,16 @@ export type SearchClassification =
   | 'transcription_error'
   | 'other';
 
+export type SearchInterpretation =
+  | 'named'
+  | 'name_free_filtered'
+  | 'broad_discovery';
+
 export interface SearchObservationSummary {
   id: string;
   createdAt: string;
   originalQuery: string;
+  interpretation: SearchInterpretation | null;
   resolver: string;
   resolverVersion: string;
   status: 'completed' | 'failed';
@@ -58,6 +64,7 @@ export interface SearchObservationDetail {
   createdAt: string;
   originalQuery: string;
   normalisedQuery: string;
+  interpretation: SearchInterpretation | null;
   rating: number | null;
   ratingMatch: 'exact' | 'at_least' | null;
   genre: string | null;
@@ -158,6 +165,7 @@ async function requestJson(url: string, init: RequestInit): Promise<unknown> {
 function isSummary(value: unknown): boolean {
   return isRecord(value) && typeof value.id === 'string' && typeof value.createdAt === 'string'
     && typeof value.originalQuery === 'string' && typeof value.resolver === 'string'
+    && isInterpretation(value.interpretation)
     && typeof value.resolverVersion === 'string' && (value.status === 'completed' || value.status === 'failed')
     && isNumber(value.resultCount) && (value.selectedPosition === null || isNumber(value.selectedPosition))
     && isNumber(value.totalDurationMilliseconds)
@@ -168,6 +176,7 @@ function isSummary(value: unknown): boolean {
 function isDetail(value: unknown): value is SearchObservationDetail {
   return isRecord(value) && typeof value.id === 'string' && typeof value.createdAt === 'string'
     && typeof value.originalQuery === 'string' && typeof value.normalisedQuery === 'string'
+    && isInterpretation(value.interpretation)
     && ((value.rating === null && value.ratingMatch === null)
       || (isRating(value.rating) && (value.ratingMatch === 'exact' || value.ratingMatch === 'at_least')))
     && (value.genre === null || typeof value.genre === 'string')
@@ -187,6 +196,11 @@ function isDetail(value: unknown): value is SearchObservationDetail {
 
 function isClassification(value: unknown): value is SearchClassification {
   return ['good', 'wrong_order', 'no_match', 'ambiguous', 'transcription_error', 'other'].includes(String(value));
+}
+
+function isInterpretation(value: unknown): value is SearchInterpretation | null {
+  return value === null || value === 'named'
+    || value === 'name_free_filtered' || value === 'broad_discovery';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

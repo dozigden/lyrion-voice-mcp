@@ -6,7 +6,7 @@ Read this before changing the corpus contract, validator, benchmark runner, diag
 - This repository owns the corpus schema, validation, resolver-neutral report runner, LMS pass-through baseline, deployed production-resolver diagnostic surface, and fictional automated cases. The diagnostic runtime service belongs to Api and consumes production-neutral Search contracts; the Evaluation executable is not deployed.
 - The default checkout shape is `lyrion-voice-mcp` and `lyrion-voice-evaluation` as sibling directories.
 - Local real-corpus LMS baseline evaluation requires `LVM_EVALUATION_LMS_BASE_URL` and a fixed `live-evaluation` identity. Never fall back to development or application LMS settings.
-- A corpus case contains a stable ID, exact query, zero or more acceptable descriptive entities, category, and optional private notes. Empty expected results explicitly mean no match.
+- A corpus case contains a stable ID, optional exact query text, zero or more acceptable descriptive entities, category, and optional private notes. The text-match evaluator discards cases with omitted, empty, or whitespace-only query text before execution and reporting. Empty expected results on a text case explicitly mean no match.
 - Expected entities use kind and title with optional artist and album constraints. Do not add LMS IDs without concrete ambiguity.
 - Run cases sequentially so latency measurements are understandable.
 - Generated reports belong under ignored `.data/evaluation` and must not contain LMS media IDs, result references, server addresses, corpus notes, or observation IDs.

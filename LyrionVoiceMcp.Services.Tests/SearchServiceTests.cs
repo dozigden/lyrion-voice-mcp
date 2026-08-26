@@ -564,6 +564,13 @@ public sealed class SearchServiceTests
         Assert.Equal(1999, observations.Recorded?.EffectiveFromYear);
         Assert.Equal(2000, observations.Recorded?.EffectiveToYear);
         Assert.Equal(MediaEntityKind.Track, observations.Recorded?.RequestedKind);
+        Assert.Equal(
+            SearchObservationInterpretation.NameFreeFiltered,
+            observations.Recorded?.Interpretation);
+        Assert.Equal("catalogue", observations.Recorded?.Provider);
+        var request = Assert.Single(observations.Recorded!.Requests);
+        Assert.Equal("catalogue-filtered-tracks", request.Source);
+        Assert.Equal("filtered-tracks", request.Command);
     }
 
     [Theory]
@@ -682,23 +689,83 @@ public sealed class SearchServiceTests
     }
 
     [Fact]
-    public async Task SearchShouldRejectWhitespaceWithoutCallingEitherResolver()
+    public async Task WhitespaceNameShouldPerformBroadDiscoveryWithoutNamedResolvers()
     {
         var catalogue = new StubCatalogueSearch([]);
         var playlists = new StubPlaylistSearch([]);
+        var tracks = new StubTrackResolver(
+            Enumerable.Range(1, 50)
+                .Select(index => new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Track, $"track-{index}"),
+                    $"Fictional Track {index}",
+                    "The Imaginaries",
+                    "Imaginary Signals",
+                    1_120,
+                    index <= 10 ? 100 : 60))
+                .ToArray());
+        var observations = new RecordingSearchObservationStore();
         var service = CreateService(
             catalogue,
             playlists,
             new ReferenceCodecTestContext().Search,
-            new RecordingSearchObservationStore());
+            observations,
+            tracks: tracks);
 
         var outcome = await service.SearchAsync("   ", TestContext.Current.CancellationToken);
 
-        Assert.Equal(
-            SearchRejectionReason.InvalidQuery,
-            Assert.IsType<SearchRejected>(outcome).Reason);
+        var succeeded = Assert.IsType<SearchSucceeded>(outcome);
+        Assert.Equal(SearchResultPolicy.TopTrackLimit, succeeded.TopTracks.Count);
+        Assert.Equal(SearchResultPolicy.TrackLimit, succeeded.Results.Count);
+        Assert.Empty(succeeded.TopTracks.Select(result => result.Reference)
+            .Intersect(succeeded.Results.Select(result => result.Reference)));
         Assert.Null(catalogue.Query);
         Assert.Null(playlists.Query);
+        Assert.Equal(new CatalogueTrackSearchConstraint(), tracks.Constraint);
+        Assert.Equal(
+            SearchObservationInterpretation.BroadDiscovery,
+            observations.Recorded?.Interpretation);
+        Assert.Equal(MediaEntityKind.Track, observations.Recorded?.RequestedKind);
+        Assert.Equal("catalogue", observations.Recorded?.Provider);
+        var request = Assert.Single(observations.Recorded!.Requests);
+        Assert.Equal("catalogue-broad-tracks", request.Source);
+        Assert.Equal("broad-tracks", request.Command);
+        Assert.Equal(50, request.ResultCount);
+    }
+
+    [Fact]
+    public async Task RatingOnlySearchShouldUseStrictNameFreeConstraint()
+    {
+        var constraint = new RatingSearchConstraint(4.5m, RatingMatchMode.AtLeast);
+        var tracks = new StubTrackResolver([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, "track-1"),
+                "Fictional Favourite",
+                "The Imaginaries",
+                "Imaginary Signals",
+                1_120,
+                90)
+        ]);
+        var observations = new RecordingSearchObservationStore();
+        var service = CreateService(
+            new StubCatalogueSearch([]),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            observations,
+            tracks: tracks);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria(null, constraint),
+            TestContext.Current.CancellationToken));
+
+        Assert.Single(succeeded.TopTracks);
+        Assert.Empty(succeeded.Results);
+        Assert.Equal(constraint, tracks.Constraint?.RatingConstraint);
+        Assert.Null(tracks.Constraint?.GenreKey);
+        Assert.Null(tracks.Constraint?.FromYear);
+        Assert.Null(tracks.Constraint?.ToYear);
+        Assert.Equal(
+            SearchObservationInterpretation.NameFreeFiltered,
+            observations.Recorded?.Interpretation);
     }
 
     [Theory]
@@ -722,7 +789,7 @@ public sealed class SearchServiceTests
         var rejected = Assert.IsType<SearchRejected>(outcome);
         Assert.Equal(SearchRejectionReason.InvalidQuery, rejected.Reason);
         Assert.Contains("not a wildcard", rejected.Message, StringComparison.Ordinal);
-        Assert.Contains("Ratings", rejected.Message, StringComparison.Ordinal);
+        Assert.Contains("Omit name", rejected.Message, StringComparison.Ordinal);
         Assert.Null(catalogue.Query);
         Assert.Null(playlists.Query);
     }

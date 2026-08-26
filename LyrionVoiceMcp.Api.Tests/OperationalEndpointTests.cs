@@ -114,6 +114,51 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
     }
 
     [Fact]
+    public async Task SearchObservationDetailShouldExposeBroadDiscoveryInterpretation()
+    {
+        using var isolatedFactory = new LyrionVoiceMcpApiFactory();
+        using var client = isolatedFactory.CreateClient();
+        using (var scope = isolatedFactory.Services.CreateScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<ISearchObservationStore>();
+            await store.RecordAsync(
+                new SearchObservation(
+                    "broad-observation",
+                    DateTimeOffset.Parse("2026-08-25T20:00:00Z"),
+                    string.Empty,
+                    string.Empty,
+                    MediaEntityKind.Track,
+                    "catalogue",
+                    "whole_library",
+                    "fictional-resolver",
+                    "1",
+                    SearchObservationStatus.Completed,
+                    null,
+                    12,
+                    10,
+                    2,
+                    [],
+                    [],
+                    null,
+                    Interpretation: SearchObservationInterpretation.BroadDiscovery),
+                TestContext.Current.CancellationToken);
+        }
+
+        var response = await client.GetFromJsonAsync<SearchObservationDetailResponse>(
+            "/api/search-observations/broad-observation",
+            TestContext.Current.CancellationToken);
+        var page = await client.GetFromJsonAsync<SearchObservationPageResponse>(
+            "/api/search-observations",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("broad_discovery", response?.Interpretation);
+        Assert.Equal(string.Empty, response?.OriginalQuery);
+        Assert.Equal(
+            "broad_discovery",
+            Assert.Single(page!.Items, item => item.Id == "broad-observation").Interpretation);
+    }
+
+    [Fact]
     public async Task ScheduledJobsShouldExposeDisabledCatalogueAndEnabledMaintenanceDefinitions()
     {
         using var client = factory.CreateClient();

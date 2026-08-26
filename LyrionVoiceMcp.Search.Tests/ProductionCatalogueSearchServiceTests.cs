@@ -400,6 +400,38 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TrackStreamWithoutConstraintsShouldReturnTheWholeTrackPopulation()
+    {
+        var source = new DocumentSource([
+            Track("first", "First Fictional Signal", 20),
+            Track("second", "Second Fictional Signal", 100),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "album"),
+                "Imaginary Signals",
+                "The Imaginaries",
+                null),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Artist, "artist"),
+                "The Imaginaries",
+                null,
+                null)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-broad-track-stream", 55);
+
+        var candidates = new List<CatalogueSearchCandidate>();
+        await foreach (var candidate in service.ReadTracksAsync(
+            new CatalogueTrackSearchConstraint(),
+            TestContext.Current.CancellationToken))
+        {
+            candidates.Add(candidate);
+        }
+
+        Assert.Equal(["first", "second"], candidates.Select(candidate => candidate.Identity.Id));
+        Assert.All(candidates, candidate => Assert.Equal(MediaEntityKind.Track, candidate.Identity.Kind));
+    }
+
+    [Fact]
     public async Task RatingBrowseShouldFloorBucketsAndOrderByNativeRatingThenTitle()
     {
         var source = new DocumentSource([

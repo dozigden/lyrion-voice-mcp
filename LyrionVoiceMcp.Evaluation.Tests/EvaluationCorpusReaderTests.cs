@@ -73,9 +73,31 @@ public sealed class EvaluationCorpusReaderTests
 
         var rejected = Assert.IsType<CorpusRejected>(outcome);
         Assert.Contains(rejected.Errors, error => error.Contains("kebab-case", StringComparison.Ordinal));
-        Assert.Contains(rejected.Errors, error => error.Contains("query", StringComparison.Ordinal));
         Assert.Contains(rejected.Errors, error => error.Contains("category", StringComparison.Ordinal));
         Assert.Contains(rejected.Errors, error => error.Contains("title", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Read_accepts_cases_without_query_text_for_runner_filtering()
+    {
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "cases": [
+                {
+                  "id": "broad-observation",
+                  "query": "   ",
+                  "expected": [],
+                  "category": "observation"
+                }
+              ]
+            }
+            """;
+
+        var outcome = new EvaluationCorpusReader().Read(json);
+
+        var loaded = Assert.IsType<CorpusRead>(outcome);
+        Assert.Equal("   ", Assert.Single(loaded.Corpus.Cases).Query);
     }
 
     [Fact]

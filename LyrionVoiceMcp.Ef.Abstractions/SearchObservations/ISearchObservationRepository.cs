@@ -49,6 +49,7 @@ public sealed record EntitySearchObservationSummary(
     string ObservationId,
     DateTime CreatedAtUtc,
     string OriginalQuery,
+    EntitySearchObservationInterpretation? Interpretation,
     string Resolver,
     string ResolverVersion,
     EntitySearchObservationStatus Status,

@@ -59,7 +59,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "name may be omitted for genre or year searches",
+            "every input may be omitted for broad varied discovery",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -104,7 +104,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("properties");
         Assert.False(searchInputProperties.TryGetProperty("query", out _));
         Assert.Equal(
-            "Optional artist, album, track, or playlist name text, up to 500 characters and 20 words. Omit it to search tracks by genre or year alone. Do not include constraints or search syntax in the name. Wildcards are not supported.",
+            "Optional artist, album, track, or playlist name text, up to 500 characters and 20 words. Omit it or leave it blank for rating-, genre-, or year-filtered track discovery; omit every input for broad varied discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.",
             searchInputProperties.GetProperty("name").GetProperty("description").GetString());
         Assert.True(searchInputProperties.TryGetProperty("genre", out _));
         Assert.True(searchInputProperties.TryGetProperty("fromYear", out _));
@@ -150,7 +150,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
         Assert.Equal(
-            "Search the music library by name, exact genre, inclusive year range, or a combination. Reports a unique exact artist separately, returns relevant 4+ top tracks separately, and varies equally relevant track matches. Genre, years, and rating narrow tracks. * is not a wildcard.",
+            "Search the music library by optional name, exact genre, inclusive year range, rating, or a combination. Omit every input for broad varied track discovery. Reports a unique exact artist separately, returns 4+ top tracks separately, and varies track selections. Genre, years, and rating narrow tracks. * is not a wildcard.",
             searchTool.GetProperty("description").GetString());
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         var browseTool = Assert.Single(
@@ -208,7 +208,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             31,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"name":"copper lines","rating":4.5,"ratingMatch":"at_least"}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"rating":4.5,"ratingMatch":"at_least"}}
             """,
             "search");
 
@@ -217,9 +217,36 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("copper lines", search.Criteria?.Query);
+        Assert.Null(search.Criteria?.Query);
         Assert.Equal(4.5m, search.Criteria?.RatingConstraint?.Rating);
         Assert.Equal(RatingMatchMode.AtLeast, search.Criteria?.RatingConstraint?.Match);
+    }
+
+    [Fact]
+    public async Task SearchToolShouldPassAnEmptyRequestForBroadDiscovery()
+    {
+        var search = new CapturingSearchService();
+        await using var searchFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISearchService>();
+                services.AddSingleton<ISearchService>(search);
+            }));
+        using var client = searchFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            34,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{}}
+            """,
+            "search");
+
+        var response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(new SearchCriteria(null), search.Criteria);
     }
 
     [Fact]

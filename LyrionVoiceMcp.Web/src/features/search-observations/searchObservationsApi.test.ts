@@ -9,6 +9,7 @@ describe('search observations API', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       items: [{
         id: 'one', createdAt: '2026-08-12T18:00:00Z', originalQuery: 'zyrack',
+        interpretation: 'named',
         resolver: 'lms-pass-through', resolverVersion: '1', status: 'completed', resultCount: 0,
         selectedPosition: null, totalDurationMilliseconds: 12, classification: null, includeInEvaluation: false
       }],
@@ -28,6 +29,7 @@ describe('search observations API', () => {
     // Arrange
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       id: 'one', createdAt: '2026-08-12T18:00:00Z', originalQuery: 'zyrack', normalisedQuery: 'zyrack',
+      interpretation: 'named',
       rating: null, ratingMatch: null, genre: null, requestedFromYear: null, requestedToYear: null,
       effectiveFromYear: null, effectiveToYear: null, requestedKind: null, provider: 'lms', collection: 'whole_library', resolver: 'lms-pass-through',
       resolverVersion: '1', status: 'completed', failureMessage: null, totalDurationMilliseconds: 12,
@@ -49,6 +51,7 @@ describe('search observations API', () => {
     // Arrange
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       id: 'one', createdAt: '2026-08-23T15:00:00Z', originalQuery: 'The Copper Lines', normalisedQuery: 'The Copper Lines',
+      interpretation: 'named',
       rating: null, ratingMatch: null, genre: null, requestedFromYear: null, requestedToYear: null,
       effectiveFromYear: null, effectiveToYear: null, requestedKind: null, provider: 'catalogue+lms', collection: 'whole_library',
       resolver: 'catalogue-phuzzy-sqlite', resolverVersion: '4', status: 'completed', failureMessage: null,
@@ -64,6 +67,7 @@ describe('search observations API', () => {
     const detail = await getSearchObservation('one');
 
     // Assert
+    expect(detail.interpretation).toBe('named');
     expect(detail.candidates[0]?.isExactArtistMatch).toBe(true);
   });
 });

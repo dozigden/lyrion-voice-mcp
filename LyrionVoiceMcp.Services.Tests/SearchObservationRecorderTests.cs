@@ -84,6 +84,7 @@ public sealed class SearchObservationRecorderTests
         Assert.Equal("copper", recorded.NormalisedQuery);
         Assert.Equal(descriptor.Name, recorded.Resolver);
         Assert.Equal(descriptor.Version, recorded.ResolverVersion);
+        Assert.Equal(SearchObservationInterpretation.Named, recorded.Interpretation);
         Assert.Equal(SearchObservationStatus.Completed, recorded.Status);
         Assert.Equal(20, recorded.TotalDurationMilliseconds);
         Assert.Equal(20, recorded.RetrievalDurationMilliseconds);

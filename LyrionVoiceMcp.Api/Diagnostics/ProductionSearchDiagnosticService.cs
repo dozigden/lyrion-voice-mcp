@@ -48,7 +48,6 @@ public static class ProductionSearchDiagnosticValidation
         }
 
         var query = string.IsNullOrWhiteSpace(request.Query) ? null : request.Query.Trim();
-        var genre = SearchConstraintPolicy.NormaliseGenre(request.Genre);
         var yearValidation = SearchConstraintPolicy.NormaliseYearRange(
             request.FromYear,
             request.ToYear,
@@ -58,13 +57,13 @@ public static class ProductionSearchDiagnosticValidation
             return yearValidation.Error;
         }
 
-        if (query is null && genre is null && yearValidation.Value is null)
+        var tokenCount = SearchQueryPolicy.CountNormalisedTokens(query ?? string.Empty);
+        if (query is not null && tokenCount == 0)
         {
-            return "Supply query, genre, or both fromYear and toYear.";
+            return "query must contain media-name text; '*' is not a wildcard.";
         }
 
-        if (query is not null && SearchQueryPolicy.CountNormalisedTokens(query)
-            > SearchQueryPolicy.MaximumTokenCount)
+        if (query is not null && tokenCount > SearchQueryPolicy.MaximumTokenCount)
         {
             return $"query must contain no more than {SearchQueryPolicy.MaximumTokenCount} words.";
         }

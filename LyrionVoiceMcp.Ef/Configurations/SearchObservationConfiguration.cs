@@ -15,6 +15,7 @@ public sealed class SearchObservationConfiguration
         builder.Property(item => item.CreatedAtUtc).IsRequired();
         builder.Property(item => item.OriginalQuery).HasMaxLength(500).IsRequired();
         builder.Property(item => item.NormalisedQuery).HasMaxLength(500).IsRequired();
+        builder.Property(item => item.Interpretation);
         builder.Property(item => item.Rating);
         builder.Property(item => item.RatingMatch);
         builder.Property(item => item.Genre).HasMaxLength(500);

@@ -78,6 +78,7 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
         Assert.Equal(LmsSearchRequestStatus.Failed, saved.Requests[1].Status);
         Assert.Equal("Playlist provider unavailable.", saved.Requests[1].FailureMessage);
         Assert.Equal(SearchReviewClassification.WrongOrder, saved.Review?.Classification);
+        Assert.Equal(SearchObservationInterpretation.Named, saved.Interpretation);
 
         var page = await store.BrowseAsync(
             new SearchObservationQuery(
@@ -99,6 +100,7 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
             TestContext.Current.CancellationToken);
         Assert.Equal(1, page.Total);
         Assert.Equal(2, Assert.Single(page.Items).SelectedPosition);
+        Assert.Equal(SearchObservationInterpretation.Named, Assert.Single(page.Items).Interpretation);
 
         var exportedCase = Assert.Single(await store.ExportAsync(
             TestContext.Current.CancellationToken));
@@ -290,7 +292,8 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
                 null,
                 null)
         ],
-        null);
+        null,
+        Interpretation: SearchObservationInterpretation.Named);
 
     private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
     {

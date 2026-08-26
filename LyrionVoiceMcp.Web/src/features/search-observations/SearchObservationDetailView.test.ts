@@ -16,8 +16,9 @@ describe('SearchObservationDetailView', () => {
     vi.spyOn(api, 'getSearchObservation').mockResolvedValue({
       id: 'failed-search',
       createdAt: '2026-08-12T18:00:00Z',
-      originalQuery: 'zyrack',
-      normalisedQuery: 'zyrack',
+      originalQuery: '',
+      normalisedQuery: '',
+      interpretation: 'broad_discovery',
       rating: null,
       ratingMatch: null,
       genre: null,
@@ -64,6 +65,7 @@ describe('SearchObservationDetailView', () => {
     await flushPromises();
 
     // Assert
+    expect(wrapper.get('h1').text()).toBe('Broad discovery');
     expect(wrapper.text()).toContain('Search request failed');
     expect(wrapper.text()).toContain('No candidates were recovered before the request failed.');
     expect(wrapper.text()).not.toContain('Search returned no candidates.');
@@ -78,6 +80,7 @@ describe('SearchObservationDetailView', () => {
       createdAt: '2026-08-23T15:00:00Z',
       originalQuery: 'The Copper Lines',
       normalisedQuery: 'The Copper Lines',
+      interpretation: 'named',
       rating: null,
       ratingMatch: null,
       genre: null,
