@@ -541,13 +541,22 @@ public sealed class SearchServiceTests
                 90)
         ]);
         var playlists = new StubPlaylistSearch([]);
+        var albumResolver = new StubAlbumResolver([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Album, "album-1"),
+                "Century Pop Album",
+                "The Imaginaries",
+                null,
+                1_300)
+        ]);
         var observations = new RecordingSearchObservationStore();
         var service = CreateService(
             new StubCatalogueSearch([]),
             playlists,
             new ReferenceCodecTestContext().Search,
             observations,
-            tracks: trackResolver);
+            tracks: trackResolver,
+            albums: albumResolver);
 
         var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
             new SearchCriteria(null, Genre: "  Pop  ", FromYear: 99, ToYear: 0),
@@ -557,6 +566,7 @@ public sealed class SearchServiceTests
         Assert.Equal("POP", trackResolver.Constraint?.GenreKey);
         Assert.Equal(1999, trackResolver.Constraint?.FromYear);
         Assert.Equal(2000, trackResolver.Constraint?.ToYear);
+        Assert.Null(albumResolver.Constraint);
         Assert.Null(playlists.Query);
         Assert.Equal("Pop", observations.Recorded?.Genre);
         Assert.Equal(99, observations.Recorded?.RequestedFromYear);
@@ -571,6 +581,88 @@ public sealed class SearchServiceTests
         var request = Assert.Single(observations.Recorded!.Requests);
         Assert.Equal("catalogue-filtered-tracks", request.Source);
         Assert.Equal("filtered-tracks", request.Command);
+    }
+
+    [Fact]
+    public async Task NameFreeYearSearchShouldReturnBoundedAlbumsAndTracks()
+    {
+        var trackResolver = new StubTrackResolver([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, "track-1"),
+                "Century Signal",
+                "The Imaginaries",
+                "Imaginary Signals",
+                1_120,
+                60)
+        ]);
+        var albumResolver = new StubAlbumResolver(
+            Enumerable.Range(1, 7)
+                .Select(index => new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Album, $"album-{index}"),
+                    $"Fictional Album {index}",
+                    "The Imaginaries",
+                    null,
+                    1_300))
+                .ToArray());
+        var observations = new RecordingSearchObservationStore();
+        var references = new ReferenceCodecTestContext();
+        var service = CreateService(
+            new StubCatalogueSearch([]),
+            new StubPlaylistSearch([]),
+            references.Search,
+            observations,
+            tracks: trackResolver,
+            albums: albumResolver);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria(null, FromYear: 1990, ToYear: 1999),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(
+            SearchResultPolicy.AlbumLimit,
+            succeeded.Results.Count(candidate => candidate.Kind == MediaEntityKind.Album));
+        Assert.Single(succeeded.Results, candidate => candidate.Kind == MediaEntityKind.Track);
+        Assert.Empty(succeeded.TopTracks);
+        Assert.Equal(
+            new CatalogueAlbumSearchConstraint(1990, 1999),
+            albumResolver.Constraint);
+        Assert.Null(observations.Recorded?.RequestedKind);
+        Assert.Collection(
+            observations.Recorded!.Requests,
+            request => Assert.Equal("catalogue-filtered-tracks", request.Source),
+            request => Assert.Equal("catalogue-filtered-albums", request.Source));
+        var returnedAlbum = succeeded.Results.First(candidate =>
+            candidate.Kind == MediaEntityKind.Album);
+        var observedAlbum = Assert.Single(observations.Recorded.Candidates, candidate =>
+            candidate.Title == returnedAlbum.Title);
+        Assert.Equal(
+            observedAlbum.CorrelationId,
+            references.Search.TryDecode(returnedAlbum.Reference)?.CorrelationId);
+    }
+
+    [Fact]
+    public async Task RequiredYearAlbumFailureShouldFailRatherThanWidenTheSearch()
+    {
+        var failure = new InvalidOperationException("Synthetic album-year failure.");
+        var observations = new RecordingSearchObservationStore();
+        var service = CreateService(
+            new StubCatalogueSearch([]),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            observations,
+            tracks: new StubTrackResolver([]),
+            albums: new FailingAlbumResolver(failure));
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SearchAsync(
+                new SearchCriteria(null, FromYear: 1990, ToYear: 1999),
+                TestContext.Current.CancellationToken));
+
+        Assert.Same(failure, thrown);
+        Assert.Equal(SearchObservationStatus.Failed, observations.Recorded?.Status);
+        Assert.Contains(observations.Recorded!.Requests, request =>
+            request.Source == "catalogue-filtered-albums"
+            && request.Status == LmsSearchRequestStatus.Failed);
     }
 
     [Theory]
@@ -598,6 +690,120 @@ public sealed class SearchServiceTests
         Assert.IsType<SearchRejected>(outcome);
         Assert.Null(catalogue.Query);
         Assert.Null(trackResolver.Constraint);
+    }
+
+    [Fact]
+    public async Task NamedYearSearchShouldReturnMatchingAlbumAndTrackGroups()
+    {
+        var catalogue = new StubCatalogueSearch([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Album, "album-1"),
+                "Copper Century",
+                "The Imaginaries",
+                null,
+                1_300),
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, "track-1"),
+                "Copper Century",
+                "The Imaginaries",
+                "Fictional Frequencies",
+                1_120,
+                60)
+        ]);
+        var service = CreateService(
+            catalogue,
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria("Copper Century", FromYear: 1990, ToYear: 1999),
+            TestContext.Current.CancellationToken));
+
+        Assert.Single(succeeded.Results, candidate =>
+            candidate.Kind == MediaEntityKind.Album);
+        Assert.Single(succeeded.Results, candidate =>
+            candidate.Kind == MediaEntityKind.Track);
+        Assert.Equal(
+            new CatalogueAlbumSearchConstraint(1990, 1999),
+            catalogue.AlbumConstraint);
+    }
+
+    [Fact]
+    public async Task RatingAndYearSearchShouldNotWidenCriteriaToAlbums()
+    {
+        var catalogue = new StubCatalogueSearch([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Album, "album-1"),
+                "Copper Century",
+                "The Imaginaries",
+                null,
+                1_300),
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, "track-1"),
+                "Copper Century",
+                "The Imaginaries",
+                "Fictional Frequencies",
+                1_120,
+                100)
+        ]);
+        var service = CreateService(
+            catalogue,
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore());
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria(
+                "Copper Century",
+                new RatingSearchConstraint(5, RatingMatchMode.Exact),
+                FromYear: 1990,
+                ToYear: 1999),
+            TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain(succeeded.Results, candidate =>
+            candidate.Kind == MediaEntityKind.Album);
+        Assert.Null(catalogue.CatalogueConstraint?.AlbumConstraint);
+    }
+
+    [Fact]
+    public async Task YearConstrainedExactArtistShouldReturnCanonicalAlbumsInRange()
+    {
+        var catalogue = new StubCatalogueSearch([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Artist, "artist-1"),
+                "The Imaginaries",
+                null,
+                null,
+                1_300,
+                IsExactTitleMatch: true)
+        ]);
+        var artistAlbums = new StubArtistAlbumResolver([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Album, "album-1"),
+                "Fictional Frequencies",
+                "The Imaginaries",
+                null,
+                1_300)
+        ]);
+        var service = CreateService(
+            catalogue,
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(),
+            artistAlbums: artistAlbums);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria("The Imaginaries", FromYear: 2000, ToYear: 2009),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("The Imaginaries", succeeded.ExactArtistMatch?.Name);
+        Assert.Single(succeeded.Results, candidate =>
+            candidate.Kind == MediaEntityKind.Album);
+        Assert.Equal("artist-1", artistAlbums.ArtistId);
+        Assert.Equal(
+            new CatalogueAlbumSearchConstraint(2000, 2009),
+            artistAlbums.Constraint);
     }
 
     [Fact]
@@ -1059,10 +1265,12 @@ public sealed class SearchServiceTests
         ICatalogueArtistTrackResolver? artistTracks = null,
         IBrowseReferenceCodec? browseCodec = null,
         ICatalogueArtistAlbumResolver? artistAlbums = null,
-        ICatalogueTrackResolver? tracks = null) => new(
+        ICatalogueTrackResolver? tracks = null,
+        ICatalogueAlbumResolver? albums = null) => new(
             catalogue,
             artistTracks ?? new EmptyArtistTrackResolver(),
             tracks ?? new EmptyTrackResolver(),
+            albums ?? new EmptyAlbumResolver(),
             artistAlbums ?? new EmptyArtistAlbumResolver(),
             playlists,
             codec,
@@ -1085,6 +1293,8 @@ public sealed class SearchServiceTests
         public string? Query { get; private set; }
         public RatingSearchConstraint? RatingConstraint { get; private set; }
         public CatalogueTrackSearchConstraint? Constraint { get; private set; }
+        public CatalogueSearchConstraint? CatalogueConstraint { get; private set; }
+        public CatalogueAlbumSearchConstraint? AlbumConstraint { get; private set; }
 
         public Task<CatalogueSearchResponse> SearchAsync(
             string query,
@@ -1120,6 +1330,40 @@ public sealed class SearchServiceTests
             return SearchAsync(query, constraint?.RatingConstraint, cancellationToken);
         }
 
+        public Task<CatalogueSearchResponse> SearchAsync(
+            string query,
+            CatalogueSearchConstraint? constraint,
+            CancellationToken cancellationToken)
+        {
+            CatalogueConstraint = constraint;
+            Constraint = constraint?.TrackConstraint;
+            RatingConstraint = constraint?.TrackConstraint.RatingConstraint;
+            if (constraint?.AlbumConstraint is not null)
+            {
+                AlbumConstraint = constraint.AlbumConstraint;
+            }
+
+            Query = query;
+            var candidates = results.AsEnumerable();
+            if (constraint is not null)
+            {
+                candidates = candidates.Where(candidate =>
+                    candidate.Identity.Kind == MediaEntityKind.Track
+                    || (constraint.AlbumConstraint is not null
+                        && candidate.Identity.Kind == MediaEntityKind.Album));
+                if (constraint.TrackConstraint.RatingConstraint is not null)
+                {
+                    candidates = candidates.Where(candidate =>
+                        candidate.Identity.Kind != MediaEntityKind.Track
+                        || Matches(
+                            candidate.NativeRating,
+                            constraint.TrackConstraint.RatingConstraint));
+                }
+            }
+
+            return Task.FromResult(new CatalogueSearchResponse(candidates.ToArray(), 1, 1));
+        }
+
         private static bool Matches(
             int nativeRating,
             RatingSearchConstraint constraint)
@@ -1140,6 +1384,15 @@ public sealed class SearchServiceTests
     {
         public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
             string artistId,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
+            string artistId,
+            CatalogueTrackSearchConstraint? constraint,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             await Task.CompletedTask;
@@ -1177,6 +1430,53 @@ public sealed class SearchServiceTests
         }
     }
 
+    private sealed class EmptyAlbumResolver : ICatalogueAlbumResolver
+    {
+        public async IAsyncEnumerable<CatalogueSearchCandidate> ReadAlbumsAsync(
+            CatalogueAlbumSearchConstraint constraint,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
+
+    private sealed class StubAlbumResolver(
+        IReadOnlyList<CatalogueSearchCandidate> candidates) : ICatalogueAlbumResolver
+    {
+        public CatalogueAlbumSearchConstraint? Constraint { get; private set; }
+
+        public async IAsyncEnumerable<CatalogueSearchCandidate> ReadAlbumsAsync(
+            CatalogueAlbumSearchConstraint constraint,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Constraint = constraint;
+            foreach (var candidate in candidates)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return candidate;
+                await Task.Yield();
+            }
+        }
+    }
+
+    private sealed class FailingAlbumResolver(Exception failure) : ICatalogueAlbumResolver
+    {
+        public async IAsyncEnumerable<CatalogueSearchCandidate> ReadAlbumsAsync(
+            CatalogueAlbumSearchConstraint constraint,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (constraint.FromYear > 0)
+            {
+                throw failure;
+            }
+
+            yield break;
+        }
+    }
+
     private sealed class EmptyArtistAlbumResolver : ICatalogueArtistAlbumResolver
     {
         public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
@@ -1192,12 +1492,28 @@ public sealed class SearchServiceTests
         IReadOnlyList<CatalogueSearchCandidate> candidates) : ICatalogueArtistAlbumResolver
     {
         public string? ArtistId { get; private set; }
+        public CatalogueAlbumSearchConstraint? Constraint { get; private set; }
 
         public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
             string artistId,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             ArtistId = artistId;
+            foreach (var candidate in candidates)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return candidate;
+                await Task.Yield();
+            }
+        }
+
+        public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
+            string artistId,
+            CatalogueAlbumSearchConstraint? constraint,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            ArtistId = artistId;
+            Constraint = constraint;
             foreach (var candidate in candidates)
             {
                 cancellationToken.ThrowIfCancellationRequested();

@@ -23,6 +23,7 @@ public sealed class ProductionCatalogueSearchService :
     ICatalogueSearchResolver,
     ICatalogueArtistTrackResolver,
     ICatalogueTrackResolver,
+    ICatalogueAlbumResolver,
     ICatalogueArtistAlbumResolver,
     IDiagnosticSearchResolver,
     IRatingBrowseResolver,
@@ -67,6 +68,15 @@ public sealed class ProductionCatalogueSearchService :
     public async Task<CatalogueSearchResponse> SearchAsync(
         string query,
         CatalogueTrackSearchConstraint? constraint,
+        CancellationToken cancellationToken) =>
+        await SearchAsync(
+            query,
+            constraint is null ? null : new CatalogueSearchConstraint(constraint),
+            cancellationToken);
+
+    public async Task<CatalogueSearchResponse> SearchAsync(
+        string query,
+        CatalogueSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         var generation = await GetLoadedAsync(cancellationToken);
@@ -85,7 +95,7 @@ public sealed class ProductionCatalogueSearchService :
     public Task<CatalogueSearchResponse> SearchAsync(
         string query,
         CancellationToken cancellationToken) =>
-        SearchAsync(query, (CatalogueTrackSearchConstraint?)null, cancellationToken);
+        SearchAsync(query, (CatalogueSearchConstraint?)null, cancellationToken);
 
     public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
         string artistId,
@@ -154,6 +164,21 @@ public sealed class ProductionCatalogueSearchService :
         [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken cancellationToken)
     {
+        await foreach (var candidate in ReadArtistAlbumsAsync(
+            artistId,
+            null,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
+        string artistId,
+        CatalogueAlbumSearchConstraint? constraint,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+        CancellationToken cancellationToken)
+    {
         var generation = await GetLoadedAsync(cancellationToken);
         if (generation is null)
         {
@@ -163,6 +188,27 @@ public sealed class ProductionCatalogueSearchService :
 
         await foreach (var candidate in generation.Resolver.ReadArtistAlbumsAsync(
             artistId,
+            constraint,
+            cancellationToken))
+        {
+            yield return candidate;
+        }
+    }
+
+    public async IAsyncEnumerable<CatalogueSearchCandidate> ReadAlbumsAsync(
+        CatalogueAlbumSearchConstraint constraint,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+        CancellationToken cancellationToken)
+    {
+        var generation = await GetLoadedAsync(cancellationToken);
+        if (generation is null)
+        {
+            throw new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built.");
+        }
+
+        await foreach (var candidate in generation.Resolver.ReadAlbumsAsync(
+            constraint,
             cancellationToken))
         {
             yield return candidate;
@@ -171,7 +217,7 @@ public sealed class ProductionCatalogueSearchService :
 
     public async Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
-        CatalogueTrackSearchConstraint? constraint,
+        CatalogueSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         var generation = await GetLoadedAsync(cancellationToken);
@@ -195,16 +241,26 @@ public sealed class ProductionCatalogueSearchService :
             query,
             ratingConstraint is null
                 ? null
-                : new CatalogueTrackSearchConstraint(ratingConstraint),
+                : new CatalogueSearchConstraint(
+                    new CatalogueTrackSearchConstraint(ratingConstraint)),
+            cancellationToken);
+
+    public Task<SearchDiagnostics> SearchDetailedAsync(
+        string query,
+        CatalogueTrackSearchConstraint? constraint,
+        CancellationToken cancellationToken) =>
+        SearchDetailedAsync(
+            query,
+            constraint is null ? null : new CatalogueSearchConstraint(constraint),
             cancellationToken);
 
     public Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
         CancellationToken cancellationToken) =>
-        SearchDetailedAsync(query, (CatalogueTrackSearchConstraint?)null, cancellationToken);
+        SearchDetailedAsync(query, (CatalogueSearchConstraint?)null, cancellationToken);
 
-    public async Task<SearchDiagnostics> SearchTracksDetailedAsync(
-        CatalogueTrackSearchConstraint constraint,
+    public async Task<SearchDiagnostics> SearchConstrainedDetailedAsync(
+        CatalogueSearchConstraint constraint,
         CancellationToken cancellationToken)
     {
         var generation = await GetLoadedAsync(cancellationToken);
@@ -214,7 +270,7 @@ public sealed class ProductionCatalogueSearchService :
                 "The production catalogue search index has not been built.");
         }
 
-        return await generation.Resolver.SearchTracksDetailedAsync(
+        return await generation.Resolver.SearchConstrainedDetailedAsync(
             constraint,
             cancellationToken);
     }
@@ -290,7 +346,7 @@ public sealed class ProductionCatalogueSearchService :
             var validated = SqliteCatalogueSearchIndex.Open(indexPath, artifact, Descriptor);
             await validated.SearchCatalogueAsync(
                 "validation",
-                (CatalogueTrackSearchConstraint?)null,
+                (CatalogueSearchConstraint?)null,
                 cancellationToken);
             Directory.Move(stagingDirectory, generationDirectory);
             var publishedResolver = SqliteCatalogueSearchIndex.Open(

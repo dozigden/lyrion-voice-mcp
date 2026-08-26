@@ -6,11 +6,11 @@ public interface IDiagnosticSearchResolver
 {
     Task<SearchDiagnostics> SearchDetailedAsync(
         string query,
-        CatalogueTrackSearchConstraint? constraint,
+        CatalogueSearchConstraint? constraint,
         CancellationToken cancellationToken);
 
-    Task<SearchDiagnostics> SearchTracksDetailedAsync(
-        CatalogueTrackSearchConstraint constraint,
+    Task<SearchDiagnostics> SearchConstrainedDetailedAsync(
+        CatalogueSearchConstraint constraint,
         CancellationToken cancellationToken);
 }
 
@@ -116,7 +116,7 @@ internal static class SearchDiagnosticResults
         double retrievalDurationMilliseconds,
         double rerankDurationMilliseconds,
         double totalDurationMilliseconds,
-        CatalogueTrackSearchConstraint? constraint,
+        CatalogueSearchConstraint? constraint,
         IReadOnlyList<SearchLaneMeasurement> lanes,
         IReadOnlyList<RankedPhuzzyCandidate> ranked,
         IReadOnlyDictionary<string, IReadOnlyList<string>> retrievalLanes)
@@ -146,11 +146,11 @@ internal static class SearchDiagnosticResults
             rerankDurationMilliseconds,
             totalDurationMilliseconds,
             results.Length,
-            constraint?.RatingConstraint,
+            constraint?.TrackConstraint.RatingConstraint,
             lanes,
             results,
-            constraint?.GenreKey,
-            constraint?.FromYear,
-            constraint?.ToYear);
+            constraint?.TrackConstraint.GenreKey,
+            constraint?.TrackConstraint.FromYear,
+            constraint?.TrackConstraint.ToYear);
     }
 }

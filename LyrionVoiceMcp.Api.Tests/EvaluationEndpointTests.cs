@@ -118,6 +118,24 @@ public sealed class EvaluationEndpointTests : IClassFixture<LyrionVoiceMcpApiFac
         Assert.Equal("Knight", search.GetProperty("results")[0].GetProperty("title").GetString());
         Assert.Equal("artist", search.GetProperty("results")[0].GetProperty("kind").GetString());
         Assert.True(Directory.Exists(factory.SearchIndexDirectoryPath));
+
+        using var yearResponse = await client.PostAsJsonAsync(
+            "/api/evaluation/search",
+            new { resolver = "production", fromYear = 2026, toYear = 2026 },
+            TestContext.Current.CancellationToken);
+        using var yearDocument = await JsonDocument.ParseAsync(
+            await yearResponse.Content.ReadAsStreamAsync(
+                TestContext.Current.CancellationToken),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, yearResponse.StatusCode);
+        var yearResult = Assert.Single(
+            yearDocument.RootElement
+                .GetProperty("search")
+                .GetProperty("results")
+                .EnumerateArray());
+        Assert.Equal("album", yearResult.GetProperty("kind").GetString());
+        Assert.Equal("Fictional Night", yearResult.GetProperty("title").GetString());
     }
 
     [Fact]

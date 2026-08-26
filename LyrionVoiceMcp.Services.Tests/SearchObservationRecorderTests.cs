@@ -173,6 +173,52 @@ public sealed class SearchObservationRecorderTests
         Assert.Equal("Copper Evenings", Assert.Single(recorded.Candidates).Title);
     }
 
+    [Fact]
+    public async Task NameFreeSearchShouldRecordTheSlowerConcurrentRetrievalDuration()
+    {
+        var store = new RecordingSearchObservationStore();
+        var recorder = new SearchObservationRecorder(
+            store,
+            new FixedTimeProvider(Now),
+            NullLogger<SearchObservationRecorder>.Instance);
+        var context = recorder.Begin(
+            string.Empty,
+            string.Empty,
+            new SearchResolverDescriptor("fictional-resolver", "7"),
+            yearRange: new YearSearchRange(1990, 1999, 1990, 1999),
+            interpretation: SearchObservationInterpretation.NameFreeFiltered,
+            includesAlbums: true);
+        var catalogueRequests = new LmsSearchRequestObservation[]
+        {
+            new(
+                "catalogue-filtered-tracks",
+                "filtered-tracks",
+                LmsSearchRequestStatus.Completed,
+                null,
+                40,
+                10),
+            new(
+                "catalogue-filtered-albums",
+                "filtered-albums",
+                LmsSearchRequestStatus.Completed,
+                null,
+                70,
+                5)
+        };
+
+        await recorder.RecordCompletedAsync(
+            context,
+            catalogueRequests,
+            null,
+            [],
+            100,
+            TestContext.Current.CancellationToken);
+
+        var recorded = Assert.IsType<SearchObservation>(store.Recorded);
+        Assert.Equal(70, recorded.RetrievalDurationMilliseconds);
+        Assert.Equal(30, recorded.ProcessingDurationMilliseconds);
+    }
+
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

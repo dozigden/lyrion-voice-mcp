@@ -10,6 +10,7 @@ internal sealed partial class SearchService(
     ICatalogueSearchResolver catalogueSearch,
     ICatalogueArtistTrackResolver artistTracks,
     ICatalogueTrackResolver tracks,
+    ICatalogueAlbumResolver albums,
     ICatalogueArtistAlbumResolver artistAlbums,
     ILmsPlaylistSearchClient playlistSearch,
     ISearchResultReferenceCodec referenceCodec,
@@ -92,6 +93,8 @@ internal sealed partial class SearchService(
             SearchConstraintPolicy.GenreKey(genre),
             yearRange?.FromYear,
             yearRange?.ToYear);
+        var catalogueConstraint = CatalogueSearchConstraint.ForRequest(trackConstraint);
+        var albumConstraint = catalogueConstraint.AlbumConstraint;
         var hasTrackConstraint = HasTrackConstraint(trackConstraint);
         var hasGenreOrYearConstraint = trackConstraint.GenreKey is not null
             || trackConstraint.FromYear is not null;
@@ -108,13 +111,15 @@ internal sealed partial class SearchService(
             criteria.RatingConstraint,
             genre,
             yearRange,
-            interpretation);
+            interpretation,
+            albumConstraint is not null);
         var stopwatch = Stopwatch.StartNew();
         if (query is null)
         {
             return await SearchWithoutNameAsync(
                 observation,
                 trackConstraint,
+                albumConstraint,
                 stopwatch,
                 cancellationToken);
         }
@@ -131,7 +136,7 @@ internal sealed partial class SearchService(
                     ? "search:requested-constraints"
                     : "search:requested-rating",
                 normalisedQuery,
-                trackConstraint,
+                catalogueConstraint,
                 cancellationToken);
         var topTrackConstraint = TopTrackConstraint(trackConstraint);
         var topCatalogueTask = topTrackConstraint is null
@@ -143,7 +148,7 @@ internal sealed partial class SearchService(
                         ? "search:top-constraints"
                         : "search:top-rating",
                     normalisedQuery,
-                    topTrackConstraint,
+                    new CatalogueSearchConstraint(topTrackConstraint),
                     cancellationToken);
         var playlistTask = !hasTrackConstraint
             ? playlistSearch.SearchPlaylistsAsync(normalisedQuery, cancellationToken)
@@ -213,7 +218,10 @@ internal sealed partial class SearchService(
         var catalogueCandidates = !hasTrackConstraint
             ? catalogueResponse!.Candidates
             : catalogueResponse!.Candidates
-                .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Track)
+                .Where(candidate =>
+                    candidate.Identity.Kind == MediaEntityKind.Track
+                    || (albumConstraint is not null
+                        && candidate.Identity.Kind == MediaEntityKind.Album))
                 .ToArray();
         var exactArtist = ExactArtist(unconstrainedCatalogueResponse!.Candidates);
         IReadOnlyList<CatalogueSearchCandidate> selectedAlbums;
@@ -258,10 +266,11 @@ internal sealed partial class SearchService(
 
             selectedTopTracks = selection.TopTracks;
             selectedTracks = selection.Tracks;
-            if (!hasTrackConstraint)
+            if (!hasTrackConstraint || albumConstraint is not null)
             {
                 var albumSelection = await SelectArtistAlbumsAsync(
                     exactArtist.Identity.Id,
+                    albumConstraint,
                     cancellationToken);
                 catalogueRequests.Add(albumSelection.Request);
                 if (albumSelection.Failure is not null)
@@ -382,34 +391,47 @@ internal sealed partial class SearchService(
 
     private async Task<SearchOutcome> SearchWithoutNameAsync(
         SearchObservationContext observation,
-        CatalogueTrackSearchConstraint constraint,
+        CatalogueTrackSearchConstraint trackConstraint,
+        CatalogueAlbumSearchConstraint? albumConstraint,
         Stopwatch stopwatch,
         CancellationToken cancellationToken)
     {
         var isBroadDiscovery = observation.Interpretation
             == SearchObservationInterpretation.BroadDiscovery;
-        var selection = await SelectNameFreeTracksAsync(
-            constraint,
+        var trackSelectionTask = SelectNameFreeTracksAsync(
+            trackConstraint,
             isBroadDiscovery,
             cancellationToken);
-        IReadOnlyList<LmsSearchRequestObservation> requests = [selection.Request];
-        if (selection.Failure is not null)
+        var albumSelectionTask = albumConstraint is null
+            ? null
+            : SelectNameFreeAlbumsAsync(albumConstraint, cancellationToken);
+        var trackSelection = await trackSelectionTask;
+        var albumSelection = albumSelectionTask is null
+            ? null
+            : await albumSelectionTask;
+        IReadOnlyList<LmsSearchRequestObservation> requests = albumSelection is null
+            ? [trackSelection.Request]
+            : [trackSelection.Request, albumSelection.Request];
+        var failure = trackSelection.Failure ?? albumSelection?.Failure;
+        if (failure is not null)
         {
             stopwatch.Stop();
             return await HandleCatalogueFailureAsync(
                 observation,
                 requests,
-                selection.Failure,
+                failure,
                 stopwatch.ElapsedMilliseconds,
                 null,
                 cancellationToken);
         }
 
-        var candidates = selection.TopTracks
-            .Select(candidate => ToCandidate(candidate, CandidateGroup.TopTrack))
-            .Concat(selection.Tracks.Select(candidate => ToCandidate(
-                candidate,
-                CandidateGroup.Standard)))
+        var candidates = (albumSelection?.Albums ?? [])
+            .Select(candidate => ToCandidate(candidate, CandidateGroup.Standard))
+            .Concat(trackSelection.TopTracks
+                .Select(candidate => ToCandidate(candidate, CandidateGroup.TopTrack))
+                .Concat(trackSelection.Tracks.Select(candidate => ToCandidate(
+                    candidate,
+                    CandidateGroup.Standard))))
             .Select((candidate, index) => new SelectedCandidate(
                 candidate.Group,
                 new SearchCandidateOccurrence(
@@ -442,10 +464,11 @@ internal sealed partial class SearchService(
             .ToArray();
 
         logger.LogInformation(
-            "Name-free {Interpretation} media search returned {TopTrackCount} top tracks and {TrackCount} tracks in {ElapsedMilliseconds} ms.",
+            "Name-free {Interpretation} media search returned {AlbumCount} albums, {TopTrackCount} top tracks, and {TrackCount} tracks in {ElapsedMilliseconds} ms.",
             isBroadDiscovery ? "broad" : "filtered",
+            results.Count(result => result.Kind == MediaEntityKind.Album),
             topResults.Length,
-            results.Length,
+            results.Count(result => result.Kind == MediaEntityKind.Track),
             stopwatch.ElapsedMilliseconds);
         return new SearchSucceeded(results, topResults);
     }
@@ -592,19 +615,41 @@ internal sealed partial class SearchService(
             null);
     }
 
-    private async Task<ArtistAlbumSelection> SelectArtistAlbumsAsync(
+    private async Task<AlbumSelection> SelectArtistAlbumsAsync(
         string artistId,
+        CatalogueAlbumSearchConstraint? constraint,
+        CancellationToken cancellationToken) =>
+        await SelectAlbumsAsync(
+            artistAlbums.ReadArtistAlbumsAsync(
+                artistId,
+                constraint,
+                cancellationToken),
+            "catalogue-artist-albums",
+            "artist-albums",
+            cancellationToken);
+
+    private async Task<AlbumSelection> SelectNameFreeAlbumsAsync(
+        CatalogueAlbumSearchConstraint constraint,
+        CancellationToken cancellationToken) =>
+        await SelectAlbumsAsync(
+            albums.ReadAlbumsAsync(constraint, cancellationToken),
+            "catalogue-filtered-albums",
+            "filtered-albums",
+            cancellationToken);
+
+    private async Task<AlbumSelection> SelectAlbumsAsync(
+        IAsyncEnumerable<CatalogueSearchCandidate> candidates,
+        string source,
+        string command,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         var observedCount = 0;
         var reservoir = candidateSelector.CreateReservoir(
-            SearchResultPolicy.ArtistAlbumReservoirLimit);
+            SearchResultPolicy.AlbumReservoirLimit);
         try
         {
-            await foreach (var candidate in artistAlbums.ReadArtistAlbumsAsync(
-                artistId,
-                cancellationToken))
+            await foreach (var candidate in candidates.WithCancellation(cancellationToken))
             {
                 observedCount++;
                 reservoir.Consider(candidate);
@@ -613,11 +658,11 @@ internal sealed partial class SearchService(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             stopwatch.Stop();
-            return new ArtistAlbumSelection(
+            return new AlbumSelection(
                 [],
                 CatalogueRequest(
-                    "catalogue-artist-albums",
-                    "artist-albums",
+                    source,
+                    command,
                     LmsSearchRequestStatus.Failed,
                     exception.Message,
                     stopwatch.ElapsedMilliseconds,
@@ -626,13 +671,13 @@ internal sealed partial class SearchService(
         }
 
         stopwatch.Stop();
-        return new ArtistAlbumSelection(
+        return new AlbumSelection(
             candidateSelector.Rotate(
                 reservoir.Candidates,
                 SearchResultPolicy.AlbumLimit),
             CatalogueRequest(
-                "catalogue-artist-albums",
-                "artist-albums",
+                source,
+                command,
                 LmsSearchRequestStatus.Completed,
                 null,
                 stopwatch.ElapsedMilliseconds,
@@ -643,7 +688,7 @@ internal sealed partial class SearchService(
     private async Task<ObservedCatalogueSearch> ObserveCatalogueSearchAsync(
         string command,
         string query,
-        CatalogueTrackSearchConstraint? constraint,
+        CatalogueSearchConstraint? constraint,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -787,7 +832,7 @@ internal sealed partial class SearchService(
         LmsSearchRequestObservation Request,
         Exception? Failure);
 
-    private sealed record ArtistAlbumSelection(
+    private sealed record AlbumSelection(
         IReadOnlyList<CatalogueSearchCandidate> Albums,
         LmsSearchRequestObservation Request,
         Exception? Failure);

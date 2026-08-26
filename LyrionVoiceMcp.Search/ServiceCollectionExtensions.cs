@@ -19,6 +19,8 @@ public static class ServiceCollectionExtensions
             provider.GetRequiredService<ProductionCatalogueSearchService>());
         services.AddSingleton<ICatalogueTrackResolver>(provider =>
             provider.GetRequiredService<ProductionCatalogueSearchService>());
+        services.AddSingleton<ICatalogueAlbumResolver>(provider =>
+            provider.GetRequiredService<ProductionCatalogueSearchService>());
         services.AddSingleton<ICatalogueArtistAlbumResolver>(provider =>
             provider.GetRequiredService<ProductionCatalogueSearchService>());
         services.AddSingleton<IDiagnosticSearchResolver>(provider =>

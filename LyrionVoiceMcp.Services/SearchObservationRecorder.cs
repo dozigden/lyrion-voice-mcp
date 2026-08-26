@@ -15,7 +15,8 @@ internal sealed class SearchObservationRecorder(
         RatingSearchConstraint? ratingConstraint = null,
         string? genre = null,
         YearSearchRange? yearRange = null,
-        SearchObservationInterpretation interpretation = SearchObservationInterpretation.Named) => new(
+        SearchObservationInterpretation interpretation = SearchObservationInterpretation.Named,
+        bool includesAlbums = false) => new(
             Guid.NewGuid().ToString("N"),
             timeProvider.GetUtcNow(),
             originalQuery,
@@ -24,7 +25,8 @@ internal sealed class SearchObservationRecorder(
             ratingConstraint,
             genre,
             yearRange,
-            interpretation);
+            interpretation,
+            includesAlbums);
 
     public Task RecordCompletedAsync(
         SearchObservationContext context,
@@ -139,13 +141,20 @@ internal sealed class SearchObservationRecorder(
             .Max();
         var artistExpansionDuration = catalogueRequests
             .Where(request => request.Source is
-                "catalogue-artist-tracks" or "catalogue-artist-albums"
-                or "catalogue-filtered-tracks" or "catalogue-broad-tracks")
+                "catalogue-artist-tracks" or "catalogue-artist-albums")
             .Sum(request => request.DurationMilliseconds);
+        var nameFreeRetrievalDuration = catalogueRequests
+            .Where(request => request.Source is
+                "catalogue-filtered-tracks" or "catalogue-filtered-albums"
+                or "catalogue-broad-tracks")
+            .Select(request => request.DurationMilliseconds)
+            .DefaultIfEmpty()
+            .Max();
         return Math.Max(
                 initialCatalogueDuration,
                 playlists?.RetrievalDurationMilliseconds ?? 0)
-            + artistExpansionDuration;
+            + artistExpansionDuration
+            + nameFreeRetrievalDuration;
     }
 
     private static SearchObservation CreateObservation(
@@ -160,7 +169,7 @@ internal sealed class SearchObservationRecorder(
             context.CreatedAt,
             context.OriginalQuery,
             context.NormalisedQuery,
-            context.HasTrackConstraint || context.IsNameFree
+            !context.IncludesAlbums && (context.HasTrackConstraint || context.IsNameFree)
                 ? MediaEntityKind.Track
                 : null,
             context.HasTrackConstraint || context.IsNameFree
@@ -212,7 +221,8 @@ internal sealed record SearchObservationContext(
     RatingSearchConstraint? RatingConstraint,
     string? Genre,
     YearSearchRange? YearRange,
-    SearchObservationInterpretation Interpretation)
+    SearchObservationInterpretation Interpretation,
+    bool IncludesAlbums)
 {
     public bool HasTrackConstraint =>
         RatingConstraint is not null || Genre is not null || YearRange is not null;

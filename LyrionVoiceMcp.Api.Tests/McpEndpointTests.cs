@@ -59,11 +59,15 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "every input may be omitted for broad varied discovery",
+            "every input may be omitted for broad varied track discovery",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Genre, year, and rating constraints apply to tracks",
+            "A year range applies to canonical album year and effective track year",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Rating and genre apply only to tracks",
             body,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -104,8 +108,9 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("properties");
         Assert.False(searchInputProperties.TryGetProperty("query", out _));
         Assert.Equal(
-            "Optional artist, album, track, or playlist name text, up to 500 characters and 20 words. Omit it or leave it blank for rating-, genre-, or year-filtered track discovery; omit every input for broad varied discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.",
+            "Optional artist, album, track, or playlist name text, up to 500 characters and 20 words. Omit it or leave it blank for rating-, genre-, or year-filtered discovery; omit every input for broad varied track discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.",
             searchInputProperties.GetProperty("name").GetProperty("description").GetString());
+        Assert.False(searchInputProperties.TryGetProperty("kind", out _));
         Assert.True(searchInputProperties.TryGetProperty("genre", out _));
         Assert.True(searchInputProperties.TryGetProperty("fromYear", out _));
         Assert.True(searchInputProperties.TryGetProperty("toYear", out _));
@@ -150,7 +155,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
         Assert.Equal(
-            "Search the music library by optional name, exact genre, inclusive year range, rating, or a combination. Omit every input for broad varied track discovery. Reports a unique exact artist separately, returns 4+ top tracks separately, and varies track selections. Genre, years, and rating narrow tracks. * is not a wildcard.",
+            "Search the music library by optional name, exact genre, inclusive year range, rating, or a combination. Omit every input for broad varied track discovery. Reports a unique exact artist separately, returns 4+ top tracks separately, and varies selections. A year range can return albums and tracks; genre or rating makes the request track-only. * is not a wildcard.",
             searchTool.GetProperty("description").GetString());
         Assert.Contains("\"name\":\"browse\"", body, StringComparison.Ordinal);
         var browseTool = Assert.Single(

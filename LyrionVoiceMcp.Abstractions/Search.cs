@@ -104,6 +104,33 @@ public sealed record CatalogueTrackSearchConstraint(
     int? FromYear = null,
     int? ToYear = null);
 
+public sealed record CatalogueAlbumSearchConstraint(
+    int FromYear,
+    int ToYear);
+
+public sealed record CatalogueSearchConstraint(
+    CatalogueTrackSearchConstraint TrackConstraint,
+    CatalogueAlbumSearchConstraint? AlbumConstraint = null)
+{
+    public static CatalogueSearchConstraint ForRequest(
+        CatalogueTrackSearchConstraint trackConstraint)
+    {
+        ArgumentNullException.ThrowIfNull(trackConstraint);
+        CatalogueAlbumSearchConstraint? albumConstraint = null;
+        if (trackConstraint.RatingConstraint is null
+            && trackConstraint.GenreKey is null
+            && trackConstraint.FromYear is not null
+            && trackConstraint.ToYear is not null)
+        {
+            albumConstraint = new CatalogueAlbumSearchConstraint(
+                trackConstraint.FromYear.Value,
+                trackConstraint.ToYear.Value);
+        }
+
+        return new CatalogueSearchConstraint(trackConstraint, albumConstraint);
+    }
+}
+
 public sealed record CatalogueSearchResponse(
     IReadOnlyList<CatalogueSearchCandidate> Candidates,
     long RetrievalDurationMilliseconds,
@@ -134,6 +161,25 @@ public interface ICatalogueSearchResolver
             ? SearchAsync(query, constraint?.RatingConstraint, cancellationToken)
             : throw new NotSupportedException(
                 "This catalogue search resolver does not support genre or year constraints.");
+
+    Task<CatalogueSearchResponse> SearchAsync(
+        string query,
+        CatalogueSearchConstraint? constraint,
+        CancellationToken cancellationToken)
+    {
+        if (constraint is null)
+        {
+            return SearchAsync(query, cancellationToken);
+        }
+
+        if (constraint.AlbumConstraint is null)
+        {
+            return SearchAsync(query, constraint.TrackConstraint, cancellationToken);
+        }
+
+        throw new NotSupportedException(
+            "This catalogue search resolver does not support album constraints.");
+    }
 }
 
 public interface ICatalogueArtistTrackResolver
@@ -159,11 +205,27 @@ public interface ICatalogueTrackResolver
         CancellationToken cancellationToken);
 }
 
+public interface ICatalogueAlbumResolver
+{
+    IAsyncEnumerable<CatalogueSearchCandidate> ReadAlbumsAsync(
+        CatalogueAlbumSearchConstraint constraint,
+        CancellationToken cancellationToken);
+}
+
 public interface ICatalogueArtistAlbumResolver
 {
     IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
         string artistId,
         CancellationToken cancellationToken);
+
+    IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistAlbumsAsync(
+        string artistId,
+        CatalogueAlbumSearchConstraint? constraint,
+        CancellationToken cancellationToken) =>
+        constraint is null
+            ? ReadArtistAlbumsAsync(artistId, cancellationToken)
+            : throw new NotSupportedException(
+                "This catalogue artist-album resolver does not support constraints.");
 }
 
 public sealed class CatalogueSearchUnavailableException(string message) : Exception(message);
@@ -284,7 +346,7 @@ public static class SearchResultPolicy
     public const int PreparedTrackLimit = TrackLimit + TopTrackLimit;
     public const int TrackCandidateLimit = 80;
     public const int ArtistTrackReservoirLimit = 200;
-    public const int ArtistAlbumReservoirLimit = 200;
+    public const int AlbumReservoirLimit = 200;
     public const int PlaylistLimit = 5;
 }
 

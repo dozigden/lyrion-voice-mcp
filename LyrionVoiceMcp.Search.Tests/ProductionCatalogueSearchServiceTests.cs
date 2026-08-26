@@ -345,6 +345,154 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task NamedYearConstraintShouldIncludeAlbumsBeforeRetrievalLaneLimits()
+    {
+        var documents = Enumerable.Range(0, 81)
+            .Select(index => new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, $"outside-{index}"),
+                $"Copper Era Album {index}",
+                "The Imaginaries",
+                null,
+                Year: 1989))
+            .Append(new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "missing-year"),
+                "Copper Era Album Missing",
+                "The Imaginaries",
+                null))
+            .Append(new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "eligible-album"),
+                "Copper Era Album Eligible",
+                "The Imaginaries",
+                null,
+                Year: 1995))
+            .Append(new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "eligible-track"),
+                "Copper Era Album Track",
+                "The Imaginaries",
+                "Imaginary Signals",
+                Year: 1995))
+            .ToArray();
+        await using var service = CreateService(new DocumentSource(documents));
+        await RebuildAsync(service, "refresh-album-year-limits", 56);
+
+        var response = await service.SearchAsync(
+            "copper era album",
+            CatalogueSearchConstraint.ForRequest(new CatalogueTrackSearchConstraint(
+                FromYear: 1990,
+                ToYear: 1999)),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["eligible-album", "eligible-track"], Ids(response));
+    }
+
+    [Fact]
+    public async Task RatingAndYearConstraintShouldKeepNamedRetrievalTrackOnly()
+    {
+        var source = new DocumentSource([
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "album"),
+                "Copper Era Signal",
+                "The Imaginaries",
+                null,
+                Year: 1995),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "track"),
+                "Copper Era Signal",
+                "The Imaginaries",
+                "Imaginary Signals",
+                100,
+                Year: 1995)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-strict-album-criteria", 59);
+
+        var response = await service.SearchAsync(
+            "copper era signal",
+            CatalogueSearchConstraint.ForRequest(new CatalogueTrackSearchConstraint(
+                new RatingSearchConstraint(5, RatingMatchMode.Exact),
+                FromYear: 1990,
+                ToYear: 1999)),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["track"], Ids(response));
+    }
+
+    [Fact]
+    public async Task AlbumStreamShouldUseInclusiveCanonicalAlbumYear()
+    {
+        var source = new DocumentSource([
+            Album("from", "From Boundary", 1990),
+            Album("to", "To Boundary", 1999),
+            Album("outside", "Outside", 2000),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "missing"),
+                "Missing Year",
+                "The Imaginaries",
+                null),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Track, "track"),
+                "Track Year",
+                "The Imaginaries",
+                "Imaginary Signals",
+                Year: 1995)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-album-year-stream", 57);
+
+        var candidates = new List<CatalogueSearchCandidate>();
+        await foreach (var candidate in service.ReadAlbumsAsync(
+            new CatalogueAlbumSearchConstraint(1990, 1999),
+            TestContext.Current.CancellationToken))
+        {
+            candidates.Add(candidate);
+        }
+
+        Assert.Equal(["from", "to"], candidates.Select(candidate => candidate.Identity.Id));
+
+        static CatalogueSearchDocument Album(string id, string title, int year) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null,
+            Year: year);
+    }
+
+    [Fact]
+    public async Task ArtistAlbumStreamShouldCombineCanonicalRelationshipAndAlbumYear()
+    {
+        var source = new DocumentSource([
+            Album("eligible", "Eligible", "artist-1", 1995),
+            Album("wrong-year", "Wrong Year", "artist-1", 2000),
+            Album("wrong-artist", "Wrong Artist", "artist-2", 1995)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-artist-album-year", 58);
+
+        var candidates = new List<CatalogueSearchCandidate>();
+        await foreach (var candidate in service.ReadArtistAlbumsAsync(
+            "artist-1",
+            new CatalogueAlbumSearchConstraint(1990, 1999),
+            TestContext.Current.CancellationToken))
+        {
+            candidates.Add(candidate);
+        }
+
+        Assert.Equal("eligible", Assert.Single(candidates).Identity.Id);
+
+        static CatalogueSearchDocument Album(
+            string id,
+            string title,
+            string artistId,
+            int year) => new(
+                new MediaIdentity(MediaEntityKind.Album, id),
+                title,
+                "The Imaginaries",
+                null,
+                ArtistIds: [artistId],
+                Year: year);
+    }
+
+    [Fact]
     public async Task TrackStreamShouldCombineRatingGenreAndInclusiveYearConstraints()
     {
         var source = new DocumentSource([

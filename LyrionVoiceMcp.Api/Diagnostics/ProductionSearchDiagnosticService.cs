@@ -124,16 +124,25 @@ public sealed class ProductionSearchDiagnosticService(
                 request.FromYear,
                 request.ToYear,
                 DateTimeOffset.UtcNow.Year).Value;
-            var constraint = new CatalogueTrackSearchConstraint(
+            var trackConstraint = new CatalogueTrackSearchConstraint(
                 CreateRatingConstraint(request),
                 SearchConstraintPolicy.GenreKey(request.Genre),
                 yearRange?.FromYear,
                 yearRange?.ToYear);
+            var hasConstraint = trackConstraint.RatingConstraint is not null
+                || trackConstraint.GenreKey is not null
+                || trackConstraint.FromYear is not null
+                || trackConstraint.ToYear is not null;
+            var constraint = hasConstraint
+                ? CatalogueSearchConstraint.ForRequest(trackConstraint)
+                : null;
             var query = string.IsNullOrWhiteSpace(request.Query)
                 ? null
                 : request.Query.Trim();
             var search = query is null
-                ? await resolver.SearchTracksDetailedAsync(constraint, cancellationToken)
+                ? await resolver.SearchConstrainedDetailedAsync(
+                    constraint ?? new CatalogueSearchConstraint(trackConstraint),
+                    cancellationToken)
                 : await resolver.SearchDetailedAsync(query, constraint, cancellationToken);
             process.Refresh();
             return new ProductionSearchDiagnosticExecution(
