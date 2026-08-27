@@ -10,12 +10,12 @@ public sealed class StartupReadinessServiceTests
         DateTimeOffset.Parse("2026-08-23T10:00:00Z");
 
     [Fact]
-    public async Task MissingCatalogueShouldRemainManualWhenAutomaticRefreshIsDisabled()
+    public async Task MissingCatalogueShouldRemainUnbuiltWhenSourceIsNotConfigured()
     {
         // Arrange
         var refresh = new RecordingCatalogueRefreshService();
         var indexes = new RecordingSearchIndexService();
-        var service = CreateService(null, refresh, indexes, automaticRefresh: false);
+        var service = CreateService(null, refresh, indexes, sourceConfigured: false);
 
         // Act
         await service.CheckAsync(TestContext.Current.CancellationToken);
@@ -26,12 +26,12 @@ public sealed class StartupReadinessServiceTests
     }
 
     [Fact]
-    public async Task MissingCatalogueShouldQueueRefreshWhenAutomaticRefreshIsEnabled()
+    public async Task MissingCatalogueShouldQueueRefreshWhenSourceIsConfigured()
     {
         // Arrange
         var refresh = new RecordingCatalogueRefreshService();
         var indexes = new RecordingSearchIndexService();
-        var service = CreateService(null, refresh, indexes, automaticRefresh: true);
+        var service = CreateService(null, refresh, indexes, sourceConfigured: true);
 
         // Act
         await service.CheckAsync(TestContext.Current.CancellationToken);
@@ -48,7 +48,7 @@ public sealed class StartupReadinessServiceTests
         var state = CreateCatalogueState("job-42");
         var refresh = new RecordingCatalogueRefreshService();
         var indexes = new RecordingSearchIndexService(CreateArtifact("job-42"));
-        var service = CreateService(state, refresh, indexes, automaticRefresh: false);
+        var service = CreateService(state, refresh, indexes, sourceConfigured: true);
 
         // Act
         await service.CheckAsync(TestContext.Current.CancellationToken);
@@ -65,7 +65,7 @@ public sealed class StartupReadinessServiceTests
         var state = CreateCatalogueState("job-42");
         var refresh = new RecordingCatalogueRefreshService();
         var indexes = new RecordingSearchIndexService();
-        var service = CreateService(state, refresh, indexes, automaticRefresh: false);
+        var service = CreateService(state, refresh, indexes, sourceConfigured: true);
 
         // Act
         await service.CheckAsync(TestContext.Current.CancellationToken);
@@ -82,7 +82,7 @@ public sealed class StartupReadinessServiceTests
         var state = CreateCatalogueState("job-42");
         var refresh = new RecordingCatalogueRefreshService();
         var indexes = new RecordingSearchIndexService(CreateArtifact("job-37"));
-        var service = CreateService(state, refresh, indexes, automaticRefresh: false);
+        var service = CreateService(state, refresh, indexes, sourceConfigured: true);
 
         // Act
         await service.CheckAsync(TestContext.Current.CancellationToken);
@@ -91,20 +91,29 @@ public sealed class StartupReadinessServiceTests
         Assert.Equal("job-42", indexes.StartupCatalogueRefreshId);
     }
 
-    [Fact]
-    public async Task ActiveCatalogueRefreshShouldDeferIndexRecovery()
+    [Theory]
+    [InlineData(CatalogueStateStatus.Failed)]
+    [InlineData(CatalogueStateStatus.Cancelled)]
+    [InlineData(CatalogueStateStatus.Interrupted)]
+    public async Task UnsuccessfulCatalogueShouldBeRebuiltWhenSourceIsConfigured(
+        CatalogueStateStatus status)
     {
         // Arrange
-        var state = CreateCatalogueState("job-42");
-        var refresh = new RecordingCatalogueRefreshService(CreateJob(JobStatus.Pending));
+        var state = new CatalogueState(
+            "job-42",
+            status,
+            Now,
+            Now,
+            null);
+        var refresh = new RecordingCatalogueRefreshService();
         var indexes = new RecordingSearchIndexService();
-        var service = CreateService(state, refresh, indexes, automaticRefresh: true);
+        var service = CreateService(state, refresh, indexes, sourceConfigured: true);
 
         // Act
         await service.CheckAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(0, refresh.StartupRefreshCount);
+        Assert.Equal(1, refresh.StartupRefreshCount);
         Assert.Null(indexes.StartupCatalogueRefreshId);
     }
 
@@ -112,15 +121,11 @@ public sealed class StartupReadinessServiceTests
         CatalogueState? state,
         RecordingCatalogueRefreshService refresh,
         RecordingSearchIndexService indexes,
-        bool automaticRefresh) => new(
+        bool sourceConfigured) => new(
             new StubCatalogueLifecycleService(state),
             refresh,
             indexes,
-            new OperationalSchedulePolicy(
-                new OperationalSchedule(automaticRefresh, "0 3 * * *"),
-                new OperationalSchedule(true, "15 3 * * *"),
-                new OperationalSchedule(true, "30 3 * * *"),
-                new OperationalSchedule(true, "45 3 * * *")),
+            new CatalogueInitialisationPolicy(sourceConfigured),
             NullLogger<StartupReadinessService>.Instance);
 
     private static CatalogueState CreateCatalogueState(string refreshId) => new(

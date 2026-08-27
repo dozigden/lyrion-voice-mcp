@@ -18,6 +18,7 @@ internal sealed partial class SearchService(
     SearchCandidateSelector candidateSelector,
     SearchObservationRecorder observationRecorder,
     TimeProvider timeProvider,
+    ICatalogueSearchAvailabilityService searchAvailability,
     ILogger<SearchService> logger) : ISearchService
 {
     public Task<SearchOutcome> SearchAsync(
@@ -745,7 +746,9 @@ internal sealed partial class SearchService(
         {
             return new SearchRejected(
                 SearchRejectionReason.SearchUnavailable,
-                failure.Message);
+                await searchAvailability.DescribeUnavailableAsync(
+                    failure.Message,
+                    cancellationToken));
         }
 
         ExceptionDispatchInfo.Capture(failure).Throw();

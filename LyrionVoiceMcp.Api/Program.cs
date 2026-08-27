@@ -66,6 +66,7 @@ builder.Services.AddSingleton(new SearchObservationRetentionPolicy(
 builder.Services.AddLyrionVoiceMcpEf(applicationDatabaseSettings);
 builder.Services.AddSingleton(operationalSettings.ToPolicy());
 builder.Services.AddSingleton(operationalSchedules);
+builder.Services.AddSingleton(new CatalogueInitialisationPolicy(lmsSettings.IsConfigured));
 builder.Services.AddLyrionVoiceMcpLms(lmsSettings, buildInfo.Version);
 builder.Services.AddLyrionVoiceMcpProductionSearch(searchSettings);
 builder.Services.AddSingleton<ProductionSearchDiagnosticService>();

@@ -1,5 +1,7 @@
 namespace LyrionVoiceMcp.Abstractions;
 
+public sealed record CatalogueInitialisationPolicy(bool SourceConfigured);
+
 public sealed record CatalogueStatus(
     CatalogueSummary? Summary,
     Job? LatestRefresh);

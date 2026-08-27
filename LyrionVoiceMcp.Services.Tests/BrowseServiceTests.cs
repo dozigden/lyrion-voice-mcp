@@ -15,7 +15,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             codec,
-            new ReferenceCodecTestContext().Search);
+            new ReferenceCodecTestContext().Search,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
 
         // Act
         var outcome = await service.BrowseAsync(
@@ -55,7 +56,8 @@ public sealed class BrowseServiceTests
             new StubLmsBrowseClient(new LmsBrowsePage([], 0)),
             NullRatingBrowseResolver.Instance,
             codec,
-            new ReferenceCodecTestContext().Search);
+            new ReferenceCodecTestContext().Search,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var root = Assert.IsType<BrowseSucceeded>(await service.BrowseAsync(
             null,
             TestContext.Current.CancellationToken));
@@ -101,7 +103,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             ratingResolver,
             codec,
-            new ReferenceCodecTestContext().Search);
+            new ReferenceCodecTestContext().Search,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var reference = codec.Encode(new BrowseReferenceValue(
             new BrowseTarget(BrowseTargetKind.RatingTracks, "4", 0),
             null));
@@ -123,6 +126,30 @@ public sealed class BrowseServiceTests
         Assert.Equal(50, ratingResolver.Limit);
         Assert.Equal(1, codec.TryDecode(result.Continuation!)?.Target?.Offset);
         Assert.Null(lmsClient.Request);
+    }
+
+    [Fact]
+    public async Task PreparingIndexShouldReturnTheCurrentAvailabilityMessage()
+    {
+        var codec = new ReferenceCodecTestContext().Browse;
+        var service = new BrowseService(
+            new StubLmsBrowseClient(new LmsBrowsePage([], 0)),
+            new UnavailableRatingBrowseResolver(),
+            codec,
+            new ReferenceCodecTestContext().Search,
+            new FixedCatalogueSearchAvailabilityService(
+                "The search index is being prepared."));
+        var reference = codec.Encode(new BrowseReferenceValue(
+            new BrowseTarget(BrowseTargetKind.RatingTracks, "4", 0),
+            null));
+
+        var outcome = await service.BrowseAsync(
+            reference,
+            TestContext.Current.CancellationToken);
+
+        var rejected = Assert.IsType<BrowseRejected>(outcome);
+        Assert.Equal(BrowseRejectionReason.BrowseUnavailable, rejected.Reason);
+        Assert.Equal("The search index is being prepared.", rejected.Message);
     }
 
     [Fact]
@@ -150,7 +177,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             codec,
-            new ReferenceCodecTestContext().Search);
+            new ReferenceCodecTestContext().Search,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var reference = codec.Encode(new BrowseReferenceValue(
             new BrowseTarget(BrowseTargetKind.Albums, null, 0),
             null));
@@ -195,7 +223,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             codec,
-            new ReferenceCodecTestContext().Search);
+            new ReferenceCodecTestContext().Search,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var reference = codec.Encode(new BrowseReferenceValue(
             new BrowseTarget(BrowseTargetKind.AlbumArtists, null, 0),
             null));
@@ -235,7 +264,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             codec,
-            new ReferenceCodecTestContext().Search);
+            new ReferenceCodecTestContext().Search,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var reference = codec.Encode(new BrowseReferenceValue(
             new BrowseTarget(BrowseTargetKind.AlbumTracks, "201", 0),
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Album, "201"))));
@@ -266,7 +296,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             codec,
-            new ReferenceCodecTestContext().Search);
+            new ReferenceCodecTestContext().Search,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var reference = codec.Encode(new BrowseReferenceValue(
             null,
             new PlayableMedia(new MediaIdentity(MediaEntityKind.Track, "301"))));
@@ -302,7 +333,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             browseCodec,
-            searchCodec);
+            searchCodec,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var correlationId = "123456781234123412341234567890ab";
         var searchReference = searchCodec.Encode(
             new SearchResultReferenceValue(
@@ -350,7 +382,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             references.Browse,
-            references.Search);
+            references.Search,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
 
         // Act
         var outcome = await service.BrowseAsync(
@@ -380,7 +413,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             new ReferenceCodecTestContext().Browse,
-            searchCodec);
+            searchCodec,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var searchReference = searchCodec.Encode(new SearchResultReferenceValue(
             "123456781234123412341234567890ab",
             new MediaIdentity(MediaEntityKind.Track, "301")));
@@ -411,7 +445,8 @@ public sealed class BrowseServiceTests
             lmsClient,
             NullRatingBrowseResolver.Instance,
             new ReferenceCodecTestContext().Browse,
-            searchCodec);
+            searchCodec,
+            PassthroughCatalogueSearchAvailabilityService.Instance);
         var searchReference = searchCodec.Encode(new SearchResultReferenceValue(
             "123456781234123412341234567890ab",
             new MediaIdentity(mediaKind, "201")));
@@ -472,6 +507,17 @@ public sealed class BrowseServiceTests
             Limit = limit;
             return Task.FromResult(page);
         }
+    }
+
+    private sealed class UnavailableRatingBrowseResolver : IRatingBrowseResolver
+    {
+        public Task<RatingBrowsePage> BrowseAsync(
+            int bucket,
+            int offset,
+            int limit,
+            CancellationToken cancellationToken) =>
+            Task.FromException<RatingBrowsePage>(new CatalogueSearchUnavailableException(
+                "The production catalogue search index has not been built."));
     }
 }
 

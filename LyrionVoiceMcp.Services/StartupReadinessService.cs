@@ -7,21 +7,11 @@ public sealed class StartupReadinessService(
     ICatalogueLifecycleService catalogue,
     ICatalogueRefreshService catalogueRefresh,
     ISearchIndexService searchIndexes,
-    OperationalSchedulePolicy schedules,
+    CatalogueInitialisationPolicy initialisation,
     ILogger<StartupReadinessService> logger)
 {
     public async Task CheckAsync(CancellationToken cancellationToken)
     {
-        var catalogueStatus = await catalogueRefresh.GetStatusAsync(cancellationToken);
-        if (catalogueStatus.LatestRefresh?.Status is JobStatus.Pending or JobStatus.Running)
-        {
-            logger.LogInformation(
-                "Startup readiness found catalogue refresh job {JobId} already {Status}.",
-                catalogueStatus.LatestRefresh.Id,
-                catalogueStatus.LatestRefresh.Status);
-            return;
-        }
-
         var state = await catalogue.GetStateAsync(cancellationToken);
         if (state is null
             || state.Status != CatalogueStateStatus.Succeeded
@@ -50,13 +40,13 @@ public sealed class StartupReadinessService(
         if (jobId is null)
         {
             logger.LogInformation(
-                "Startup readiness found production search-index recovery already queued or running for catalogue refresh {RefreshId}.",
+                "Startup readiness found a production search-index rebuild already requested for catalogue refresh {RefreshId}.",
                 state.RefreshId);
             return;
         }
 
         logger.LogInformation(
-            "Startup readiness queued production search-index recovery job {JobId} for catalogue refresh {RefreshId}.",
+            "Startup readiness queued production search-index rebuild job {JobId} for catalogue refresh {RefreshId}.",
             jobId,
             state.RefreshId);
     }
@@ -65,10 +55,10 @@ public sealed class StartupReadinessService(
         CatalogueState? state,
         CancellationToken cancellationToken)
     {
-        if (!schedules.CatalogueRefresh.Enabled)
+        if (!initialisation.SourceConfigured)
         {
             logger.LogInformation(
-                "Startup readiness found no successful catalogue; automatic refresh is disabled.");
+                "Startup readiness found no successful catalogue and no configured source.");
             return;
         }
 
@@ -83,7 +73,7 @@ public sealed class StartupReadinessService(
                 break;
             case CatalogueRefreshAlreadyRunning running:
                 logger.LogInformation(
-                    "Startup readiness found catalogue refresh job {JobId} already queued or running.",
+                    "Startup readiness found catalogue refresh job {JobId} already requested.",
                     running.Status.LatestRefresh?.Id);
                 break;
             case CatalogueRefreshFailed:

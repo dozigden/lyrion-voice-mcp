@@ -6,7 +6,8 @@ public sealed class BrowseService(
     ILmsBrowseClient lmsBrowseClient,
     IRatingBrowseResolver ratingBrowseResolver,
     IBrowseReferenceCodec browseReferenceCodec,
-    ISearchResultReferenceCodec searchReferenceCodec) : IBrowseService
+    ISearchResultReferenceCodec searchReferenceCodec,
+    ICatalogueSearchAvailabilityService searchAvailability) : IBrowseService
 {
     private const int PageSize = 50;
 
@@ -143,7 +144,9 @@ public sealed class BrowseService(
         {
             return new BrowseRejected(
                 BrowseRejectionReason.BrowseUnavailable,
-                exception.Message);
+                await searchAvailability.DescribeUnavailableAsync(
+                    exception.Message,
+                    cancellationToken));
         }
 
         var items = page.Items.Select(item => new BrowseItemResult(

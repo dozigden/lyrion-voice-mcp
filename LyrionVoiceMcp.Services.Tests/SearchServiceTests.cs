@@ -1148,6 +1148,23 @@ public sealed class SearchServiceTests
     }
 
     [Fact]
+    public async Task PreparingCatalogueShouldReturnTheCurrentAvailabilityMessage()
+    {
+        var service = CreateService(
+            new UnavailableCatalogueSearch(),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(),
+            searchAvailability: new FixedCatalogueSearchAvailabilityService(
+                "The music catalogue is being prepared."));
+
+        var outcome = await service.SearchAsync("signals", TestContext.Current.CancellationToken);
+
+        var rejected = Assert.IsType<SearchRejected>(outcome);
+        Assert.Equal("The music catalogue is being prepared.", rejected.Message);
+    }
+
+    [Fact]
     public async Task ObservationPersistenceFailureShouldNotFailSuccessfulSearch()
     {
         var observations = new RecordingSearchObservationStore
@@ -1266,7 +1283,8 @@ public sealed class SearchServiceTests
         IBrowseReferenceCodec? browseCodec = null,
         ICatalogueArtistAlbumResolver? artistAlbums = null,
         ICatalogueTrackResolver? tracks = null,
-        ICatalogueAlbumResolver? albums = null) => new(
+        ICatalogueAlbumResolver? albums = null,
+        ICatalogueSearchAvailabilityService? searchAvailability = null) => new(
             catalogue,
             artistTracks ?? new EmptyArtistTrackResolver(),
             tracks ?? new EmptyTrackResolver(),
@@ -1281,6 +1299,7 @@ public sealed class SearchServiceTests
                 TimeProvider.System,
                 NullLogger<SearchObservationRecorder>.Instance),
             TimeProvider.System,
+            searchAvailability ?? PassthroughCatalogueSearchAvailabilityService.Instance,
             NullLogger<SearchService>.Instance);
 
     private sealed class StubCatalogueSearch(

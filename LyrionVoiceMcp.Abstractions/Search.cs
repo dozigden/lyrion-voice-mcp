@@ -230,6 +230,13 @@ public interface ICatalogueArtistAlbumResolver
 
 public sealed class CatalogueSearchUnavailableException(string message) : Exception(message);
 
+public interface ICatalogueSearchAvailabilityService
+{
+    Task<string> DescribeUnavailableAsync(
+        string fallbackMessage,
+        CancellationToken cancellationToken);
+}
+
 public static class SearchQueryPolicy
 {
     public const int MaximumLength = 500;
