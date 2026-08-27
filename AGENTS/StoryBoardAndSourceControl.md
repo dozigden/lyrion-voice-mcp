@@ -10,6 +10,7 @@
 - Record an agreed implementation plan in the card when useful.
 - Move a card to Done only after the user confirms completion.
 - A card update is full-state: read the card first and preserve its title, card type, tags, slick, and external URL.
+- In user-facing references to cards, prefix the card number and title with the card type's emoji and append any tag emojis in brackets, for example `📘 #47 Search albums by release year (🔎)`. Use the emojis supplied by BoardOil and omit missing emojis or empty brackets rather than inventing replacements.
 
 ## Source control
 
