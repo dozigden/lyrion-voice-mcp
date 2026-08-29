@@ -143,7 +143,8 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                         PhuzzyText.Normalise(query),
                         PhuzzyText.Normalise(value.Title),
                         StringComparison.Ordinal),
-                    result.Candidate.Source.CanonicalAlbumArtistId);
+                    result.Candidate.Source.CanonicalAlbumArtistId,
+                    result.MatchSignal);
             })
             .ToArray();
         return new CatalogueSearchResponse(
@@ -545,7 +546,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         await connection.OpenAsync(cancellationToken);
         var candidates = new CandidateCollector<long>(captureDiagnostics);
         var laneMeasurements = new List<SearchLaneMeasurement>();
-        foreach (var lane in CreateLookupLanes(queryForms))
+        foreach (var lane in CreateLookupLanes(query, queryForms))
         {
             await RetrieveLaneAsync(
                 captureDiagnostics ? laneMeasurements : null,
@@ -889,9 +890,9 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             Add(terms, "normalised", form.Normalised);
             Add(terms, "compact", form.Compact);
             Add(terms, "skeleton", form.Phonetic);
-            foreach (var alias in form.SpokenAcronymAliases)
+            foreach (var equivalence in form.IndexedEquivalenceForms)
             {
-                Add(terms, "acronym", alias);
+                Add(terms, equivalence.Lane, equivalence.Key);
             }
 
             foreach (var code in form.DoubleMetaphoneCodes)
@@ -904,10 +905,12 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         return terms;
     }
 
-    private static IReadOnlyList<LookupLane> CreateLookupLanes(PhuzzyTextForms query)
+    private static IReadOnlyList<LookupLane> CreateLookupLanes(
+        string queryText,
+        PhuzzyTextForms query)
     {
-        var spanForms = CreateSpanForms(query.Tokens);
-        return
+        var spanForms = CreateSpanForms(queryText, query.Tokens);
+        List<LookupLane> lanes =
         [
             new LookupLane("normalised", Values(spanForms, form => form.Normalised)),
             new LookupLane("compact", Values(spanForms, form => form.Compact)),
@@ -916,30 +919,32 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 "double_metaphone",
                 spanForms.SelectMany(form => form.DoubleMetaphoneCodes)
                     .Distinct(StringComparer.Ordinal)
-                    .ToArray()),
-            new LookupLane(
-                "acronym",
-                Values(spanForms, form => form.Compact)
-                    .Concat(spanForms.SelectMany(form => form.SpokenAcronymAliases))
-                    .Distinct(StringComparer.Ordinal)
                     .ToArray())
         ];
-    }
 
-    private static IReadOnlyList<PhuzzyTextForms> CreateSpanForms(IReadOnlyList<string> tokens)
-    {
-        var forms = new List<PhuzzyTextForms>();
-        for (var start = 0; start < tokens.Count; start++)
+        foreach (var provider in spanForms
+            .SelectMany(form => form.QueryEquivalenceForms)
+            .GroupBy(form => form.Lane, StringComparer.Ordinal))
         {
-            for (var length = 1; length <= tokens.Count - start; length++)
-            {
-                forms.Add(PhuzzyTextForms.Create(
-                    string.Join(' ', tokens.Skip(start).Take(length))));
-            }
+            lanes.Add(new LookupLane(
+                provider.Key,
+                provider.Select(form => form.Key)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray()));
         }
 
-        return forms;
+        return lanes;
     }
+
+    private static IReadOnlyList<PhuzzyTextForms> CreateSpanForms(
+        string query,
+        IReadOnlyList<string> tokens) =>
+        SearchTextEquivalences.CreateQuerySpans(query, tokens)
+            .Select(span => PhuzzyTextForms.Create(span.Text) with
+            {
+                QueryEquivalenceForms = span.Forms
+            })
+            .ToArray();
 
     private static IReadOnlyList<string> Values(
         IEnumerable<PhuzzyTextForms> forms,

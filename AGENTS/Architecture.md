@@ -11,7 +11,7 @@ Read this before adding projects, dependencies, storage, or new integration boun
 - `LyrionVoiceMcp.Lms`: LMS JSON-RPC infrastructure behind abstractions.
 - `LyrionVoiceMcp.Ef.Abstractions`: EF-facing scope, entity, and repository contracts, kept separate from transport-neutral application abstractions.
 - `LyrionVoiceMcp.Ef`: the EF Core application database, context/scoping infrastructure, repository base, entity configurations, and generated migrations.
-- `LyrionVoiceMcp.Search`: the production catalogue-backed resolver, production-neutral resolver and diagnostic contracts, bounded index construction, scoring, diagnostics and safe artifact publication. It depends only on storage-neutral abstractions.
+- `LyrionVoiceMcp.Search`: the production catalogue-backed resolver, internal provider-owned search-text equivalences, production-neutral resolver and diagnostic contracts, bounded index construction, scoring, diagnostics and safe artifact publication. It depends only on storage-neutral abstractions.
 - `LyrionVoiceMcp.Evaluation`: the executable private-corpus validator, LMS baseline, and resolver-neutral benchmark runner. It consumes production-neutral Search contracts and is never a deployed runtime dependency.
 - `LyrionVoiceMcp.Web`: Vue administration and review UI.
 - `LyrionVoiceMcp.Dev`: local API/Vite process supervisor only.
@@ -46,4 +46,4 @@ Read this before adding projects, dependencies, storage, or new integration boun
 
 ## Planned boundaries
 
-Canonical ID reconciliation, provider/plugin catalogues, corrections, broader compound filtering, last-played capability work, and virtual-library-aware search remain planned. Basic exact/minimum rating search and floor-bucket rating browse are implemented. Keep future dimensions independent of operational history and the selected index adapter.
+Canonical ID reconciliation, provider/plugin catalogues, managed corrections, broader compound filtering, last-played capability work, and virtual-library-aware search remain planned. Basic exact/minimum rating search, floor-bucket rating browse, and bounded application-owned acronym and Roman-cardinal equivalences are implemented. Keep future dimensions independent of operational history and the selected index adapter.

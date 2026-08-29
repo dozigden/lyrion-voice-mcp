@@ -45,6 +45,7 @@ export interface SearchCandidateObservation {
   rating: number | null;
   selectedAt: string | null;
   isExactArtistMatch: boolean;
+  matchSignal: string | null;
 }
 
 export interface SearchReview {
@@ -189,7 +190,8 @@ function isDetail(value: unknown): value is SearchObservationDetail {
     && isNumber(value.processingDurationMilliseconds) && Array.isArray(value.requests)
     && Array.isArray(value.candidates) && value.candidates.every(candidate =>
       isRecord(candidate) && (candidate.rating === null || isRating(candidate.rating))
-        && typeof candidate.isExactArtistMatch === 'boolean')
+        && typeof candidate.isExactArtistMatch === 'boolean'
+        && (candidate.matchSignal === null || typeof candidate.matchSignal === 'string'))
     && isNumber(value.retentionDays)
     && (value.review === null || isRecord(value.review));
 }

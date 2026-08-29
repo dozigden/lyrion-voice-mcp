@@ -114,7 +114,8 @@ internal sealed class SearchObservationRecorder(
             candidate.Identity.Kind == MediaEntityKind.Track
                 ? candidate.NativeRating / 20m
                 : null,
-            candidate.IsExactArtistMatch)).ToArray();
+            candidate.IsExactArtistMatch,
+            candidate.MatchSignal)).ToArray();
 
     private static SearchObservationCandidate[] CreatePlaylistObservationCandidates(
         LmsSearchResponse? playlists) =>
@@ -240,4 +241,5 @@ internal sealed record SearchCandidateOccurrence(
     string? Artist,
     string? Album,
     int NativeRating = 0,
-    bool IsExactArtistMatch = false);
+    bool IsExactArtistMatch = false,
+    string? MatchSignal = null);

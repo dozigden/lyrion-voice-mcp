@@ -32,7 +32,8 @@ public sealed record SearchObservationCandidate(
     string? Album,
     DateTimeOffset? SelectedAt,
     decimal? Rating = null,
-    bool IsExactArtistMatch = false);
+    bool IsExactArtistMatch = false,
+    string? MatchSignal = null);
 
 public sealed record SearchObservationReview(
     SearchReviewClassification Classification,

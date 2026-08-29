@@ -72,6 +72,7 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
             TestContext.Current.CancellationToken);
         Assert.NotNull(saved);
         Assert.True(saved.Candidates[0].IsExactArtistMatch);
+        Assert.Equal("roman_cardinal_equivalent", saved.Candidates[0].MatchSignal);
         var selected = Assert.Single(saved.Candidates, item => item.Position == 2);
         Assert.Equal(Now, selected.SelectedAt);
         Assert.False(selected.IsExactArtistMatch);
@@ -282,7 +283,8 @@ public sealed class EfSearchObservationStoreTests : IAsyncLifetime
                 null,
                 null,
                 null,
-                IsExactArtistMatch: true),
+                IsExactArtistMatch: true,
+                MatchSignal: "roman_cardinal_equivalent"),
             new SearchObservationCandidate(
                 2,
                 "correlation-2",

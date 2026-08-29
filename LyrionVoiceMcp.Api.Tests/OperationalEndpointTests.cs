@@ -138,7 +138,15 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
                     10,
                     2,
                     [],
-                    [],
+                    [new SearchObservationCandidate(
+                        1,
+                        "broad-correlation",
+                        new MediaIdentity(MediaEntityKind.Album, "fictional-album"),
+                        "Signal VI",
+                        "The Imaginaries",
+                        null,
+                        null,
+                        MatchSignal: "roman_cardinal_equivalent")],
                     null,
                     Interpretation: SearchObservationInterpretation.BroadDiscovery),
                 TestContext.Current.CancellationToken);
@@ -153,6 +161,9 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
 
         Assert.Equal("broad_discovery", response?.Interpretation);
         Assert.Equal(string.Empty, response?.OriginalQuery);
+        Assert.Equal(
+            "roman_cardinal_equivalent",
+            Assert.Single(response!.Candidates).MatchSignal);
         Assert.Equal(
             "broad_discovery",
             Assert.Single(page!.Items, item => item.Id == "broad-observation").Interpretation);

@@ -26,5 +26,7 @@ public sealed class EntitySearchObservationCandidate
 
     public bool IsExactArtistMatch { get; set; }
 
+    public string? MatchSignal { get; set; }
+
     public EntitySearchObservationSelection? Selection { get; set; }
 }

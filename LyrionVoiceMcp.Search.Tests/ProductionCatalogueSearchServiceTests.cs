@@ -87,7 +87,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
             "unrated signal",
             TestContext.Current.CancellationToken);
 
-        Assert.Equal("6", rebuilt.Artifact.ResolverVersion);
+        Assert.Equal("7", rebuilt.Artifact.ResolverVersion);
         Assert.Equal(
             67,
             Assert.Single(rated.Candidates, candidate =>
@@ -682,6 +682,203 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RomanCardinalEquivalenceShouldRankBelowLiteralAndAboveNumericPrefix()
+    {
+        var source = new DocumentSource([
+            Album("literal", "Six"),
+            Album("roman", "VI"),
+            Album("prefix", "68 Signals")
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-roman-ranking", 60);
+
+        var literalQuery = await service.SearchDetailedAsync(
+            "six",
+            TestContext.Current.CancellationToken);
+        var digitQuery = await service.SearchDetailedAsync(
+            "6",
+            TestContext.Current.CancellationToken);
+        var productionQuery = await service.SearchAsync(
+            "6",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("Six", literalQuery.Results[0].Title);
+        Assert.Equal("exact_normalised", literalQuery.Results[0].ScoreEvidence?.Signal);
+        var roman = Assert.Single(digitQuery.Results, result => result.Title == "VI");
+        var prefix = Assert.Single(digitQuery.Results, result => result.Title == "68 Signals");
+        Assert.Equal("roman_cardinal_equivalent", roman.ScoreEvidence?.Signal);
+        Assert.Contains("roman_cardinal", roman.RetrievalLanes);
+        Assert.True(roman.Score > prefix.Score);
+        Assert.Equal(
+            "roman_cardinal_equivalent",
+            Assert.Single(productionQuery.Candidates, candidate =>
+                candidate.Identity.Id == "roman").MatchSignal);
+
+        static CatalogueSearchDocument Album(string id, string title) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null);
+    }
+
+    [Fact]
+    public async Task EmbeddedRomanCardinalShouldRequireCompleteTitleContext()
+    {
+        var source = new DocumentSource([
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "standalone"),
+                "VI",
+                "The Imaginaries",
+                null),
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "contextual"),
+                "Volume VI",
+                "The Imaginaries",
+                null)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-roman-context", 61);
+
+        var contextual = await service.SearchDetailedAsync(
+            "volume six",
+            TestContext.Current.CancellationToken);
+        var isolated = await service.SearchAsync(
+            "six",
+            TestContext.Current.CancellationToken);
+
+        var match = Assert.Single(contextual.Results, result => result.Title == "Volume VI");
+        Assert.Equal("roman_cardinal_equivalent", match.ScoreEvidence?.Signal);
+        Assert.DoesNotContain(
+            isolated.Candidates,
+            candidate => candidate.Identity.Id == "contextual");
+        Assert.Contains(
+            isolated.Candidates,
+            candidate => candidate.Identity.Id == "standalone");
+    }
+
+    [Fact]
+    public async Task ArtistQualifiedRomanCardinalShouldDistinguishNumberedReleases()
+    {
+        var source = new DocumentSource([
+            Album("four", "IV"),
+            Album("five", "V"),
+            Album("six", "VI")
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-roman-series", 62);
+
+        var diagnostics = await service.SearchDetailedAsync(
+            "The Imaginaries six",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("VI", diagnostics.Results[0].Title);
+        Assert.Equal("roman_cardinal_equivalent", diagnostics.Results[0].ScoreEvidence?.Signal);
+        Assert.Equal("combined", diagnostics.Results[0].ScoreEvidence?.Field);
+        Assert.Equal(0, diagnostics.Results[0].ScoreEvidence?.IgnoredTokenCount);
+
+        static CatalogueSearchDocument Album(string id, string title) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null);
+    }
+
+    [Fact]
+    public async Task SpokenAcronymShouldUseTheSharedEquivalencePath()
+    {
+        var source = new DocumentSource([
+            new CatalogueSearchDocument(
+                new MediaIdentity(MediaEntityKind.Album, "acronym"),
+                "ZYX",
+                "The Imaginaries",
+                null)
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-acronym-equivalence", 63);
+
+        var diagnostics = await service.SearchDetailedAsync(
+            "zed why ex",
+            TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(diagnostics.Results);
+        Assert.Equal("ZYX", result.Title);
+        Assert.Equal("spoken_acronym", result.ScoreEvidence?.Signal);
+        Assert.Contains("acronym", result.RetrievalLanes);
+    }
+
+    [Fact]
+    public async Task RomanCardinalEquivalenceShouldPreserveQuerySyntaxExclusions()
+    {
+        var source = new DocumentSource([
+            Album("roman-six", "VI"),
+            Album("spoken-six", "Six"),
+            Album("split-fifty-one", "50 1")
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-roman-query-syntax", 64);
+
+        var negative = await service.SearchDetailedAsync(
+            "-6",
+            TestContext.Current.CancellationToken);
+        var dotted = await service.SearchDetailedAsync(
+            ".VI.",
+            TestContext.Current.CancellationToken);
+        var unsupported = await service.SearchDetailedAsync(
+            "fifty one",
+            TestContext.Current.CancellationToken);
+
+        AssertNoRomanEquivalence(negative);
+        AssertNoRomanEquivalence(dotted);
+        AssertNoRomanEquivalence(unsupported);
+
+        static void AssertNoRomanEquivalence(SearchDiagnostics diagnostics)
+        {
+            Assert.DoesNotContain(
+                diagnostics.Lanes,
+                lane => lane.Name == "roman_cardinal");
+            Assert.DoesNotContain(
+                diagnostics.Results,
+                result => result.ScoreEvidence?.Signal == "roman_cardinal_equivalent");
+        }
+
+        static CatalogueSearchDocument Album(string id, string title) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null);
+    }
+
+    [Fact]
+    public async Task MultiTokenSpokenCardinalShouldNotMatchFromAConstituentSpan()
+    {
+        var source = new DocumentSource([
+            Album("one", "1"),
+            Album("twenty-one", "XXI")
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-spoken-cardinal-span", 65);
+
+        var diagnostics = await service.SearchDetailedAsync(
+            "twenty one",
+            TestContext.Current.CancellationToken);
+
+        var intended = Assert.Single(
+            diagnostics.Results,
+            result => result.Title == "XXI");
+        Assert.Equal("roman_cardinal_equivalent", intended.ScoreEvidence?.Signal);
+        Assert.DoesNotContain(
+            diagnostics.Results,
+            result => result.Title == "1"
+                && result.ScoreEvidence?.Signal == "roman_cardinal_equivalent");
+
+        static CatalogueSearchDocument Album(string id, string title) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null);
+    }
+
+    [Fact]
     public void NumericTokensShouldContributeSpokenPhoneticEvidence()
     {
         var numeric = PhuzzyText.DoubleMetaphoneCodes("quartz 5");
@@ -724,7 +921,7 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task VersionFiveArtifactShouldBeIncompatibleWithTrackConstraints()
+    public async Task VersionSixArtifactShouldBeIncompatibleWithEquivalenceTerms()
     {
         var source = new DocumentSource([
             new CatalogueSearchDocument(
@@ -749,12 +946,12 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
         var manifest = await File.ReadAllTextAsync(
             manifestPath,
             TestContext.Current.CancellationToken);
-        Assert.Contains("\"resolverVersion\":\"6\"", manifest, StringComparison.Ordinal);
+        Assert.Contains("\"resolverVersion\":\"7\"", manifest, StringComparison.Ordinal);
         await File.WriteAllTextAsync(
             manifestPath,
             manifest.Replace(
+                "\"resolverVersion\":\"7\"",
                 "\"resolverVersion\":\"6\"",
-                "\"resolverVersion\":\"5\"",
                 StringComparison.Ordinal),
             TestContext.Current.CancellationToken);
         await using var restarted = CreateService(source);

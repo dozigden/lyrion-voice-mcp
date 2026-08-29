@@ -67,7 +67,8 @@ public sealed class SearchObservationRecorderTests
                 "Copper Lines",
                 null,
                 null,
-                IsExactArtistMatch: true)
+                IsExactArtistMatch: true,
+                MatchSignal: "roman_cardinal_equivalent")
         };
 
         await recorder.RecordCompletedAsync(
@@ -112,6 +113,7 @@ public sealed class SearchObservationRecorderTests
         Assert.Equal("candidate-correlation", candidate.CorrelationId);
         Assert.Equal("Copper Lines", candidate.Title);
         Assert.True(candidate.IsExactArtistMatch);
+        Assert.Equal("roman_cardinal_equivalent", candidate.MatchSignal);
     }
 
     [Fact]

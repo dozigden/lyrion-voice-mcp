@@ -108,7 +108,8 @@ describe('SearchObservationDetailView', () => {
         album: null,
         rating: null,
         selectedAt: null,
-        isExactArtistMatch: true
+        isExactArtistMatch: true,
+        matchSignal: 'exact_normalised'
       }],
       review: null,
       retentionDays: 90
@@ -132,5 +133,6 @@ describe('SearchObservationDetailView', () => {
     // Assert
     expect(wrapper.text()).toContain('The Copper Lines');
     expect(wrapper.text()).toContain('exact artist match');
+    expect(wrapper.text()).toContain('exact normalised');
   });
 });

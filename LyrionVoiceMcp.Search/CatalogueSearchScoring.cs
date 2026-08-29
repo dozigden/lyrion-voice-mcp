@@ -21,7 +21,7 @@ internal static class CatalogueSearchRanker
             return [];
         }
 
-        var spans = CreateQuerySpans(queryForms.Tokens);
+        var spans = CreateQuerySpans(query, queryForms.Tokens);
         var ranked = new List<RankedPhuzzyCandidate>(candidates.Count);
         for (var index = 0; index < candidates.Count; index++)
         {
@@ -41,7 +41,8 @@ internal static class CatalogueSearchRanker
                 ranked.Add(new RankedPhuzzyCandidate(
                     candidate,
                     score.Score,
-                    score.Evidence));
+                    score.Evidence,
+                    score.MatchSignal));
             }
         }
 
@@ -86,21 +87,16 @@ internal static class CatalogueSearchRanker
     }
 
     private static IReadOnlyList<QuerySpan> CreateQuerySpans(
+        string query,
         IReadOnlyList<string> tokens)
-    {
-        var spans = new List<QuerySpan>();
-        for (var start = 0; start < tokens.Count; start++)
-        {
-            for (var length = 1; length <= tokens.Count - start; length++)
-            {
-                spans.Add(new QuerySpan(
-                    PhuzzyTextForms.Create(string.Join(' ', tokens.Skip(start).Take(length))),
-                    length));
-            }
-        }
-
-        return spans;
-    }
+        => SearchTextEquivalences.CreateQuerySpans(query, tokens)
+            .Select(span => new QuerySpan(
+                PhuzzyTextForms.Create(span.Text) with
+                {
+                    QueryEquivalenceForms = span.Forms
+                },
+                span.TokenCount))
+            .ToArray();
 
     private static CandidateScore Score(
         PhuzzyCandidate candidate,
@@ -115,7 +111,7 @@ internal static class CatalogueSearchRanker
         SelectBest(FieldScore("combined", candidate.Combined, spans, queryTokenCount, 100), ref best);
         if (best is null)
         {
-            return new CandidateScore(0, null);
+            return new CandidateScore(0, null, null);
         }
 
         var value = best.Value;
@@ -131,7 +127,7 @@ internal static class CatalogueSearchRanker
                 value.CoveragePenalty,
                 value.FinalScore)
             : null;
-        return new CandidateScore(value.FinalScore, evidence);
+        return new CandidateScore(value.FinalScore, evidence, value.Signal);
     }
 
     private static void SelectBest(
@@ -207,9 +203,10 @@ internal static class CatalogueSearchRanker
             return new SignalScore("exact_compact", 1_230);
         }
 
-        if (field.SpokenAcronymAliases.Contains(query.Compact, StringComparer.Ordinal))
+        var equivalence = EquivalenceScore(field, query);
+        if (equivalence is not null)
         {
-            return new SignalScore("spoken_acronym", 1_220);
+            return equivalence;
         }
 
         if (field.Normalised.StartsWith(query.Normalised, StringComparison.Ordinal))
@@ -256,6 +253,29 @@ internal static class CatalogueSearchRanker
         && left.Order(StringComparer.Ordinal).SequenceEqual(
             right.Order(StringComparer.Ordinal),
             StringComparer.Ordinal);
+
+    private static SignalScore? EquivalenceScore(
+        PhuzzyTextForms field,
+        PhuzzyTextForms query)
+    {
+        SearchTextEquivalenceForm? best = null;
+        foreach (var indexed in field.IndexedEquivalenceForms)
+        {
+            if (!query.QueryEquivalenceForms.Any(candidate =>
+                string.Equals(candidate.Lane, indexed.Lane, StringComparison.Ordinal)
+                && string.Equals(candidate.Key, indexed.Key, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            if (best is null || indexed.Score > best.Score)
+            {
+                best = indexed;
+            }
+        }
+
+        return best is null ? null : new SignalScore(best.Signal, best.Score);
+    }
 
     private static int EditDistanceThreshold(int length) => length switch
     {
@@ -322,7 +342,8 @@ internal static class CatalogueSearchRanker
 
     private readonly record struct CandidateScore(
         int Score,
-        SearchScoreEvidence? Evidence);
+        SearchScoreEvidence? Evidence,
+        string? MatchSignal);
 
     private readonly record struct FieldScoreResult(
         string Field,
@@ -352,7 +373,8 @@ internal sealed record PhuzzyTextForms(
     string Phonetic,
     IReadOnlySet<string> DoubleMetaphoneCodes,
     IReadOnlySet<string> Trigrams,
-    IReadOnlyList<string> SpokenAcronymAliases)
+    IReadOnlyList<SearchTextEquivalenceForm> IndexedEquivalenceForms,
+    IReadOnlyList<SearchTextEquivalenceForm> QueryEquivalenceForms)
 {
     public static PhuzzyTextForms Create(string? value)
     {
@@ -365,7 +387,8 @@ internal sealed record PhuzzyTextForms(
             PhuzzyText.PhoneticSkeleton(compact),
             PhuzzyText.DoubleMetaphoneCodes(normalised),
             PhuzzyText.Trigrams(compact),
-            PhuzzyText.SpokenAcronymAliases(value));
+            SearchTextEquivalences.CreateIndexedForms(value),
+            SearchTextEquivalences.CreateQueryForms(value));
     }
 }
 
@@ -491,7 +514,7 @@ internal static class PhuzzyText
 
     private static string ExpandDigitsForPhonetics(string value)
     {
-        if (!value.Any(char.IsDigit))
+        if (!value.Any(IsAsciiDigit))
         {
             return value;
         }
@@ -502,7 +525,7 @@ internal static class PhuzzyText
             var expanded = new StringBuilder();
             foreach (var character in token)
             {
-                if (char.IsDigit(character))
+                if (IsAsciiDigit(character))
                 {
                     if (expanded.Length > 0 && expanded[^1] != ' ')
                     {
@@ -539,6 +562,8 @@ internal static class PhuzzyText
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, null)
     };
 
+    private static bool IsAsciiDigit(char value) => value is >= '0' and <= '9';
+
     public static IReadOnlySet<string> Trigrams(string compact)
     {
         if (compact.Length < 3)
@@ -555,57 +580,4 @@ internal static class PhuzzyText
         return trigrams;
     }
 
-    public static IReadOnlyList<string> SpokenAcronymAliases(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return [];
-        }
-
-        var letters = value.Where(char.IsLetter).ToArray();
-        if (letters.Length is < 2 or > 6
-            || value.Any(character => !char.IsLetter(character))
-            || letters.Any(character => character is < 'A' or > 'Z'))
-        {
-            return [];
-        }
-
-        var firstLetterName = LetterName(char.ToLowerInvariant(letters[0]));
-        var firstSpokenThenLiteral = firstLetterName
-            + new string(letters[1..]).ToLowerInvariant();
-        var fullySpoken = string.Concat(letters.Select(character =>
-            LetterName(char.ToLowerInvariant(character))));
-        return [firstSpokenThenLiteral, fullySpoken];
-    }
-
-    private static string LetterName(char value) => value switch
-    {
-        'a' => "ay",
-        'b' => "bee",
-        'c' => "see",
-        'd' => "dee",
-        'e' => "ee",
-        'f' => "ef",
-        'g' => "gee",
-        'h' => "aitch",
-        'i' => "eye",
-        'j' => "jay",
-        'k' => "kay",
-        'l' => "el",
-        'm' => "em",
-        'n' => "en",
-        'o' => "oh",
-        'p' => "pee",
-        'q' => "cue",
-        'r' => "ar",
-        's' => "ess",
-        't' => "tee",
-        'u' => "you",
-        'v' => "vee",
-        'w' => "doubleyou",
-        'x' => "ex",
-        'y' => "why",
-        'z' => "zed",
-        _ => value.ToString()
-    };
 }

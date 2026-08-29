@@ -87,7 +87,8 @@ public sealed record CatalogueSearchCandidate(
     int Score,
     int NativeRating = 0,
     bool IsExactTitleMatch = false,
-    string? CanonicalAlbumArtistId = null);
+    string? CanonicalAlbumArtistId = null,
+    string? MatchSignal = null);
 
 public enum RatingMatchMode
 {

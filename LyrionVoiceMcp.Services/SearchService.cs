@@ -315,12 +315,7 @@ internal sealed partial class SearchService(
                 && candidate.Identity.Kind == MediaEntityKind.Artist)
             .Take(SearchResultPolicy.ArtistLimit)
             .Concat(selectedAlbums)
-            .Select(candidate => new Candidate(
-                candidate.Identity,
-                candidate.Title,
-                candidate.Artist,
-                candidate.Album,
-                candidate.NativeRating))
+            .Select(candidate => ToCandidate(candidate, CandidateGroup.Standard))
             .ToArray();
         var playlistCandidates = (playlistResponse?.Candidates ?? [])
             .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Playlist)
@@ -349,7 +344,8 @@ internal sealed partial class SearchService(
                     candidate.Artist,
                     candidate.Album,
                     candidate.NativeRating,
-                    candidate.Group == CandidateGroup.ExactArtist)))
+                    candidate.Group == CandidateGroup.ExactArtist,
+                    candidate.MatchSignal)))
             .ToArray();
         var observedCandidates = candidates
             .Select(candidate => candidate.Occurrence)
@@ -455,7 +451,8 @@ internal sealed partial class SearchService(
                     candidate.Title,
                     candidate.Artist,
                     candidate.Album,
-                    candidate.NativeRating)))
+                    candidate.NativeRating,
+                    MatchSignal: candidate.MatchSignal)))
             .ToArray();
         var observedCandidates = candidates
             .Select(candidate => candidate.Occurrence)
@@ -821,7 +818,8 @@ internal sealed partial class SearchService(
             candidate.Artist,
             candidate.Album,
             candidate.NativeRating,
-            group);
+            group,
+            candidate.MatchSignal);
 
     private SearchCandidateResult ToResult(SearchCandidateOccurrence candidate) =>
         new(
@@ -857,7 +855,8 @@ internal sealed partial class SearchService(
         string? Artist,
         string? Album,
         int NativeRating = 0,
-        CandidateGroup Group = CandidateGroup.Standard);
+        CandidateGroup Group = CandidateGroup.Standard,
+        string? MatchSignal = null);
 
     private sealed record SelectedCandidate(
         CandidateGroup Group,

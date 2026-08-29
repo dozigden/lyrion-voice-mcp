@@ -61,7 +61,8 @@ public sealed record SearchScoreEvidence(
 internal sealed record RankedPhuzzyCandidate(
     PhuzzyCandidate Candidate,
     int Score,
-    SearchScoreEvidence? Evidence);
+    SearchScoreEvidence? Evidence,
+    string? MatchSignal);
 
 internal sealed record ResolverSearchExecution(
     double RetrievalDurationMilliseconds,

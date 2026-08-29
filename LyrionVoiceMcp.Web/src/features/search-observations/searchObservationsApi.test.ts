@@ -58,7 +58,8 @@ describe('search observations API', () => {
       totalDurationMilliseconds: 12, retrievalDurationMilliseconds: 10, processingDurationMilliseconds: 2, requests: [],
       candidates: [{
         position: 1, correlationId: 'exact-artist-correlation', kind: 'artist', title: 'The Copper Lines',
-        artist: null, album: null, rating: null, selectedAt: null, isExactArtistMatch: true
+        artist: null, album: null, rating: null, selectedAt: null, isExactArtistMatch: true,
+        matchSignal: 'exact_normalised'
       }],
       review: null, retentionDays: 90
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
@@ -69,5 +70,6 @@ describe('search observations API', () => {
     // Assert
     expect(detail.interpretation).toBe('named');
     expect(detail.candidates[0]?.isExactArtistMatch).toBe(true);
+    expect(detail.candidates[0]?.matchSignal).toBe('exact_normalised');
   });
 });

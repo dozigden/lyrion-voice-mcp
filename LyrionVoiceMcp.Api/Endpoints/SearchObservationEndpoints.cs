@@ -166,7 +166,7 @@ public static class SearchObservationEndpoints
         item.Candidates.Select(candidate => new SearchCandidateObservationResponse(
             candidate.Position, candidate.CorrelationId, ToText(candidate.Identity.Kind), candidate.Title,
             candidate.Artist, candidate.Album, candidate.Rating, candidate.SelectedAt,
-            candidate.IsExactArtistMatch)).ToArray(),
+            candidate.IsExactArtistMatch, candidate.MatchSignal)).ToArray(),
         item.Review is null ? null : new SearchObservationReviewResponse(
             ToText(item.Review.Classification), item.Review.ExpectedCorrelationId,
             item.Review.ExpectedKind is null ? null : ToText(item.Review.ExpectedKind.Value),

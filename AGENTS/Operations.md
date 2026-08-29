@@ -37,6 +37,6 @@ Read this before changing background work, scheduling, error capture, retention,
 
 ## Administration surface
 
-- Jobs, schedules, errors, MCP calls, and production search-index controls are REST/UI administration features, never MCP tools.
+- Jobs, schedules, errors, MCP calls, search observations, and production search-index controls are REST/UI administration features, never MCP tools. Candidate-level search observations may expose the persisted winning resolver match signal for review.
 - Maintain lightweight paged summaries and complete detail views. List queries must not load payloads, results, stack traces or context; keep those values and relevant cross-links inspectable through detail routes.
 - Retention is enforced by scheduled maintenance jobs and must remain visible where relevant in the UI.
