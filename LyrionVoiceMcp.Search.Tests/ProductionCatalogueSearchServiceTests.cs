@@ -288,6 +288,53 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
         Assert.Equal("album-artist-album", result.Identity.Id);
         Assert.Equal("The Imaginaries", result.Artist);
         Assert.Equal(1_300, result.Score);
+        Assert.Equal("artist-1", result.CanonicalAlbumArtistId);
+    }
+
+    [Fact]
+    public async Task SearchShouldExposeOnlyUnambiguousCanonicalAlbumArtistIdentity()
+    {
+        var source = new DocumentSource([
+            Album("aligned", ["artist-1"]),
+            Album("missing", []),
+            Album("multiple", ["artist-1", "artist-2"])
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-album-artist-identity", 59);
+
+        var response = await service.SearchAsync(
+            "Fictional Mirror",
+            TestContext.Current.CancellationToken);
+
+        var albums = response.Candidates
+            .Where(candidate => candidate.Identity.Kind == MediaEntityKind.Album)
+            .ToDictionary(candidate => candidate.Identity.Id, StringComparer.Ordinal);
+        Assert.Equal("artist-1", albums["aligned"].CanonicalAlbumArtistId);
+        Assert.Null(albums["missing"].CanonicalAlbumArtistId);
+        Assert.Null(albums["multiple"].CanonicalAlbumArtistId);
+        var artistAlbums = new List<CatalogueSearchCandidate>();
+        await foreach (var candidate in service.ReadArtistAlbumsAsync(
+            "artist-1",
+            TestContext.Current.CancellationToken))
+        {
+            artistAlbums.Add(candidate);
+        }
+
+        Assert.Equal(
+            "artist-1",
+            Assert.Single(artistAlbums, candidate =>
+                candidate.Identity.Id == "aligned").CanonicalAlbumArtistId);
+        Assert.Null(Assert.Single(artistAlbums, candidate =>
+            candidate.Identity.Id == "multiple").CanonicalAlbumArtistId);
+
+        static CatalogueSearchDocument Album(
+            string id,
+            IReadOnlyList<string> artistIds) => new(
+                new MediaIdentity(MediaEntityKind.Album, id),
+                "Fictional Mirror",
+                "The Imaginaries",
+                null,
+                ArtistIds: artistIds);
     }
 
     [Fact]

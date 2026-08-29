@@ -225,6 +225,18 @@ internal sealed partial class SearchService(
                         && candidate.Identity.Kind == MediaEntityKind.Album))
                 .ToArray();
         var exactArtist = ExactArtist(unconstrainedCatalogueResponse!.Candidates);
+        var exactAlbumIdentities = exactArtist is null
+            ? new HashSet<MediaIdentity>()
+            : unconstrainedCatalogueResponse.Candidates
+                .Where(candidate =>
+                    candidate.Identity.Kind == MediaEntityKind.Album
+                    && candidate.IsExactTitleMatch
+                    && string.Equals(
+                        candidate.CanonicalAlbumArtistId,
+                        exactArtist.Identity.Id,
+                        StringComparison.Ordinal))
+                .Select(candidate => candidate.Identity)
+                .ToHashSet();
         IReadOnlyList<CatalogueSearchCandidate> selectedAlbums;
         IReadOnlyList<CatalogueSearchCandidate> selectedTopTracks;
         IReadOnlyList<CatalogueSearchCandidate> selectedTracks;
@@ -272,6 +284,7 @@ internal sealed partial class SearchService(
                 var albumSelection = await SelectArtistAlbumsAsync(
                     exactArtist.Identity.Id,
                     albumConstraint,
+                    exactAlbumIdentities,
                     cancellationToken);
                 catalogueRequests.Add(albumSelection.Request);
                 if (albumSelection.Failure is not null)
@@ -508,15 +521,21 @@ internal sealed partial class SearchService(
                 && candidate.IsExactTitleMatch)
             .Take(2)
             .ToArray();
-        if (artists.Length != 1
-            || catalogueCandidates.Any(candidate =>
-                candidate.Identity.Kind is MediaEntityKind.Album or MediaEntityKind.Track
-                && candidate.IsExactTitleMatch))
+        if (artists.Length != 1)
         {
             return null;
         }
 
-        return artists[0];
+        var artist = artists[0];
+        var hasConflictingExactMedia = catalogueCandidates.Any(candidate =>
+            candidate.IsExactTitleMatch
+            && (candidate.Identity.Kind == MediaEntityKind.Track
+                || (candidate.Identity.Kind == MediaEntityKind.Album
+                    && !string.Equals(
+                        candidate.CanonicalAlbumArtistId,
+                        artist.Identity.Id,
+                        StringComparison.Ordinal))));
+        return hasConflictingExactMedia ? null : artist;
     }
 
     private IReadOnlyList<CatalogueSearchCandidate> SelectRegularTracks(
@@ -619,6 +638,7 @@ internal sealed partial class SearchService(
     private async Task<AlbumSelection> SelectArtistAlbumsAsync(
         string artistId,
         CatalogueAlbumSearchConstraint? constraint,
+        IReadOnlySet<MediaIdentity> exactAlbumIdentities,
         CancellationToken cancellationToken) =>
         await SelectAlbumsAsync(
             artistAlbums.ReadArtistAlbumsAsync(
@@ -627,6 +647,7 @@ internal sealed partial class SearchService(
                 cancellationToken),
             "catalogue-artist-albums",
             "artist-albums",
+            exactAlbumIdentities,
             cancellationToken);
 
     private async Task<AlbumSelection> SelectNameFreeAlbumsAsync(
@@ -636,24 +657,38 @@ internal sealed partial class SearchService(
             albums.ReadAlbumsAsync(constraint, cancellationToken),
             "catalogue-filtered-albums",
             "filtered-albums",
+            new HashSet<MediaIdentity>(),
             cancellationToken);
 
     private async Task<AlbumSelection> SelectAlbumsAsync(
         IAsyncEnumerable<CatalogueSearchCandidate> candidates,
         string source,
         string command,
+        IReadOnlySet<MediaIdentity> pinnedIdentities,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         var observedCount = 0;
         var reservoir = candidateSelector.CreateReservoir(
             SearchResultPolicy.AlbumReservoirLimit);
+        var pinned = new List<CatalogueSearchCandidate>();
+        var pinnedIdentitySet = new HashSet<MediaIdentity>();
         try
         {
             await foreach (var candidate in candidates.WithCancellation(cancellationToken))
             {
                 observedCount++;
-                reservoir.Consider(candidate);
+                if (pinnedIdentities.Contains(candidate.Identity))
+                {
+                    if (pinnedIdentitySet.Add(candidate.Identity))
+                    {
+                        pinned.Add(candidate);
+                    }
+                }
+                else
+                {
+                    reservoir.Consider(candidate);
+                }
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -672,10 +707,14 @@ internal sealed partial class SearchService(
         }
 
         stopwatch.Stop();
+        var pinnedCandidates = pinned
+            .Take(SearchResultPolicy.AlbumLimit)
+            .ToArray();
+        var variedCandidates = candidateSelector.Rotate(
+            reservoir.Candidates,
+            SearchResultPolicy.AlbumLimit - pinnedCandidates.Length);
         return new AlbumSelection(
-            candidateSelector.Rotate(
-                reservoir.Candidates,
-                SearchResultPolicy.AlbumLimit),
+            pinnedCandidates.Concat(variedCandidates).ToArray(),
             CatalogueRequest(
                 source,
                 command,

@@ -142,7 +142,8 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                     string.Equals(
                         PhuzzyText.Normalise(query),
                         PhuzzyText.Normalise(value.Title),
-                        StringComparison.Ordinal));
+                        StringComparison.Ordinal),
+                    result.Candidate.Source.CanonicalAlbumArtistId);
             })
             .ToArray();
         return new CatalogueSearchResponse(
@@ -280,7 +281,15 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 documents.title,
                 documents.artist,
                 documents.album,
-                documents.native_rating
+                documents.native_rating,
+                CASE WHEN documents.kind = $albumKind THEN (
+                    SELECT CASE
+                        WHEN COUNT(*) = 1 THEN MIN(album_artists.artist_id)
+                        ELSE NULL
+                    END
+                    FROM document_artists AS album_artists
+                    WHERE album_artists.document_id = documents.document_id
+                ) ELSE NULL END
             FROM documents
             {artistJoin}
             WHERE documents.kind = $kind
@@ -293,6 +302,7 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
             command.Parameters.AddWithValue("$artistId", artistId);
         }
         command.Parameters.AddWithValue("$kind", (int)kind);
+        command.Parameters.AddWithValue("$albumKind", (int)MediaEntityKind.Album);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -310,7 +320,10 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 reader.IsDBNull(2) ? null : reader.GetString(2),
                 reader.IsDBNull(3) ? null : reader.GetString(3),
                 score,
-                reader.GetInt32(4));
+                reader.GetInt32(4),
+                CanonicalAlbumArtistId: reader.IsDBNull(5)
+                    ? null
+                    : reader.GetString(5));
         }
     }
 
@@ -1276,10 +1289,26 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
         }
 
         command.CommandText = $"""
-            SELECT document_id, stable_key, kind, title, artist, album, native_rating
+            SELECT
+                documents.document_id,
+                documents.stable_key,
+                documents.kind,
+                documents.title,
+                documents.artist,
+                documents.album,
+                documents.native_rating,
+                CASE WHEN documents.kind = $albumKind THEN (
+                    SELECT CASE
+                        WHEN COUNT(*) = 1 THEN MIN(document_artists.artist_id)
+                        ELSE NULL
+                    END
+                    FROM document_artists
+                    WHERE document_artists.document_id = documents.document_id
+                ) ELSE NULL END
             FROM documents
-            WHERE document_id IN ({string.Join(", ", parameters)});
+            WHERE documents.document_id IN ({string.Join(", ", parameters)});
             """;
+        command.Parameters.AddWithValue("$albumKind", (int)MediaEntityKind.Album);
         var candidates = new List<PhuzzyCandidate>(documentIds.Length);
         var retrievalLanes = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1298,7 +1327,8 @@ public sealed class SqliteCatalogueSearchIndex : ISearchResolver, IDiagnosticSea
                 PhuzzyText.Normalise(reader.GetString(3)),
                 reader.IsDBNull(4) ? string.Empty : PhuzzyText.Normalise(reader.GetString(4)),
                 reader.IsDBNull(5) ? string.Empty : PhuzzyText.Normalise(reader.GetString(5)),
-                string.Empty);
+                string.Empty,
+                reader.IsDBNull(7) ? null : reader.GetString(7));
             candidates.Add(CatalogueSearchRanker.CreateCandidate(source));
             if (captureEvidence)
             {

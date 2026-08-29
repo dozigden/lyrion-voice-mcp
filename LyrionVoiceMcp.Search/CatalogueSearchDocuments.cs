@@ -10,7 +10,8 @@ internal sealed record CatalogueIndexCandidate(
     string Title,
     string Artist,
     string Album,
-    string Combined)
+    string Combined,
+    string? CanonicalAlbumArtistId)
 {
     public static CatalogueIndexCandidate FromDocument(CatalogueSearchDocument document)
     {
@@ -28,7 +29,23 @@ internal sealed record CatalogueIndexCandidate(
             title,
             artist,
             album,
-            CatalogueSearchText.Join(title, artist, album));
+            CatalogueSearchText.Join(title, artist, album),
+            GetCanonicalAlbumArtistId(document));
+    }
+
+    private static string? GetCanonicalAlbumArtistId(CatalogueSearchDocument document)
+    {
+        if (document.Identity.Kind != MediaEntityKind.Album)
+        {
+            return null;
+        }
+
+        var artistIds = (document.ArtistIds ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .Take(2)
+            .ToArray();
+        return artistIds.Length == 1 ? artistIds[0] : null;
     }
 }
 

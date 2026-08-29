@@ -256,7 +256,7 @@ public sealed class SearchServiceTests
     }
 
     [Fact]
-    public async Task ExactArtistShouldVaryAlbumPreviewAcrossTheCompleteDiscography()
+    public async Task ExactArtistShouldPinSelfTitledAlbumAndVaryRemainingPreview()
     {
         var catalogue = new StubCatalogueSearch([
             new CatalogueSearchCandidate(
@@ -265,11 +265,20 @@ public sealed class SearchServiceTests
                 null,
                 null,
                 1_300,
-                IsExactTitleMatch: true)
+                IsExactTitleMatch: true),
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Album, "self-titled"),
+                "The Imaginaries",
+                "The Imaginaries",
+                null,
+                1_300,
+                IsExactTitleMatch: true,
+                CanonicalAlbumArtistId: "artist-1")
         ]);
         var artistAlbums = new StubArtistAlbumResolver(
-            Enumerable.Range(1, 12)
+            Enumerable.Range(1, 11)
                 .Select(index => Album($"album-{index}", $"Album {index}"))
+                .Prepend(Album("self-titled", "The Imaginaries"))
                 .ToArray());
         var observations = new RecordingSearchObservationStore();
         var references = new ReferenceCodecTestContext();
@@ -298,21 +307,27 @@ public sealed class SearchServiceTests
         Assert.Equal("artist-1", artistAlbums.ArtistId);
         Assert.Equal(SearchResultPolicy.AlbumLimit, firstAlbums.Length);
         Assert.Equal(SearchResultPolicy.AlbumLimit, secondAlbums.Length);
+        Assert.Contains(firstAlbums, album => album.Title == "The Imaginaries");
+        Assert.Contains(secondAlbums, album => album.Title == "The Imaginaries");
         Assert.False(firstAlbums
+            .Where(album => album.Title != "The Imaginaries")
             .Select(album => album.Title)
             .ToHashSet(StringComparer.Ordinal)
-            .SetEquals(secondAlbums.Select(album => album.Title)));
+            .SetEquals(secondAlbums
+                .Where(album => album.Title != "The Imaginaries")
+                .Select(album => album.Title)));
         var observedAlbumRequest = Assert.Single(
             firstObservation.Requests,
             request => request.Source == "catalogue-artist-albums");
         Assert.Equal(12, observedAlbumRequest.ResultCount);
         var observedAlbum = Assert.Single(
             firstObservation.Candidates,
-            candidate => candidate.Title == firstAlbums[0].Title);
-        var reference = references.Search.TryDecode(firstAlbums[0].Reference);
-        Assert.Equal(
-            $"album-{firstAlbums[0].Title["Album ".Length..]}",
-            reference?.Identity.Id);
+            candidate => candidate.Identity.Kind == MediaEntityKind.Album
+                && candidate.Title == "The Imaginaries");
+        var selfTitled = Assert.Single(firstAlbums, album =>
+            album.Title == "The Imaginaries");
+        var reference = references.Search.TryDecode(selfTitled.Reference);
+        Assert.Equal("self-titled", reference?.Identity.Id);
         Assert.Equal(observedAlbum.CorrelationId, reference?.CorrelationId);
 
         static CatalogueSearchCandidate Album(string id, string title) => new(
@@ -365,6 +380,222 @@ public sealed class SearchServiceTests
             1_300);
     }
 
+    [Fact]
+    public async Task AlignedSelfTitledAlbumShouldUseExactArtistDiscography()
+    {
+        var artistTracks = new StubArtistTrackResolver([]);
+        var artistAlbums = new StubArtistAlbumResolver([
+            Album("self-titled", "The Imaginaries"),
+            Album("second", "Imaginary Signals")
+        ]);
+        var observations = new RecordingSearchObservationStore();
+        var service = CreateService(
+            new StubCatalogueSearch([
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Artist, "artist-1"),
+                    "The Imaginaries",
+                    null,
+                    null,
+                    1_300,
+                    IsExactTitleMatch: true),
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Album, "self-titled"),
+                    "The Imaginaries",
+                    "The Imaginaries",
+                    null,
+                    1_300,
+                    IsExactTitleMatch: true,
+                    CanonicalAlbumArtistId: "artist-1")
+            ]),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            observations,
+            artistTracks,
+            artistAlbums: artistAlbums);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            "The Imaginaries",
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("artist-1", artistTracks.ArtistId);
+        Assert.Equal("artist-1", artistAlbums.ArtistId);
+        Assert.Equal("The Imaginaries", succeeded.ExactArtistMatch?.Name);
+        Assert.DoesNotContain(succeeded.Results, candidate =>
+            candidate.Kind == MediaEntityKind.Artist);
+        Assert.Equal(
+            ["Imaginary Signals", "The Imaginaries"],
+            succeeded.Results
+                .Where(candidate => candidate.Kind == MediaEntityKind.Album)
+                .Select(candidate => candidate.Title)
+                .Order());
+        Assert.True(observations.Recorded?.Candidates[0].IsExactArtistMatch);
+
+        static CatalogueSearchCandidate Album(string id, string title) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null,
+            1_300);
+    }
+
+    [Fact]
+    public async Task YearFilterShouldApplyAfterAlignedSelfTitledIdentityResolution()
+    {
+        var artistAlbums = new StubArtistAlbumResolver([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Album, "in-range"),
+                "Imaginary Signals",
+                "The Imaginaries",
+                null,
+                1_300)
+        ]);
+        var service = CreateService(
+            new StubCatalogueSearch([
+                ExactArtist(),
+                AlignedSelfTitledAlbum()
+            ]),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(),
+            artistAlbums: artistAlbums);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria("The Imaginaries", FromYear: 2000, ToYear: 2009),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("The Imaginaries", succeeded.ExactArtistMatch?.Name);
+        Assert.Equal(
+            "Imaginary Signals",
+            Assert.Single(succeeded.Results, candidate =>
+                candidate.Kind == MediaEntityKind.Album).Title);
+        Assert.DoesNotContain(succeeded.Results, candidate =>
+            candidate.Title == "The Imaginaries");
+        Assert.Equal(
+            new CatalogueAlbumSearchConstraint(2000, 2009),
+            artistAlbums.Constraint);
+
+        static CatalogueSearchCandidate ExactArtist() => new(
+            new MediaIdentity(MediaEntityKind.Artist, "artist-1"),
+            "The Imaginaries",
+            null,
+            null,
+            1_300,
+            IsExactTitleMatch: true);
+
+        static CatalogueSearchCandidate AlignedSelfTitledAlbum() => new(
+            new MediaIdentity(MediaEntityKind.Album, "self-titled"),
+            "The Imaginaries",
+            "The Imaginaries",
+            null,
+            1_300,
+            IsExactTitleMatch: true,
+            CanonicalAlbumArtistId: "artist-1");
+    }
+
+    [Fact]
+    public async Task TrackFiltersShouldRetainAlignedIdentityWhenNoTracksQualify()
+    {
+        var artistTracks = new StubArtistTrackResolver([
+            new CatalogueSearchCandidate(
+                new MediaIdentity(MediaEntityKind.Track, "below-rating"),
+                "Fictional Signal",
+                "The Imaginaries",
+                "The Imaginaries",
+                1_120,
+                80)
+        ]);
+        var artistAlbums = new StubArtistAlbumResolver([]);
+        var service = CreateService(
+            new StubCatalogueSearch([
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Artist, "artist-1"),
+                    "The Imaginaries",
+                    null,
+                    null,
+                    1_300,
+                    IsExactTitleMatch: true),
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Album, "self-titled"),
+                    "The Imaginaries",
+                    "The Imaginaries",
+                    null,
+                    1_300,
+                    IsExactTitleMatch: true,
+                    CanonicalAlbumArtistId: "artist-1")
+            ]),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(),
+            artistTracks,
+            artistAlbums: artistAlbums);
+        var rating = new RatingSearchConstraint(4.5m, RatingMatchMode.AtLeast);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria(
+                "The Imaginaries",
+                rating,
+                "Ambient",
+                2000,
+                2009),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("The Imaginaries", succeeded.ExactArtistMatch?.Name);
+        Assert.Empty(succeeded.Results);
+        Assert.Empty(succeeded.TopTracks);
+        Assert.Equal(
+            new CatalogueTrackSearchConstraint(rating, "AMBIENT", 2000, 2009),
+            artistTracks.Constraint);
+        Assert.Null(artistAlbums.ArtistId);
+    }
+
+    [Fact]
+    public async Task TrackFiltersShouldNotHideAnUnalignedExactAlbumConflict()
+    {
+        var artistTracks = new StubArtistTrackResolver([]);
+        var service = CreateService(
+            new StubCatalogueSearch([
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Artist, "artist-1"),
+                    "The Imaginaries",
+                    null,
+                    null,
+                    1_300,
+                    IsExactTitleMatch: true),
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Album, "conflict"),
+                    "The Imaginaries",
+                    "Another Artist",
+                    null,
+                    1_300,
+                    IsExactTitleMatch: true,
+                    CanonicalAlbumArtistId: "artist-2"),
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Track, "rated-track"),
+                    "Imaginary Signal",
+                    "The Imaginaries",
+                    "Imaginary Signals",
+                    1_120,
+                    100)
+            ]),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(),
+            artistTracks);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria(
+                "The Imaginaries",
+                new RatingSearchConstraint(5, RatingMatchMode.Exact)),
+            TestContext.Current.CancellationToken));
+
+        Assert.Null(succeeded.ExactArtistMatch);
+        Assert.Null(artistTracks.ArtistId);
+        Assert.DoesNotContain(succeeded.Results, candidate =>
+            candidate.Kind == MediaEntityKind.Album);
+        Assert.Contains(succeeded.TopTracks, candidate =>
+            candidate.Title == "Imaginary Signal");
+    }
+
     [Theory]
     [InlineData(MediaEntityKind.Album)]
     [InlineData(MediaEntityKind.Track)]
@@ -407,6 +638,50 @@ public sealed class SearchServiceTests
             succeeded.Results,
             candidate => candidate.Kind == conflictingKind
                 && candidate.Title == "Signals");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("artist-2")]
+    public async Task UnalignedSelfTitledAlbumShouldKeepOrdinarySearchResults(
+        string? canonicalAlbumArtistId)
+    {
+        var artistTracks = new StubArtistTrackResolver([]);
+        var artistAlbums = new StubArtistAlbumResolver([]);
+        var service = CreateService(
+            new StubCatalogueSearch([
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Artist, "artist-1"),
+                    "The Imaginaries",
+                    null,
+                    null,
+                    1_300,
+                    IsExactTitleMatch: true),
+                new CatalogueSearchCandidate(
+                    new MediaIdentity(MediaEntityKind.Album, "album-1"),
+                    "The Imaginaries",
+                    "Another Artist",
+                    null,
+                    1_300,
+                    IsExactTitleMatch: true,
+                    CanonicalAlbumArtistId: canonicalAlbumArtistId)
+            ]),
+            new StubPlaylistSearch([]),
+            new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(),
+            artistTracks,
+            artistAlbums: artistAlbums);
+
+        var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            "The Imaginaries",
+            TestContext.Current.CancellationToken));
+
+        Assert.Null(artistTracks.ArtistId);
+        Assert.Null(artistAlbums.ArtistId);
+        Assert.Null(succeeded.ExactArtistMatch);
+        Assert.Contains(succeeded.Results, candidate =>
+            candidate.Kind == MediaEntityKind.Album
+            && candidate.Title == "The Imaginaries");
     }
 
     [Fact]
@@ -1546,6 +1821,7 @@ public sealed class SearchServiceTests
         IReadOnlyList<CatalogueSearchCandidate> candidates) : ICatalogueArtistTrackResolver
     {
         public string? ArtistId { get; private set; }
+        public CatalogueTrackSearchConstraint? Constraint { get; private set; }
 
         public async IAsyncEnumerable<CatalogueSearchCandidate> ReadArtistTracksAsync(
             string artistId,
@@ -1566,6 +1842,7 @@ public sealed class SearchServiceTests
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             ArtistId = artistId;
+            Constraint = constraint;
             foreach (var candidate in candidates)
             {
                 cancellationToken.ThrowIfCancellationRequested();
