@@ -12,7 +12,7 @@ namespace LyrionVoiceMcp.Api.Tools;
 public sealed class SearchTools(ISearchService searchService)
 {
     private const string ReferenceGuidance =
-        "When exactArtistMatch is present, the query resolved to that artist, artists is empty, albums when present form a varied discography preview, and discographyBrowseRef opens every album credited to that album artist. Otherwise artists and albums contain ordinary search candidates. topTracks are relevant or discovered tracks rated 4 or higher; tracks are varied matches or discoveries and exclude tracks already shown in topTracks. A year range applies to canonical album year and effective track year, so it may return both albums and tracks. Rating and genre apply only to tracks; when either is supplied, albums are not returned. Pass a browseRef to browse to continue navigating.";
+        "When exactArtistMatch is present, the query resolved to that artist and artists is empty. discographyAlbumCount counts the distinct canonical catalogue album identities considered for this search's album preview: the complete album-artist relationship without a year constraint, or the matching part with one. It is null when rating or genre makes the search track-only. Separate catalogue identities count separately even when their display metadata is identical. Albums when present form only a varied preview. discographyBrowseRef opens the LMS-backed album-artist listing, whose items may differ from the catalogue-derived count. Otherwise artists and albums contain ordinary search candidates. topTracks are relevant or discovered tracks rated 4 or higher; tracks are varied matches or discoveries and exclude tracks already shown in topTracks. A year range applies to canonical album year and effective track year, so it may return both albums and tracks. Rating and genre apply only to tracks; when either is supplied, albums are not returned. Pass a browseRef to browse to continue navigating.";
 
     [McpServerTool(
         Name = "search",
@@ -93,6 +93,7 @@ public sealed class SearchTools(ISearchService searchService)
                 ? null
                 : new SearchExactArtistMatch(
                     exactArtistMatch.Name,
+                    exactArtistMatch.DiscographyAlbumCount,
                     exactArtistMatch.DiscographyReference),
             candidates
                 .Where(candidate => candidate.Kind == MediaEntityKind.Artist)

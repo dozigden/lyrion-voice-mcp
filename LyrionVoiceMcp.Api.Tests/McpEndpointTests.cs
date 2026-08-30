@@ -143,6 +143,18 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         Assert.Contains(
             exactArtistSchema.GetProperty("type").EnumerateArray(),
             type => type.GetString() == "null");
+        Assert.Contains(
+            exactArtistSchema.GetProperty("required").EnumerateArray(),
+            property => property.GetString() == "discographyAlbumCount");
+        var discographyAlbumCountSchema = exactArtistSchema
+            .GetProperty("properties")
+            .GetProperty("discographyAlbumCount");
+        Assert.Contains(
+            discographyAlbumCountSchema.GetProperty("type").EnumerateArray(),
+            type => type.GetString() == "integer");
+        Assert.Contains(
+            discographyAlbumCountSchema.GetProperty("type").EnumerateArray(),
+            type => type.GetString() == "null");
         Assert.True(searchTool
             .GetProperty("outputSchema")
             .GetProperty("properties")
@@ -408,6 +420,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             [],
             new ExactArtistMatchResult(
                 "The Copper Lines",
+                7,
                 "album_artist_discography-reference"));
         await using var searchFactory = factory.WithWebHostBuilder(builder =>
             builder.ConfigureTestServices(services =>
@@ -441,10 +454,55 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("structuredContent");
         var exactArtist = structuredContent.GetProperty("exactArtistMatch");
         Assert.Equal("The Copper Lines", exactArtist.GetProperty("name").GetString());
+        Assert.Equal(7, exactArtist.GetProperty("discographyAlbumCount").GetInt32());
         Assert.Equal(
             "album_artist_discography-reference",
             exactArtist.GetProperty("discographyBrowseRef").GetString());
         Assert.Empty(structuredContent.GetProperty("artists").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task SearchToolShouldEmitAnExplicitNullCountWhenAlbumExpansionWasSkipped()
+    {
+        var outcome = new SearchSucceeded(
+            [],
+            [],
+            new ExactArtistMatchResult(
+                "The Copper Lines",
+                null,
+                "album_artist_discography-reference"));
+        await using var searchFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISearchService>();
+                services.AddSingleton<ISearchService>(new StubSearchService(outcome));
+            }));
+        using var client = searchFactory.CreateClient();
+        using var request = CreateRequest(
+            "tools/call",
+            34,
+            """
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"name":"copper lines"}}
+            """,
+            "search");
+
+        var response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected an OK MCP response but received {(int)response.StatusCode}: {body}");
+        using var document = ParseJsonRpcResponse(body);
+        var exactArtist = document.RootElement
+            .GetProperty("result")
+            .GetProperty("structuredContent")
+            .GetProperty("exactArtistMatch");
+        Assert.Equal(
+            JsonValueKind.Null,
+            exactArtist.GetProperty("discographyAlbumCount").ValueKind);
     }
 
     [Fact]

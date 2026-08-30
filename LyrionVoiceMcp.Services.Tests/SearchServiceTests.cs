@@ -208,6 +208,7 @@ public sealed class SearchServiceTests
 
         Assert.Equal("artist-1", artistTracks.ArtistId);
         Assert.Equal("The Imaginaries", succeeded.ExactArtistMatch?.Name);
+        Assert.Equal(0, succeeded.ExactArtistMatch?.DiscographyAlbumCount);
         Assert.DoesNotContain(succeeded.Results, candidate =>
             candidate.Kind == MediaEntityKind.Artist);
         var discography = references.Browse.TryDecode(
@@ -305,6 +306,8 @@ public sealed class SearchServiceTests
             .ToArray();
 
         Assert.Equal("artist-1", artistAlbums.ArtistId);
+        Assert.Equal(12, first.ExactArtistMatch?.DiscographyAlbumCount);
+        Assert.Equal(12, second.ExactArtistMatch?.DiscographyAlbumCount);
         Assert.Equal(SearchResultPolicy.AlbumLimit, firstAlbums.Length);
         Assert.Equal(SearchResultPolicy.AlbumLimit, secondAlbums.Length);
         Assert.Contains(firstAlbums, album => album.Title == "The Imaginaries");
@@ -343,6 +346,7 @@ public sealed class SearchServiceTests
     {
         var artistAlbums = new StubArtistAlbumResolver([
             Album("album-1", "First Fiction"),
+            Album("album-1-remaster", "First Fiction"),
             Album("album-2", "Second Fiction"),
             Album("album-3", "Third Fiction")
         ]);
@@ -366,11 +370,12 @@ public sealed class SearchServiceTests
             TestContext.Current.CancellationToken));
 
         Assert.Equal(
-            ["First Fiction", "Second Fiction", "Third Fiction"],
+            ["First Fiction", "First Fiction", "Second Fiction", "Third Fiction"],
             succeeded.Results
                 .Where(candidate => candidate.Kind == MediaEntityKind.Album)
                 .Select(candidate => candidate.Title)
                 .Order());
+        Assert.Equal(4, succeeded.ExactArtistMatch?.DiscographyAlbumCount);
 
         static CatalogueSearchCandidate Album(string id, string title) => new(
             new MediaIdentity(MediaEntityKind.Album, id),
@@ -420,6 +425,7 @@ public sealed class SearchServiceTests
         Assert.Equal("artist-1", artistTracks.ArtistId);
         Assert.Equal("artist-1", artistAlbums.ArtistId);
         Assert.Equal("The Imaginaries", succeeded.ExactArtistMatch?.Name);
+        Assert.Equal(2, succeeded.ExactArtistMatch?.DiscographyAlbumCount);
         Assert.DoesNotContain(succeeded.Results, candidate =>
             candidate.Kind == MediaEntityKind.Artist);
         Assert.Equal(
@@ -464,6 +470,7 @@ public sealed class SearchServiceTests
             TestContext.Current.CancellationToken));
 
         Assert.Equal("The Imaginaries", succeeded.ExactArtistMatch?.Name);
+        Assert.Equal(1, succeeded.ExactArtistMatch?.DiscographyAlbumCount);
         Assert.Equal(
             "Imaginary Signals",
             Assert.Single(succeeded.Results, candidate =>
@@ -545,6 +552,7 @@ public sealed class SearchServiceTests
         Assert.Equal(
             new CatalogueTrackSearchConstraint(rating, "AMBIENT", 2000, 2009),
             artistTracks.Constraint);
+        Assert.Null(succeeded.ExactArtistMatch?.DiscographyAlbumCount);
         Assert.Null(artistAlbums.ArtistId);
     }
 
@@ -1073,6 +1081,7 @@ public sealed class SearchServiceTests
             TestContext.Current.CancellationToken));
 
         Assert.Equal("The Imaginaries", succeeded.ExactArtistMatch?.Name);
+        Assert.Equal(1, succeeded.ExactArtistMatch?.DiscographyAlbumCount);
         Assert.Single(succeeded.Results, candidate =>
             candidate.Kind == MediaEntityKind.Album);
         Assert.Equal("artist-1", artistAlbums.ArtistId);
@@ -1134,6 +1143,7 @@ public sealed class SearchServiceTests
                 candidate.Kind == MediaEntityKind.Track)),
             candidate => Assert.True(candidate.NativeRating >= 90));
         Assert.Null(playlists.Query);
+        Assert.Null(succeeded.ExactArtistMatch?.DiscographyAlbumCount);
         Assert.Null(artistAlbums.ArtistId);
 
         static CatalogueSearchCandidate Track(string id, int rating) => new(

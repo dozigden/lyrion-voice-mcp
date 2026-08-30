@@ -240,6 +240,7 @@ internal sealed partial class SearchService(
         IReadOnlyList<CatalogueSearchCandidate> selectedAlbums;
         IReadOnlyList<CatalogueSearchCandidate> selectedTopTracks;
         IReadOnlyList<CatalogueSearchCandidate> selectedTracks;
+        int? discographyAlbumCount = null;
         if (exactArtist is null)
         {
             selectedAlbums = catalogueCandidates
@@ -300,6 +301,7 @@ internal sealed partial class SearchService(
                 }
 
                 selectedAlbums = albumSelection.Albums;
+                discographyAlbumCount = albumSelection.CandidateCount;
             }
             else
             {
@@ -376,7 +378,9 @@ internal sealed partial class SearchService(
             .ToArray();
         var exactArtistResult = candidates
             .Where(candidate => candidate.Group == CandidateGroup.ExactArtist)
-            .Select(candidate => ToExactArtistMatch(candidate.Occurrence))
+            .Select(candidate => ToExactArtistMatch(
+                candidate.Occurrence,
+                discographyAlbumCount))
             .SingleOrDefault();
         await observationRecorder.RecordCompletedAsync(
             observation,
@@ -693,6 +697,7 @@ internal sealed partial class SearchService(
             stopwatch.Stop();
             return new AlbumSelection(
                 [],
+                observedCount,
                 CatalogueRequest(
                     source,
                     command,
@@ -712,6 +717,7 @@ internal sealed partial class SearchService(
             SearchResultPolicy.AlbumLimit - pinnedCandidates.Length);
         return new AlbumSelection(
             pinnedCandidates.Concat(variedCandidates).ToArray(),
+            observedCount,
             CatalogueRequest(
                 source,
                 command,
@@ -833,8 +839,10 @@ internal sealed partial class SearchService(
             candidate.NativeRating);
 
     private ExactArtistMatchResult ToExactArtistMatch(
-        SearchCandidateOccurrence candidate) => new(
+        SearchCandidateOccurrence candidate,
+        int? discographyAlbumCount) => new(
             candidate.Title,
+            discographyAlbumCount,
             browseReferenceCodec.Encode(new BrowseReferenceValue(
                 new BrowseTarget(
                     BrowseTargetKind.AlbumArtistAlbums,
@@ -875,6 +883,7 @@ internal sealed partial class SearchService(
 
     private sealed record AlbumSelection(
         IReadOnlyList<CatalogueSearchCandidate> Albums,
+        int CandidateCount,
         LmsSearchRequestObservation Request,
         Exception? Failure);
 

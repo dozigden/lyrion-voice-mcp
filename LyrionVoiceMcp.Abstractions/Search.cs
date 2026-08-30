@@ -369,6 +369,7 @@ public sealed record SearchCandidateResult(
 
 public sealed record ExactArtistMatchResult(
     string Name,
+    int? DiscographyAlbumCount,
     string DiscographyReference);
 
 public sealed record SearchCriteria(

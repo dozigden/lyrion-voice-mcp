@@ -10,6 +10,8 @@ public sealed record SearchArtist(string Name, string BrowseRef);
 
 public sealed record SearchExactArtistMatch(
     string Name,
+    [property: Description("The number of distinct canonical catalogue album identities considered for this search's exact-artist album preview. Null when album expansion was not performed. Separate LMS album records count separately when their catalogue identities differ.")]
+    int? DiscographyAlbumCount,
     string DiscographyBrowseRef);
 
 public sealed record SearchAlbum(

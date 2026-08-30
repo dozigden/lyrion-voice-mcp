@@ -11,6 +11,7 @@ public sealed class McpToolContractTests
         var artist = new SearchArtist("The Copper Lines", "browse-reference");
         var exactArtist = new SearchExactArtistMatch(
             "The Copper Lines",
+            7,
             "discography-reference");
         var album = new SearchAlbum(
             "Lantern Signals",
@@ -33,7 +34,7 @@ public sealed class McpToolContractTests
         // Assert
         Assert.Equal(["BrowseRef", "Name"], artistProperties.Select(item => item.Name).Order());
         Assert.Equal(
-            ["DiscographyBrowseRef", "Name"],
+            ["DiscographyAlbumCount", "DiscographyBrowseRef", "Name"],
             exactArtistProperties.Select(item => item.Name).Order());
         Assert.Equal(
             ["Artist", "BrowseRef", "PlayRef", "Title"],
@@ -43,6 +44,7 @@ public sealed class McpToolContractTests
             trackProperties.Select(item => item.Name).Order());
         Assert.Equal("browse-reference", artist.BrowseRef);
         Assert.Equal("discography-reference", exactArtist.DiscographyBrowseRef);
+        Assert.Equal(7, exactArtist.DiscographyAlbumCount);
         Assert.Equal("play-reference", album.PlayRef);
         Assert.Equal(4.5m, track.Rating);
     }
