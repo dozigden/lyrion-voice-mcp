@@ -15,7 +15,7 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "pinia": "^3.0.4",
+    "pinia": "^4.0.3",
     "vue": "^3.5.32",
     "vue-router": "^5.0.4"
   },
