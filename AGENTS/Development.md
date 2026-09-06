@@ -24,9 +24,11 @@ The supervisor manages only this repository's API and Vite processes. It may sto
 - The EF application database and disposable production search index live under `/data`; keep that path on a persistent volume.
 - Supported architectures are `linux/amd64` and `linux/arm64` only.
 - Do not bake LMS environment addresses or local credentials into an image.
-- Ordinary CI builds and smoke-tests native images without publishing them.
-- A `v<semver>` tag matching `Directory.Build.props` runs the complete validation, builds and smoke-tests both supported architectures, and publishes verified multi-architecture manifests to GHCR and Docker Hub. Release images carry the tag version, `release` channel, tag build identifier, and tagged commit.
-- Nightly publication runs on its schedule or by manual dispatch, skips an unchanged commit unless forced, and publishes `nightly` and `nightly-<short-sha>` multi-architecture tags to both registries. The successful source commit is recorded by the `nightly-last-build` repository tag.
+- Ordinary CI builds and smoke-tests native images without registry credentials or publication.
+- A `v<semver>` tag matching `Directory.Build.props` runs the complete validation, stages one untagged platform digest per supported architecture in each registry, smoke-tests those exact remote digests, and only then publishes verified multi-architecture manifests to GHCR and Docker Hub. Release images carry the tag version, `release` channel, tag build identifier, and tagged commit.
+- Nightly publication runs the same complete validation on its schedule or by manual dispatch, skips an unchanged commit unless forced, stages and smoke-tests the exact remote platform digests, and only then publishes `nightly` and `nightly-<short-sha>` multi-architecture tags to both registries. The successful source commit is recorded by the `nightly-last-build` repository tag.
+- Staged platform digests are addressable only by digest and are not public release channels. Failed validation, build, or smoke tests therefore cannot create or move a release or nightly tag.
+- Published platform images include BuildKit provenance and software-bill-of-materials attestations. Manifest promotion verifies that both registries retain the exact validated amd64 and arm64 child-image digests.
 - Docker Hub publication requires the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets. GHCR publication uses `GITHUB_TOKEN` with package-write permission. Registry repository visibility is configured outside the workflow.
 - Scheduled Docker Hub cleanup retains the ten newest `nightly-<sha>` tags by default; manual dispatch may select another positive retention count. The moving `nightly` tag and release tags are not removed.
 
@@ -54,4 +56,9 @@ Use these configuration keys:
 
 - Check the licence, provenance, transitive dependency set, and redistribution requirements before adding a new package or frontend dependency.
 - Prefer an official or actively maintained implementation when equivalent choices exist. Do not accept a dependency merely because its declared licence is permissive when its package omits required notices or its API does not meet the use case.
+- Frontend installs disable dependency lifecycle scripts and reject releases younger than seven days through the committed `.npmrc`. Do not bypass either control casually; review and document any narrowly scoped exception.
+- Dependabot applies a seven-day cooldown to normal npm, NuGet, Docker, and GitHub Actions updates. Security updates are not delayed by that policy.
+- Keep NuGet restores locked and treat high or critical package advisories as errors. Container publication additionally runs `npm audit --audit-level=high` against the locked frontend graph.
+- Pin external GitHub Actions and Docker base images to immutable full digests. Retain the human-readable action version comment and image tag so automated updates remain reviewable.
+- Serialise release and nightly container publication. Validate the staged platform digests in both registries, create and compare the non-release `promotion-candidate` manifests, and only then move user-facing tags. A failed final registry write is retried and a rerun safely reapplies the same candidate.
 - Follow `AGENTS/LicenceDisclosure.md`; refresh the relevant runtime inventory and generated disclosure before committing a dependency change.

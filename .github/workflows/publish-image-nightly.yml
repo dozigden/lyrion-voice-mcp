@@ -13,11 +13,10 @@ on:
         type: boolean
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
-  group: publish-image-nightly
+  group: container-publication
   cancel-in-progress: false
 
 jobs:
@@ -34,9 +33,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve app version
         id: app_version
@@ -74,9 +74,19 @@ jobs:
             echo "should_build=true" >> "$GITHUB_OUTPUT"
           fi
 
-  build-platform:
-    name: Build Nightly (${{ matrix.platform }})
+  validate:
+    name: Validate Nightly SHA
     needs: prepare
+    if: needs.prepare.outputs.should_build == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  build-platform:
+    name: Stage and Smoke Test (${{ matrix.platform }})
+    needs:
+      - prepare
+      - validate
     if: needs.prepare.outputs.should_build == 'true'
     permissions:
       contents: read
@@ -95,7 +105,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Compute image name
         id: image
@@ -109,23 +121,9 @@ jobs:
           echo "ghcr_name=${GHCR_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "dockerhub_name=${DOCKERHUB_IMAGE}" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Generate Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: |
             ${{ steps.image.outputs.ghcr_name }}
@@ -135,22 +133,61 @@ jobs:
             type=raw,value=nightly-${{ needs.prepare.outputs.short_sha }}
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - name: Push platform image by digest
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and stage platform image by digest
         id: nightly
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
           outputs: type=image,"name=${{ steps.image.outputs.ghcr_name }},${{ steps.image.outputs.dockerhub_name }}",push-by-digest=true,name-canonical=true,push=true
           build-args: |
             LVM_VERSION=${{ needs.prepare.outputs.version }}
             LVM_CHANNEL=nightly
             LVM_BUILD=nightly-${{ needs.prepare.outputs.short_sha }}
             LVM_COMMIT=${{ needs.prepare.outputs.current_sha }}
+
+      - name: Smoke-test exact staged digests
+        env:
+          DOCKERHUB_IMAGE: ${{ steps.image.outputs.dockerhub_name }}
+          EXPECTED_BUILD: nightly-${{ needs.prepare.outputs.short_sha }}
+          EXPECTED_CHANNEL: nightly
+          EXPECTED_COMMIT: ${{ needs.prepare.outputs.current_sha }}
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+          GHCR_IMAGE: ${{ steps.image.outputs.ghcr_name }}
+          PLATFORM_DIGEST: ${{ steps.nightly.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for image in "$GHCR_IMAGE" "$DOCKERHUB_IMAGE"; do
+            exact_image="$image@$PLATFORM_DIGEST"
+            docker pull "$exact_image"
+            ./scripts/smoke-container.sh "$exact_image" ${{ matrix.architecture }}
+          done
+
+      - name: Clear registry credentials
+        if: always()
+        run: |
+          docker logout ghcr.io || true
+          docker logout docker.io || true
 
       - name: Export platform digest
         run: |
@@ -159,7 +196,7 @@ jobs:
           touch "$RUNNER_TEMP/nightly-digests/${digest#sha256:}"
 
       - name: Upload platform digest
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: nightly-digests-${{ matrix.architecture }}
           path: ${{ runner.temp }}/nightly-digests/*
@@ -170,6 +207,7 @@ jobs:
     name: Publish Multi-Architecture Nightly Manifests
     needs:
       - prepare
+      - validate
       - build-platform
     if: needs.prepare.outputs.should_build == 'true'
     permissions:
@@ -179,9 +217,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Compute image name
         id: image
@@ -195,23 +234,9 @@ jobs:
           echo "ghcr_name=${GHCR_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "dockerhub_name=${DOCKERHUB_IMAGE}" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Generate Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: |
             ${{ steps.image.outputs.ghcr_name }}
@@ -221,80 +246,47 @@ jobs:
             type=raw,value=nightly-${{ needs.prepare.outputs.short_sha }}
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Download platform digests
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: nightly-digests-*
           path: ${{ runner.temp }}/nightly-digests
           merge-multiple: true
 
-      - name: Create and verify nightly manifests
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Promote validated nightly digests
         env:
           DOCKERHUB_IMAGE: ${{ steps.image.outputs.dockerhub_name }}
           GHCR_IMAGE: ${{ steps.image.outputs.ghcr_name }}
           METADATA_JSON: ${{ steps.meta.outputs.json }}
+        run: ./scripts/promote-container-digests.sh "$RUNNER_TEMP/nightly-digests" "$METADATA_JSON" "$GHCR_IMAGE" "$DOCKERHUB_IMAGE"
+
+      - name: Clear registry credentials
+        if: always()
         run: |
-          set -euo pipefail
-          shopt -s nullglob
-
-          digest_files=("$RUNNER_TEMP"/nightly-digests/*)
-          if [ "${#digest_files[@]}" -ne 2 ]; then
-            echo "Expected two platform digests, found ${#digest_files[@]}."
-            exit 1
-          fi
-
-          digests=()
-          for digest_file in "${digest_files[@]}"; do
-            digest_name="$(basename "$digest_file")"
-            if ! [[ "$digest_name" =~ ^[0-9a-f]{64}$ ]]; then
-              echo "Invalid platform digest artifact: ${digest_name}"
-              exit 1
-            fi
-            digests+=("sha256:${digest_name}")
-          done
-
-          publish_manifest() {
-            local image="$1"
-            local sources=()
-            local tag_args=()
-            local tags=()
-
-            mapfile -t tags < <(
-              jq -r --arg image "$image" \
-                '.tags[] | select(startswith($image + ":"))' \
-                <<< "$METADATA_JSON"
-            )
-
-            if [ "${#tags[@]}" -eq 0 ]; then
-              echo "No generated tags found for ${image}."
-              exit 1
-            fi
-
-            for tag in "${tags[@]}"; do
-              tag_args+=(--tag "$tag")
-            done
-            for digest in "${digests[@]}"; do
-              sources+=("${image}@${digest}")
-            done
-
-            docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
-
-            raw_manifest="$(docker buildx imagetools inspect --raw "${tags[0]}")"
-            jq --exit-status '
-              [.manifests[].platform
-                | select(.os == "linux")
-                | .architecture] as $architectures
-              | ($architectures | index("amd64") != null)
-                and ($architectures | index("arm64") != null)
-            ' <<< "$raw_manifest"
-          }
-
-          publish_manifest "$GHCR_IMAGE"
-          publish_manifest "$DOCKERHUB_IMAGE"
+          docker logout ghcr.io || true
+          docker logout docker.io || true
 
       - name: Update nightly build marker tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git tag -f nightly-last-build "${{ needs.prepare.outputs.current_sha }}"
-          git push origin refs/tags/nightly-last-build --force
+          auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth_header" \
+            push origin refs/tags/nightly-last-build --force
