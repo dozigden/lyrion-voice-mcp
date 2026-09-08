@@ -722,6 +722,116 @@ public sealed class ProductionCatalogueSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CompleteBoundedEditShouldOutrankPartialRomanCardinalEquivalence()
+    {
+        var source = new DocumentSource([
+            Album("complete", "Signel 8"),
+            Album("partial-equivalence", "VI")
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-query-coverage", 66);
+
+        var diagnostics = await service.SearchDetailedAsync(
+            "Signal 6",
+            TestContext.Current.CancellationToken);
+
+        var complete = Assert.Single(
+            diagnostics.Results,
+            result => result.Title == "Signel 8");
+        var partial = Assert.Single(
+            diagnostics.Results,
+            result => result.Title == "VI");
+        Assert.Equal("Signel 8", diagnostics.Results[0].Title);
+        Assert.Equal("bounded_edit", complete.ScoreEvidence?.Signal);
+        Assert.Equal(2, complete.ScoreEvidence?.MatchedTokenCount);
+        Assert.Equal(0, complete.ScoreEvidence?.IgnoredTokenCount);
+        Assert.Equal(920, complete.Score);
+        Assert.Equal("roman_cardinal_equivalent", partial.ScoreEvidence?.Signal);
+        Assert.Equal(1, partial.ScoreEvidence?.MatchedTokenCount);
+        Assert.Equal(1, partial.ScoreEvidence?.IgnoredTokenCount);
+        Assert.Equal(320, partial.ScoreEvidence?.CoveragePenalty);
+        Assert.Equal(880, partial.Score);
+
+        static CatalogueSearchDocument Album(string id, string title) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null);
+    }
+
+    [Fact]
+    public async Task CompleteBoundedEditShouldOutrankPartialSpokenAcronymEquivalence()
+    {
+        var source = new DocumentSource([
+            Album("complete", "Sigram zed why ex"),
+            Album("partial-equivalence", "ZYX")
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-acronym-query-coverage", 67);
+
+        var diagnostics = await service.SearchDetailedAsync(
+            "Signal zed why ex",
+            TestContext.Current.CancellationToken);
+
+        var complete = Assert.Single(
+            diagnostics.Results,
+            result => result.Title == "Sigram zed why ex");
+        var partial = Assert.Single(
+            diagnostics.Results,
+            result => result.Title == "ZYX");
+        Assert.Equal("Sigram zed why ex", diagnostics.Results[0].Title);
+        Assert.Equal("bounded_edit", complete.ScoreEvidence?.Signal);
+        Assert.Equal(4, complete.ScoreEvidence?.MatchedTokenCount);
+        Assert.Equal(0, complete.ScoreEvidence?.IgnoredTokenCount);
+        Assert.Equal(920, complete.Score);
+        Assert.Equal("spoken_acronym", partial.ScoreEvidence?.Signal);
+        Assert.Equal(3, partial.ScoreEvidence?.MatchedTokenCount);
+        Assert.Equal(1, partial.ScoreEvidence?.IgnoredTokenCount);
+        Assert.Equal(320, partial.ScoreEvidence?.CoveragePenalty);
+        Assert.Equal(900, partial.Score);
+
+        static CatalogueSearchDocument Album(string id, string title) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null);
+    }
+
+    [Fact]
+    public async Task ExactPartialMatchMayStillOutrankCompleteBoundedEdit()
+    {
+        var source = new DocumentSource([
+            Album("literal-partial", "Signal"),
+            Album("complete", "Signel 8")
+        ]);
+        await using var service = CreateService(source);
+        await RebuildAsync(service, "refresh-literal-query-coverage", 68);
+
+        var diagnostics = await service.SearchDetailedAsync(
+            "Signal 6",
+            TestContext.Current.CancellationToken);
+
+        var literal = Assert.Single(
+            diagnostics.Results,
+            result => result.Title == "Signal");
+        var complete = Assert.Single(
+            diagnostics.Results,
+            result => result.Title == "Signel 8");
+        Assert.Equal("Signal", diagnostics.Results[0].Title);
+        Assert.Equal("exact_normalised", literal.ScoreEvidence?.Signal);
+        Assert.Equal(1, literal.ScoreEvidence?.IgnoredTokenCount);
+        Assert.Equal(980, literal.Score);
+        Assert.Equal("bounded_edit", complete.ScoreEvidence?.Signal);
+        Assert.Equal(920, complete.Score);
+
+        static CatalogueSearchDocument Album(string id, string title) => new(
+            new MediaIdentity(MediaEntityKind.Album, id),
+            title,
+            "The Imaginaries",
+            null);
+    }
+
+    [Fact]
     public async Task EmbeddedRomanCardinalShouldRequireCompleteTitleContext()
     {
         var source = new DocumentSource([

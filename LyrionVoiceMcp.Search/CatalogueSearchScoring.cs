@@ -7,6 +7,8 @@ namespace LyrionVoiceMcp.Search;
 
 internal static class CatalogueSearchRanker
 {
+    private const int CoveragePenaltyPerIgnoredToken = 320;
+
     internal static IReadOnlyList<RankedPhuzzyCandidate> RankCandidates(
         string query,
         IReadOnlyList<PhuzzyCandidate> candidates,
@@ -164,7 +166,7 @@ internal static class CatalogueSearchRanker
 
             var signalValue = signal.Value;
             var ignoredTokenCount = queryTokenCount - span.TokenCount;
-            var coveragePenalty = ignoredTokenCount * 250;
+            var coveragePenalty = ignoredTokenCount * CoveragePenaltyPerIgnoredToken;
             var finalScore = signalValue.Score - coveragePenalty - fieldPenalty;
             if (finalScore <= 0 || finalScore <= (best?.FinalScore ?? 0))
             {
