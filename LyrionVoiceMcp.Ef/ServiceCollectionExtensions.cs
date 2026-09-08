@@ -27,6 +27,9 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IJobRepository, JobRepository>();
         services.AddTransient<IJobLogRepository, JobLogRepository>();
         services.AddTransient<IScheduledJobStateRepository, ScheduledJobStateRepository>();
+        services.AddTransient<
+            IScheduledJobConfigurationRepository,
+            ScheduledJobConfigurationRepository>();
         services.AddTransient<IErrorLogRepository, ErrorLogRepository>();
         services.AddTransient<IToolCallRepository, ToolCallRepository>();
         services.AddTransient<ICatalogueStateRepository, CatalogueStateRepository>();

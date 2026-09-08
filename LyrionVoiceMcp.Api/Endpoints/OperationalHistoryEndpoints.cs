@@ -13,6 +13,9 @@ public static class OperationalHistoryEndpoints
         endpoints.MapGet("/api/jobs/{id:long}", GetJobAsync);
         endpoints.MapPost("/api/jobs/{id:long}/cancel", CancelJobAsync);
         endpoints.MapGet("/api/scheduled-jobs", ListSchedulesAsync);
+        endpoints.MapPut(
+            "/api/scheduled-jobs/{name}/configuration",
+            UpdateScheduleConfigurationAsync);
         endpoints.MapPost("/api/scheduled-jobs/{name}/run", RunScheduleAsync);
         endpoints.MapGet("/api/error-logs", BrowseErrorsAsync);
         endpoints.MapGet("/api/error-logs/{id:long}", GetErrorAsync);
@@ -83,16 +86,26 @@ public static class OperationalHistoryEndpoints
     private static async Task<IResult> ListSchedulesAsync(
         IScheduledJobService service,
         CancellationToken cancellationToken) => Results.Ok(
-        (await service.ListAsync(cancellationToken)).Select(schedule => new ScheduledJobResponse(
-            schedule.Name,
-            schedule.DisplayName,
-            schedule.Enabled,
-            schedule.CronExpression,
-            schedule.TimeZoneId,
-            schedule.LastEvaluatedAt,
-            schedule.NextOccurrenceAt,
-            ToResponse(schedule.CurrentJob),
-            ToResponse(schedule.LastStartedJob))).ToArray());
+        (await service.ListAsync(cancellationToken)).Select(ToResponse).ToArray());
+
+    private static async Task<IResult> UpdateScheduleConfigurationAsync(
+        string name,
+        ScheduledJobConfigurationRequest request,
+        IScheduledJobService service,
+        CancellationToken cancellationToken) =>
+        await service.UpdateConfigurationAsync(
+            name,
+            new ScheduledJobConfigurationUpdate(
+                request.Enabled,
+                request.IntervalMinutes,
+                request.DailyTime),
+            cancellationToken) switch
+        {
+            ScheduledJobConfigurationUpdated updated => Results.Ok(ToResponse(updated.Schedule)),
+            ScheduledJobConfigurationUpdateRejected rejected =>
+                Results.ValidationProblem(rejected.Errors),
+            _ => Results.StatusCode(StatusCodes.Status500InternalServerError)
+        };
 
     private static async Task<IResult> RunScheduleAsync(
         string name,
@@ -186,6 +199,30 @@ public static class OperationalHistoryEndpoints
     private static ScheduledJobRunResponse? ToResponse(ScheduledJobRun? run) => run is null
         ? null
         : new ScheduledJobRunResponse(run.Id, ToText(run.Status), run.StartedAt);
+
+    private static ScheduledJobResponse ToResponse(ScheduledJob schedule) => new(
+        schedule.Name,
+        schedule.DisplayName,
+        schedule.Enabled,
+        schedule.CronExpression,
+        schedule.TimeZoneId,
+        schedule.LastEvaluatedAt,
+        schedule.NextOccurrenceAt,
+        ToResponse(schedule.CurrentJob),
+        ToResponse(schedule.LastStartedJob),
+        schedule.EditableConfiguration is null
+            ? null
+            : new ScheduledJobEditableConfigurationResponse(
+                schedule.EditableConfiguration.Kind switch
+                {
+                    ScheduledJobConfigurationKind.Interval => "interval",
+                    ScheduledJobConfigurationKind.DailyTime => "daily_time",
+                    _ => throw new InvalidOperationException(
+                        "Unknown scheduled-job configuration kind.")
+                },
+                schedule.EditableConfiguration.ConfiguredEnabled,
+                schedule.EditableConfiguration.IntervalMinutes,
+                schedule.EditableConfiguration.DailyTime));
 
     private static ErrorLogResponse ToResponse(ErrorLog item) => new(
         item.Id, item.ReportId, item.OccurredAt, item.Source, item.Area,

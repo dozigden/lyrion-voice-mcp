@@ -99,7 +99,9 @@ check_json_endpoint "/api/jobs?limit=1" "Jobs endpoint" \
 check_json_endpoint "/api/scheduled-jobs" "Scheduled jobs endpoint" \
   'length == 5
     and any(.name == "catalogue-refresh" and .enabled == false)
-    and any(.name == "catalogue-change-check" and .enabled == true)'
+    and any(.name == "catalogue-change-check" and .enabled == true
+      and .cronExpression == "*/5 * * * *"
+      and .editableConfiguration.intervalMinutes == 5)'
 check_json_endpoint "/api/error-logs?limit=1" "Error logs endpoint" \
   '(.items | type) == "array" and .retentionDays == 90'
 check_json_endpoint "/api/tool-calls?limit=1" "Tool calls endpoint" \

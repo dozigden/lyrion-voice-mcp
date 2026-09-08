@@ -224,6 +224,11 @@ public interface IScheduledJobService
 {
     Task<IReadOnlyList<ScheduledJob>> ListAsync(CancellationToken cancellationToken);
 
+    Task<ScheduledJobConfigurationUpdateOutcome> UpdateConfigurationAsync(
+        string scheduleName,
+        ScheduledJobConfigurationUpdate update,
+        CancellationToken cancellationToken);
+
     Task<ScheduledJobRunOutcome> RunNowAsync(
         string scheduleName,
         CancellationToken cancellationToken);
@@ -265,7 +270,25 @@ public interface ICronOccurrenceCalculator
 public sealed record ScheduledJobConfiguration(
     bool Enabled,
     string CronExpression,
-    bool RunOnInitialisation = false);
+    bool RunOnInitialisation = false,
+    ScheduledJobEditableConfiguration? EditableConfiguration = null);
+
+public enum ScheduledJobConfigurationKind
+{
+    Interval,
+    DailyTime
+}
+
+public sealed record ScheduledJobEditableConfiguration(
+    ScheduledJobConfigurationKind Kind,
+    bool ConfiguredEnabled,
+    int? IntervalMinutes,
+    string? DailyTime);
+
+public sealed record ScheduledJobConfigurationUpdate(
+    bool? Enabled,
+    int? IntervalMinutes,
+    string? DailyTime);
 
 public sealed record ScheduledJobOccurrence(
     string JobType,
@@ -294,7 +317,17 @@ public sealed record ScheduledJob(
     DateTimeOffset? LastEvaluatedAt,
     DateTimeOffset? NextOccurrenceAt,
     ScheduledJobRun? CurrentJob,
-    ScheduledJobRun? LastStartedJob);
+    ScheduledJobRun? LastStartedJob,
+    ScheduledJobEditableConfiguration? EditableConfiguration);
+
+public abstract record ScheduledJobConfigurationUpdateOutcome;
+
+public sealed record ScheduledJobConfigurationUpdated(ScheduledJob Schedule)
+    : ScheduledJobConfigurationUpdateOutcome;
+
+public sealed record ScheduledJobConfigurationUpdateRejected(
+    IReadOnlyDictionary<string, string[]> Errors)
+    : ScheduledJobConfigurationUpdateOutcome;
 
 public abstract record ScheduledJobRunOutcome;
 

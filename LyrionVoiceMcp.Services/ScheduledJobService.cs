@@ -10,6 +10,8 @@ public sealed class ScheduledJobService(
     IDbContextScopeFactory scopeFactory,
     IJobRepository jobRepository,
     IScheduledJobStateRepository stateRepository,
+    ScheduledJobConfigurationProvider configurationProvider,
+    ScheduledJobEvaluationGate evaluationGate,
     IJobService jobService,
     IEnumerable<IScheduledJobDefinition> schedules,
     ICronOccurrenceCalculator cronOccurrenceCalculator,
@@ -24,45 +26,67 @@ public sealed class ScheduledJobService(
         foreach (var schedule in schedules.OrderBy(value => value.DisplayName))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var configuration = await schedule.GetConfigurationAsync(cancellationToken);
-            var state = await GetStateAsync(schedule.SchedulerStateName, cancellationToken);
-            var scheduledPrefix = $"scheduled:{schedule.Name}:";
-            var adHocPrefix = $"adhoc:{schedule.Name}:";
-            var current = await GetLatestActiveAsync(
-                scheduledPrefix,
-                adHocPrefix,
-                cancellationToken);
-            var lastStarted = await GetLatestStartedAsync(
-                scheduledPrefix,
-                adHocPrefix,
-                cancellationToken);
-            var nextOccurrence = configuration.Enabled
-                ? cronOccurrenceCalculator.GetNextOccurrence(
-                    configuration.CronExpression,
-                    policy.TimeZone,
-                    now)
-                : null;
-            items.Add(new ScheduledJob(
-                schedule.Name,
-                schedule.DisplayName,
-                configuration.Enabled,
-                configuration.CronExpression,
-                policy.TimeZone.Id,
-                state?.LastEvaluatedAt,
-                nextOccurrence,
-                ToRun(current),
-                ToRun(lastStarted)));
+            items.Add(await BuildAsync(schedule, now, cancellationToken));
         }
 
         return items;
+    }
+
+    public Task<ScheduledJobConfigurationUpdateOutcome> UpdateConfigurationAsync(
+        string scheduleName,
+        ScheduledJobConfigurationUpdate update,
+        CancellationToken cancellationToken) => evaluationGate.ExecuteAsync(
+        gateCancellationToken => UpdateConfigurationWithinGateAsync(
+            scheduleName,
+            update,
+            gateCancellationToken),
+        cancellationToken);
+
+    private async Task<ScheduledJobConfigurationUpdateOutcome>
+        UpdateConfigurationWithinGateAsync(
+            string scheduleName,
+            ScheduledJobConfigurationUpdate update,
+            CancellationToken cancellationToken)
+    {
+        var schedule = FindSchedule(scheduleName);
+        if (schedule is null)
+        {
+            return Rejected("name", "Scheduled job not found.");
+        }
+
+        var current = await schedule.GetConfigurationAsync(cancellationToken);
+        if (current.EditableConfiguration is null)
+        {
+            return Rejected("name", "This scheduled job is read-only.");
+        }
+
+        if (update.Enabled is null)
+        {
+            return Rejected("enabled", "Specify whether the schedule is enabled.");
+        }
+
+        var cronExpression = ValidateAndConvert(update, current.EditableConfiguration.Kind);
+        if (cronExpression.Errors is not null)
+        {
+            return new ScheduledJobConfigurationUpdateRejected(cronExpression.Errors);
+        }
+
+        await configurationProvider.SaveAsync(
+            schedule.Name,
+            update.Enabled.Value,
+            cronExpression.Value!,
+            cancellationToken);
+        return new ScheduledJobConfigurationUpdated(await BuildAsync(
+            schedule,
+            timeProvider.GetUtcNow(),
+            cancellationToken));
     }
 
     public async Task<ScheduledJobRunOutcome> RunNowAsync(
         string scheduleName,
         CancellationToken cancellationToken)
     {
-        var schedule = schedules.SingleOrDefault(value =>
-            string.Equals(value.Name, scheduleName, StringComparison.OrdinalIgnoreCase));
+        var schedule = FindSchedule(scheduleName);
         if (schedule is null)
         {
             return new ScheduledJobRunRejected("Scheduled job not found.");
@@ -98,8 +122,13 @@ public sealed class ScheduledJobService(
         return new ScheduledJobRunStarted(ids.Count, ids);
     }
 
-    public async Task<IReadOnlyList<ScheduledJobEnqueueResult>> EnqueueDueJobsAsync(
-        CancellationToken cancellationToken)
+    public Task<IReadOnlyList<ScheduledJobEnqueueResult>> EnqueueDueJobsAsync(
+        CancellationToken cancellationToken) => evaluationGate.ExecuteAsync(
+        EnqueueDueJobsWithinGateAsync,
+        cancellationToken);
+
+    private async Task<IReadOnlyList<ScheduledJobEnqueueResult>>
+        EnqueueDueJobsWithinGateAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var results = new List<ScheduledJobEnqueueResult>();
@@ -257,4 +286,102 @@ public sealed class ScheduledJobService(
     private static ScheduledJobRun? ToRun(Job? job) => job is null
         ? null
         : new ScheduledJobRun(job.Id, job.Status, job.StartedAt);
+
+    private IScheduledJobDefinition? FindSchedule(string scheduleName) =>
+        schedules.SingleOrDefault(value =>
+            string.Equals(value.Name, scheduleName, StringComparison.OrdinalIgnoreCase));
+
+    private async Task<ScheduledJob> BuildAsync(
+        IScheduledJobDefinition schedule,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var configuration = await schedule.GetConfigurationAsync(cancellationToken);
+        var state = await GetStateAsync(schedule.SchedulerStateName, cancellationToken);
+        var scheduledPrefix = $"scheduled:{schedule.Name}:";
+        var adHocPrefix = $"adhoc:{schedule.Name}:";
+        var current = await GetLatestActiveAsync(
+            scheduledPrefix,
+            adHocPrefix,
+            cancellationToken);
+        var lastStarted = await GetLatestStartedAsync(
+            scheduledPrefix,
+            adHocPrefix,
+            cancellationToken);
+        var nextOccurrence = configuration.Enabled
+            ? cronOccurrenceCalculator.GetNextOccurrence(
+                configuration.CronExpression,
+                policy.TimeZone,
+                now)
+            : null;
+        return new ScheduledJob(
+            schedule.Name,
+            schedule.DisplayName,
+            configuration.Enabled,
+            configuration.CronExpression,
+            policy.TimeZone.Id,
+            state?.LastEvaluatedAt,
+            nextOccurrence,
+            ToRun(current),
+            ToRun(lastStarted),
+            configuration.EditableConfiguration);
+    }
+
+    private static ConfigurationConversion ValidateAndConvert(
+        ScheduledJobConfigurationUpdate update,
+        ScheduledJobConfigurationKind kind)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (kind == ScheduledJobConfigurationKind.Interval)
+        {
+            if (update.DailyTime is not null)
+            {
+                errors["dailyTime"] = ["Daily time is not valid for this schedule."];
+            }
+
+            if (update.IntervalMinutes is not { } interval
+                || !ScheduledJobConfigurationConversions.IsSupportedInterval(interval))
+            {
+                errors["intervalMinutes"] =
+                    ["Choose an interval of 1, 5, 10, 15, 30, or 60 minutes."];
+            }
+
+            return errors.Count > 0
+                ? new ConfigurationConversion(null, errors)
+                : new ConfigurationConversion(
+                    ScheduledJobConfigurationConversions.ToIntervalCron(
+                        update.IntervalMinutes!.Value),
+                    null);
+        }
+
+        if (update.IntervalMinutes is not null)
+        {
+            errors["intervalMinutes"] = ["Interval is not valid for this schedule."];
+        }
+
+        if (!TimeOnly.TryParseExact(
+                update.DailyTime,
+                "HH:mm",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var dailyTime))
+        {
+            errors["dailyTime"] = ["Choose a valid daily time in HH:mm format."];
+        }
+
+        return errors.Count > 0
+            ? new ConfigurationConversion(null, errors)
+            : new ConfigurationConversion(
+                ScheduledJobConfigurationConversions.ToDailyCron(dailyTime),
+                null);
+    }
+
+    private static ScheduledJobConfigurationUpdateRejected Rejected(
+        string field,
+        string message) => new(
+        new Dictionary<string, string[]> { [field] = [message] });
+
+    private sealed record ConfigurationConversion(
+        string? Value,
+        IReadOnlyDictionary<string, string[]>? Errors);
 }

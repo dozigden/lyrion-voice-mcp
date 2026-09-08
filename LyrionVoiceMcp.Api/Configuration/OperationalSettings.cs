@@ -51,7 +51,7 @@ public sealed record OperationalSettings(
         bool toolCallHistoryPurgeEnabled,
         string? toolCallHistoryPurgeCron) => new(
         new(catalogueRefreshEnabled, CronOrDefault(catalogueRefreshCron, "0 3 * * *")),
-        new(catalogueChangeCheckEnabled, CronOrDefault(catalogueChangeCheckCron, "*/15 * * * *")),
+        new(catalogueChangeCheckEnabled, CronOrDefault(catalogueChangeCheckCron, "*/5 * * * *")),
         new(errorLogPurgeEnabled, CronOrDefault(errorLogPurgeCron, "15 3 * * *")),
         new(jobHistoryPurgeEnabled, CronOrDefault(jobHistoryPurgeCron, "30 3 * * *")),
         new(toolCallHistoryPurgeEnabled, CronOrDefault(toolCallHistoryPurgeCron, "45 3 * * *")));

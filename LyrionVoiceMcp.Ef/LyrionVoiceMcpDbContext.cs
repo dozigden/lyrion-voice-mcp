@@ -13,6 +13,9 @@ public sealed class LyrionVoiceMcpDbContext(
 
     public DbSet<EntityScheduledJobState> ScheduledJobStates => Set<EntityScheduledJobState>();
 
+    public DbSet<EntityScheduledJobConfiguration> ScheduledJobConfigurations =>
+        Set<EntityScheduledJobConfiguration>();
+
     public DbSet<EntityErrorLog> ErrorLogs => Set<EntityErrorLog>();
 
     public DbSet<EntityToolCall> ToolCalls => Set<EntityToolCall>();

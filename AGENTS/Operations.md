@@ -16,10 +16,10 @@ Read this before changing background work, scheduling, error capture, retention,
 
 ## Scheduling
 
-- Each `IScheduledJobDefinition` supplies its configuration and one or more deterministic occurrences. Scheduled correlation IDs must identify a unique occurrence; ad-hoc run-now correlations must also be unique per emitted job.
+- Each `IScheduledJobDefinition` supplies its effective configuration and one or more deterministic occurrences. Editable catalogue definitions resolve durable operator configuration ahead of deployment defaults while retention definitions remain read-only. Scheduled correlation IDs must identify a unique occurrence; ad-hoc run-now correlations must also be unique per emitted job.
 - Cron expressions are evaluated in the configured operational time zone through `ICronOccurrenceCalculator`.
 - Scheduler state and jobs are durable. Polling may repeat; idempotent correlation checks prevent duplicate enqueue.
-- Full catalogue refresh is enabled by default at `0 3 * * *` when LMS is configured and is effectively disabled without a configured source. The lightweight `catalogue-change-check` schedule is independently enabled by default at `*/15 * * * *`; its first registration establishes scheduler state without running immediately, and an active check suppresses another occurrence. Retention schedules are enabled by default.
+- Full catalogue refresh is configured enabled by default at `0 3 * * *`, but is effectively disabled without a configured source. Its editable daily time has minute precision. The lightweight `catalogue-change-check` schedule is independently enabled by default at `*/5 * * * *` and accepts only 1, 5, 10, 15, 30, or 60 minute intervals. Both use the operational time zone without staggering, offsets, or jitter. Saving either configuration persists its enabled state and canonical cron, resets only its evaluation cursor to the save time, and leaves queued or running jobs untouched. Configuration saves and due-job evaluation share a process-local gate so an evaluation that read the old cursor cannot enqueue an older occurrence after the reset. Existing custom deployment cron remains effective and visible until replaced with a supported simple value. The change-check schedule's first registration establishes scheduler state without running immediately, and an active check suppresses another occurrence. Retention schedules are enabled by default and read-only.
 
 ## Error log
 
@@ -39,5 +39,6 @@ Read this before changing background work, scheduling, error capture, retention,
 ## Administration surface
 
 - Jobs, schedules, errors, MCP calls, search observations, and production search-index controls are REST/UI administration features, never MCP tools. Candidate-level search observations may expose the persisted winning resolver match signal for review.
+- `PUT /api/scheduled-jobs/{name}/configuration` accepts only editable catalogue schedules and their matching simple interval or daily-time value. Validation, conversion to canonical cron, configured-versus-effective availability, and cursor reset remain Services policy rather than endpoint logic.
 - Maintain lightweight paged summaries and complete detail views. List queries must not load payloads, results, stack traces or context; keep those values and relevant cross-links inspectable through detail routes.
 - Retention is enforced by scheduled maintenance jobs and must remain visible where relevant in the UI.

@@ -31,6 +31,7 @@ public sealed class EfOperationalPersistenceTests : IAsyncLifetime
     private IDbContextScopeFactory scopeFactory = null!;
     private IJobRepository jobRepository = null!;
     private IJobLogRepository jobLogRepository = null!;
+    private IScheduledJobConfigurationRepository scheduleConfigurationRepository = null!;
     private IErrorLogRepository errorRepository = null!;
     private IToolCallRepository toolCallRepository = null!;
 
@@ -45,6 +46,8 @@ public sealed class EfOperationalPersistenceTests : IAsyncLifetime
         scopeFactory = serviceProvider.GetRequiredService<IDbContextScopeFactory>();
         jobRepository = serviceProvider.GetRequiredService<IJobRepository>();
         jobLogRepository = serviceProvider.GetRequiredService<IJobLogRepository>();
+        scheduleConfigurationRepository = serviceProvider
+            .GetRequiredService<IScheduledJobConfigurationRepository>();
         errorRepository = serviceProvider.GetRequiredService<IErrorLogRepository>();
         toolCallRepository = serviceProvider.GetRequiredService<IToolCallRepository>();
     }
@@ -83,6 +86,44 @@ public sealed class EfOperationalPersistenceTests : IAsyncLifetime
         Assert.IsType<JobEnqueueRejected>(duplicateActiveType);
         Assert.Equal("{\"input\":42}", details?.Job.PayloadJson);
         Assert.Equal("Job enqueued.", Assert.Single(details!.Logs).Message);
+    }
+
+    [Fact]
+    public async Task ScheduledJobConfigurationShouldPersistWithAuditFieldsAndUniqueNames()
+    {
+        using (var scope = scopeFactory.Create())
+        {
+            scheduleConfigurationRepository.Add(new EntityScheduledJobConfiguration
+            {
+                Name = "fictional-schedule",
+                Enabled = true,
+                CronExpression = "*/10 * * * *"
+            });
+            await scope.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        EntityScheduledJobConfiguration persisted;
+        using (var scope = scopeFactory.CreateReadOnly())
+        {
+            persisted = Assert.IsType<EntityScheduledJobConfiguration>(
+                await scheduleConfigurationRepository.GetByNameAsync(
+                    "fictional-schedule",
+                    TestContext.Current.CancellationToken));
+        }
+
+        Assert.True(persisted.Id > 0);
+        Assert.NotEqual(default, persisted.CreatedAtUtc);
+        Assert.Equal(persisted.CreatedAtUtc, persisted.UpdatedAtUtc);
+
+        using var duplicateScope = scopeFactory.Create();
+        scheduleConfigurationRepository.Add(new EntityScheduledJobConfiguration
+        {
+            Name = persisted.Name,
+            Enabled = false,
+            CronExpression = "0 * * * *"
+        });
+        await Assert.ThrowsAsync<PersistenceConflictException>(() =>
+            duplicateScope.SaveChangesAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]

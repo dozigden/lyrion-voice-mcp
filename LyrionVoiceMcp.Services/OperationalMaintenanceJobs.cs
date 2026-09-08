@@ -97,11 +97,12 @@ public abstract class SingleOperationalSchedule(
     public abstract string Name { get; }
     public abstract string DisplayName { get; }
     protected abstract string JobType { get; }
+    protected OperationalSchedule DeploymentDefault => configuration;
     protected virtual string PayloadJson => "{}";
     protected virtual bool IsAvailable => true;
     public string SchedulerStateName => $"schedule:{Name}";
 
-    public Task<ScheduledJobConfiguration> GetConfigurationAsync(
+    public virtual Task<ScheduledJobConfiguration> GetConfigurationAsync(
         CancellationToken cancellationToken) => Task.FromResult(new ScheduledJobConfiguration(
         configuration.Enabled && IsAvailable,
         configuration.CronExpression,
@@ -121,29 +122,41 @@ public abstract class SingleOperationalSchedule(
 
 public sealed class CatalogueRefreshSchedule(
     OperationalSchedulePolicy policy,
-    CatalogueInitialisationPolicy initialisationPolicy)
+    CatalogueInitialisationPolicy initialisationPolicy,
+    ScheduledJobConfigurationProvider configurationProvider)
     : SingleOperationalSchedule(policy.CatalogueRefresh)
 {
     public override string Name => "catalogue-refresh";
     public override string DisplayName => "Catalogue refresh";
     protected override string JobType => JobTypes.CatalogueRefresh;
     protected override bool IsAvailable => initialisationPolicy.SourceConfigured;
+
+    public override Task<ScheduledJobConfiguration> GetConfigurationAsync(
+        CancellationToken cancellationToken) => configurationProvider.ResolveAsync(
+        Name,
+        DeploymentDefault,
+        IsAvailable,
+        ScheduledJobConfigurationKind.DailyTime,
+        cancellationToken);
 }
 
 public sealed class CatalogueChangeCheckSchedule(
     OperationalSchedulePolicy policy,
     IDbContextScopeFactory scopeFactory,
-    IJobRepository jobs) : IScheduledJobDefinition
+    IJobRepository jobs,
+    ScheduledJobConfigurationProvider configurationProvider) : IScheduledJobDefinition
 {
     public string Name => "catalogue-change-check";
     public string DisplayName => "Check LMS catalogue changes";
     public string SchedulerStateName => $"schedule:{Name}";
 
     public Task<ScheduledJobConfiguration> GetConfigurationAsync(
-        CancellationToken cancellationToken) => Task.FromResult(new ScheduledJobConfiguration(
-        policy.CatalogueChangeCheck.Enabled,
-        policy.CatalogueChangeCheck.CronExpression,
-        policy.CatalogueChangeCheck.RunOnInitialisation));
+        CancellationToken cancellationToken) => configurationProvider.ResolveAsync(
+        Name,
+        policy.CatalogueChangeCheck,
+        true,
+        ScheduledJobConfigurationKind.Interval,
+        cancellationToken);
 
     public async Task<IReadOnlyList<ScheduledJobOccurrence>> CreateOccurrencesAsync(
         DateTimeOffset dueAt,

@@ -25,6 +25,7 @@ public sealed class JobArchitectureTests : IDisposable
     private readonly IJobRepository jobRepository;
     private readonly IJobLogRepository jobLogRepository;
     private readonly IScheduledJobStateRepository stateRepository;
+    private readonly IScheduledJobConfigurationRepository configurationRepository;
     private readonly IErrorLogRepository errorLogRepository;
 
     public JobArchitectureTests()
@@ -40,6 +41,8 @@ public sealed class JobArchitectureTests : IDisposable
         jobRepository = serviceProvider.GetRequiredService<IJobRepository>();
         jobLogRepository = serviceProvider.GetRequiredService<IJobLogRepository>();
         stateRepository = serviceProvider.GetRequiredService<IScheduledJobStateRepository>();
+        configurationRepository = serviceProvider
+            .GetRequiredService<IScheduledJobConfigurationRepository>();
         errorLogRepository = serviceProvider.GetRequiredService<IErrorLogRepository>();
     }
 
@@ -165,6 +168,8 @@ public sealed class JobArchitectureTests : IDisposable
             scopeFactory,
             jobRepository,
             stateRepository,
+            CreateScheduleConfigurationProvider(),
+            new ScheduledJobEvaluationGate(),
             service,
             [schedule],
             new CronOccurrenceCalculator(),
@@ -189,6 +194,119 @@ public sealed class JobArchitectureTests : IDisposable
         Assert.Single(jobs.Items);
     }
 
+    [Fact]
+    public async Task SavedScheduleConfigurationShouldOverrideDefaultsResetCursorAndPreserveWork()
+    {
+        var schedulePolicy = new OperationalSchedulePolicy(
+            new OperationalSchedule(true, "0 3 * * *"),
+            new OperationalSchedule(true, "7,37 * * * *"),
+            new OperationalSchedule(true, "15 3 * * *"),
+            new OperationalSchedule(true, "30 3 * * *"),
+            new OperationalSchedule(true, "45 3 * * *"));
+        var configurationProvider = CreateScheduleConfigurationProvider();
+        var schedule = new CatalogueChangeCheckSchedule(
+            schedulePolicy,
+            scopeFactory,
+            jobRepository,
+            configurationProvider);
+        var jobService = CreateJobService(new JobCancellationRegistry(), new JobLifecycleGate());
+        var scheduledJobs = CreateScheduledJobService(jobService, schedule);
+        await SaveScheduledStateAsync(
+            new ScheduledJobState(
+                schedule.SchedulerStateName,
+                Now.AddHours(-2),
+                Now.AddHours(-2)),
+            TestContext.Current.CancellationToken);
+        var existing = Assert.IsType<JobEnqueued>(await jobService.EnqueueAsync(
+            new CreateJob(
+                JobTypes.CatalogueChangeCheck,
+                "{}",
+                Now,
+                "adhoc:catalogue-change-check:existing"),
+            TestContext.Current.CancellationToken));
+        await MarkRunningAsync(existing.Job.Id);
+
+        var before = Assert.Single(await scheduledJobs.ListAsync(
+            TestContext.Current.CancellationToken));
+        var outcome = Assert.IsType<ScheduledJobConfigurationUpdated>(
+            await scheduledJobs.UpdateConfigurationAsync(
+                schedule.Name,
+                new ScheduledJobConfigurationUpdate(true, 10, null),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("7,37 * * * *", before.CronExpression);
+        Assert.Null(before.EditableConfiguration?.IntervalMinutes);
+        Assert.Equal("*/10 * * * *", outcome.Schedule.CronExpression);
+        Assert.Equal(10, outcome.Schedule.EditableConfiguration?.IntervalMinutes);
+        Assert.Equal(Now, outcome.Schedule.LastEvaluatedAt);
+        Assert.Equal(existing.Job.Id, outcome.Schedule.CurrentJob?.Id);
+
+        using (var scope = scopeFactory.CreateReadOnly())
+        {
+            var persisted = await configurationRepository.GetByNameAsync(
+                schedule.Name,
+                TestContext.Current.CancellationToken);
+            var state = await stateRepository.GetByNameAsync(
+                schedule.SchedulerStateName,
+                TestContext.Current.CancellationToken);
+            var running = await jobRepository.GetForUpdateAsync(
+                (int)existing.Job.Id,
+                TestContext.Current.CancellationToken);
+            Assert.Equal("*/10 * * * *", persisted?.CronExpression);
+            Assert.Equal(Now.UtcDateTime, state?.LastRunAtUtc);
+            Assert.Equal(EntityJobStatus.Running, running?.Status);
+        }
+
+        var differentDefaults = schedulePolicy with
+        {
+            CatalogueChangeCheck = new OperationalSchedule(false, "*/30 * * * *")
+        };
+        var restarted = CreateScheduledJobService(
+            jobService,
+            new CatalogueChangeCheckSchedule(
+                differentDefaults,
+                scopeFactory,
+                jobRepository,
+                CreateScheduleConfigurationProvider()));
+        var afterRestart = Assert.Single(await restarted.ListAsync(
+            TestContext.Current.CancellationToken));
+        Assert.True(afterRestart.Enabled);
+        Assert.Equal("*/10 * * * *", afterRestart.CronExpression);
+    }
+
+    [Theory]
+    [InlineData(null, 5, null)]
+    [InlineData(true, null, null)]
+    [InlineData(true, 2, null)]
+    [InlineData(true, 5, "03:00")]
+    public async Task IntervalScheduleShouldRejectInvalidConfigurationValues(
+        bool? enabled,
+        int? intervalMinutes,
+        string? dailyTime)
+    {
+        var schedulePolicy = new OperationalSchedulePolicy(
+            new OperationalSchedule(true, "0 3 * * *"),
+            new OperationalSchedule(true, "*/5 * * * *"),
+            new OperationalSchedule(true, "15 3 * * *"),
+            new OperationalSchedule(true, "30 3 * * *"),
+            new OperationalSchedule(true, "45 3 * * *"));
+        var schedule = new CatalogueChangeCheckSchedule(
+            schedulePolicy,
+            scopeFactory,
+            jobRepository,
+            CreateScheduleConfigurationProvider());
+        var service = CreateScheduledJobService(
+            CreateJobService(new JobCancellationRegistry(), new JobLifecycleGate()),
+            schedule);
+
+        var outcome = await service.UpdateConfigurationAsync(
+            schedule.Name,
+            new ScheduledJobConfigurationUpdate(enabled, intervalMinutes, dailyTime),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<ScheduledJobConfigurationUpdateRejected>(outcome);
+    }
+
     [Theory]
     [InlineData(true, true)]
     [InlineData(false, false)]
@@ -204,12 +322,15 @@ public sealed class JobArchitectureTests : IDisposable
             new OperationalSchedule(true, "45 3 * * *"));
         var schedule = new CatalogueRefreshSchedule(
             schedules,
-            new CatalogueInitialisationPolicy(sourceConfigured));
+            new CatalogueInitialisationPolicy(sourceConfigured),
+            CreateScheduleConfigurationProvider());
 
         var configuration = await schedule.GetConfigurationAsync(
             TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedEnabled, configuration.Enabled);
+        Assert.True(configuration.EditableConfiguration?.ConfiguredEnabled);
+        Assert.Equal("03:00", configuration.EditableConfiguration?.DailyTime);
     }
 
     [Fact]
@@ -560,6 +681,26 @@ public sealed class JobArchitectureTests : IDisposable
         policy,
         timeProvider,
         NullLogger<ErrorLogService>.Instance);
+
+    private ScheduledJobService CreateScheduledJobService(
+        IJobService jobService,
+        params IScheduledJobDefinition[] schedules) => new(
+        scopeFactory,
+        jobRepository,
+        stateRepository,
+        CreateScheduleConfigurationProvider(),
+        new ScheduledJobEvaluationGate(),
+        jobService,
+        schedules,
+        new CronOccurrenceCalculator(),
+        policy,
+        timeProvider);
+
+    private ScheduledJobConfigurationProvider CreateScheduleConfigurationProvider() => new(
+        scopeFactory,
+        configurationRepository,
+        stateRepository,
+        timeProvider);
 
     private async Task MarkRunningAsync(long jobId)
     {

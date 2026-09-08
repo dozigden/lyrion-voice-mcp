@@ -53,7 +53,10 @@ describe('operational history views', () => {
       lastEvaluatedAt: '2026-08-16T03:00:00Z',
       nextOccurrenceAt: null,
       currentJob: null,
-      lastStartedJob: { id: 42, status: 'completed', startedAt: '2026-08-15T03:00:00Z' }
+      lastStartedJob: { id: 42, status: 'completed', startedAt: '2026-08-15T03:00:00Z' },
+      editableConfiguration: {
+        kind: 'daily_time', configuredEnabled: true, intervalMinutes: null, dailyTime: '03:00'
+      }
     }]);
     const run = vi.spyOn(api, 'runSchedule').mockResolvedValue({});
     const router = createRouter({
@@ -70,7 +73,8 @@ describe('operational history views', () => {
 
     expect(wrapper.text()).toContain('Last evaluated');
     expect(wrapper.text()).toContain('#42 · completed');
-    await wrapper.get('button').trigger('click');
+    expect(wrapper.text()).toContain('Unavailable');
+    await wrapper.get('button.run').trigger('click');
     await flushPromises();
 
     expect(run).toHaveBeenCalledWith('catalogue-refresh');
@@ -78,7 +82,93 @@ describe('operational history views', () => {
     expect(wrapper.text()).not.toContain('Operational automation');
     expect(wrapper.text()).not.toContain('Review every schedule');
   });
+
+  it('edits, saves, and reloads an interval schedule', async () => {
+    const initial = schedule('*/5 * * * *', 5, '2026-08-16T04:05:00Z');
+    const refreshed = schedule('*/10 * * * *', 10, '2026-08-16T04:10:00Z');
+    const list = vi.spyOn(api, 'listSchedules')
+      .mockResolvedValueOnce([initial])
+      .mockResolvedValueOnce([refreshed]);
+    const update = vi.spyOn(api, 'updateScheduleConfiguration').mockResolvedValue(refreshed);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/scheduled-jobs', name: 'scheduled-jobs', component: ScheduledJobsView },
+        { path: '/jobs/:id', name: 'jobs-detail', component: { template: '<div />' } }
+      ]
+    });
+    await router.push('/scheduled-jobs');
+    await router.isReady();
+    const wrapper = mount(ScheduledJobsView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const initialNextRun = wrapper.findAll('dd')[2].text();
+    await wrapper.get('select').setValue('10');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(update).toHaveBeenCalledWith('catalogue-change-check', {
+      enabled: true, intervalMinutes: 10, dailyTime: null
+    });
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain('*/10 * * * *');
+    expect(wrapper.findAll('dd')[2].text()).not.toBe(initialNextRun);
+    expect(wrapper.get('select').attributes('aria-label'))
+      .toBe('Check LMS catalogue changes interval');
+    expect(wrapper.get('button.save').attributes('aria-label'))
+      .toBe('Save Check LMS catalogue changes schedule');
+    expect(wrapper.get('button.run').attributes('aria-label'))
+      .toBe('Run Check LMS catalogue changes now');
+  });
+
+  it('keeps run-now available and reports save errors', async () => {
+    vi.spyOn(api, 'listSchedules').mockResolvedValue([schedule('*/5 * * * *', 5, null)]);
+    vi.spyOn(api, 'updateScheduleConfiguration')
+      .mockRejectedValue(new Error('Choose a supported interval.'));
+    const run = vi.spyOn(api, 'runSchedule').mockResolvedValue({});
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/scheduled-jobs', name: 'scheduled-jobs', component: ScheduledJobsView },
+        { path: '/jobs/:id', name: 'jobs-detail', component: { template: '<div />' } }
+      ]
+    });
+    await router.push('/scheduled-jobs');
+    await router.isReady();
+    const wrapper = mount(ScheduledJobsView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('Choose a supported interval.');
+    expect(wrapper.get('button.run').attributes('disabled')).toBeUndefined();
+    await wrapper.get('button.run').trigger('click');
+    await flushPromises();
+    expect(run).toHaveBeenCalledWith('catalogue-change-check');
+  });
 });
+
+function schedule(
+  cronExpression: string,
+  intervalMinutes: number,
+  nextOccurrenceAt: string | null
+): api.ScheduledJob {
+  return {
+    name: 'catalogue-change-check',
+    displayName: 'Check LMS catalogue changes',
+    enabled: true,
+    cronExpression,
+    timeZoneId: 'Europe/London',
+    lastEvaluatedAt: '2026-08-16T04:00:00Z',
+    nextOccurrenceAt,
+    currentJob: null,
+    lastStartedJob: null,
+    editableConfiguration: {
+      kind: 'interval', configuredEnabled: true, intervalMinutes, dailyTime: null
+    }
+  };
+}
 
 function job(id: number): api.JobSummary {
   return {

@@ -25,6 +25,8 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IErrorLogService, ErrorLogService>();
         services.AddTransient<IToolCallHistoryService, ToolCallHistoryService>();
         services.AddTransient<IScheduledJobService, ScheduledJobService>();
+        services.AddTransient<ScheduledJobConfigurationProvider>();
+        services.AddSingleton<ScheduledJobEvaluationGate>();
         services.AddTransient<ICronOccurrenceCalculator, CronOccurrenceCalculator>();
         services.AddTransient<IJobHandler, CatalogueRefreshJobHandler>();
         services.AddTransient<IJobHandler, CatalogueChangeCheckJobHandler>();

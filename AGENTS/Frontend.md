@@ -7,6 +7,7 @@
 - Treat backend contracts as authoritative. Do not add speculative client normalisation without an observed failure mode.
 - Keep shared/global CSS in `src/style.css` or `src/shared/styles`; keep page/component-specific CSS in scoped Vue styles.
 - Prefer semantic HTML, labelled controls, keyboard access, and responsive layouts.
+- Scheduled-job cards expose labelled interval or daily-time controls only when the backend returns editable configuration metadata. Keep retention cards read-only, use an explicit Save action, reload the saved card so cron and next-run state are authoritative, and keep Run now independent of configured or effective schedule availability.
 - Do not use nested ternaries or `$event` expressions in templates; use named handlers and explicit branching.
 - Keep operational warnings concise. The trusted-LAN warning must remain visible wherever connection details are presented.
 - Search-observation pages must keep retention/privacy visible and describe retrieval sources generically; observations may combine the production catalogue resolver with LMS playlist retrieval. Display a candidate's persisted winning match signal when present, translating its stable underscore-separated value into a compact human-readable label without reinterpreting it.

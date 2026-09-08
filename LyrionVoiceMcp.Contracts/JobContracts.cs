@@ -57,7 +57,19 @@ public sealed record ScheduledJobResponse(
     DateTimeOffset? LastEvaluatedAt,
     DateTimeOffset? NextOccurrenceAt,
     ScheduledJobRunResponse? CurrentJob,
-    ScheduledJobRunResponse? LastStartedJob);
+    ScheduledJobRunResponse? LastStartedJob,
+    ScheduledJobEditableConfigurationResponse? EditableConfiguration);
+
+public sealed record ScheduledJobEditableConfigurationResponse(
+    string Kind,
+    bool ConfiguredEnabled,
+    int? IntervalMinutes,
+    string? DailyTime);
+
+public sealed record ScheduledJobConfigurationRequest(
+    bool? Enabled,
+    int? IntervalMinutes,
+    string? DailyTime);
 
 public sealed record ScheduledJobRunNowResponse(
     int EnqueuedCount,

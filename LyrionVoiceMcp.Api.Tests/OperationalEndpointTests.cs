@@ -179,9 +179,115 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
             TestContext.Current.CancellationToken);
 
         Assert.Equal(5, schedules?.Length);
-        Assert.False(Assert.Single(schedules!, item => item.Name == "catalogue-refresh").Enabled);
-        Assert.True(Assert.Single(schedules!, item => item.Name == "catalogue-change-check").Enabled);
+        var refresh = Assert.Single(schedules!, item => item.Name == "catalogue-refresh");
+        var changeCheck = Assert.Single(schedules!, item => item.Name == "catalogue-change-check");
+        Assert.False(refresh.Enabled);
+        Assert.True(refresh.EditableConfiguration?.ConfiguredEnabled);
+        Assert.Equal("daily_time", refresh.EditableConfiguration?.Kind);
+        Assert.Equal("03:00", refresh.EditableConfiguration?.DailyTime);
+        Assert.True(changeCheck.Enabled);
+        Assert.Equal("*/5 * * * *", changeCheck.CronExpression);
+        Assert.Equal(5, changeCheck.EditableConfiguration?.IntervalMinutes);
         Assert.True(Assert.Single(schedules!, item => item.Name == "error-log-purge").Enabled);
+        Assert.Null(Assert.Single(
+            schedules!,
+            item => item.Name == "error-log-purge").EditableConfiguration);
+    }
+
+    [Fact]
+    public async Task ScheduleConfigurationShouldPersistAndOverrideDeploymentDefaults()
+    {
+        using var isolatedFactory = new LyrionVoiceMcpApiFactory();
+        using var client = isolatedFactory.CreateClient();
+
+        var response = await client.PutAsJsonAsync(
+            "/api/scheduled-jobs/catalogue-change-check/configuration",
+            new ScheduledJobConfigurationRequest(true, 10, null),
+            TestContext.Current.CancellationToken);
+        var updated = await response.Content.ReadFromJsonAsync<ScheduledJobResponse>(
+            TestContext.Current.CancellationToken);
+        using var restartedClient = isolatedFactory.CreateClient();
+        var reloaded = await restartedClient.GetFromJsonAsync<ScheduledJobResponse[]>(
+            "/api/scheduled-jobs",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("*/10 * * * *", updated?.CronExpression);
+        Assert.Equal(10, updated?.EditableConfiguration?.IntervalMinutes);
+        Assert.NotNull(updated?.NextOccurrenceAt);
+        Assert.Equal(
+            "*/10 * * * *",
+            Assert.Single(
+                reloaded!,
+                item => item.Name == "catalogue-change-check").CronExpression);
+    }
+
+    [Fact]
+    public async Task FullRefreshConfigurationShouldRemainConfiguredWithoutLmsAvailability()
+    {
+        using var isolatedFactory = new LyrionVoiceMcpApiFactory();
+        using var client = isolatedFactory.CreateClient();
+
+        var response = await client.PutAsJsonAsync(
+            "/api/scheduled-jobs/catalogue-refresh/configuration",
+            new ScheduledJobConfigurationRequest(true, null, "04:25"),
+            TestContext.Current.CancellationToken);
+        var updated = await response.Content.ReadFromJsonAsync<ScheduledJobResponse>(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(updated?.Enabled);
+        Assert.True(updated?.EditableConfiguration?.ConfiguredEnabled);
+        Assert.Equal("04:25", updated?.EditableConfiguration?.DailyTime);
+        Assert.Equal("25 4 * * *", updated?.CronExpression);
+        Assert.Null(updated?.NextOccurrenceAt);
+    }
+
+    [Fact]
+    public async Task ScheduleConfigurationShouldRejectAnOmittedEnabledState()
+    {
+        using var isolatedFactory = new LyrionVoiceMcpApiFactory();
+        using var client = isolatedFactory.CreateClient();
+
+        var response = await client.PutAsJsonAsync(
+            "/api/scheduled-jobs/catalogue-change-check/configuration",
+            new { intervalMinutes = 10, dailyTime = (string?)null },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(
+            "Specify whether the schedule is enabled.",
+            await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("catalogue-change-check", null, 5, null)]
+    [InlineData("not-real", true, 5, null)]
+    [InlineData("error-log-purge", true, 5, null)]
+    [InlineData("catalogue-change-check", true, 2, null)]
+    [InlineData("catalogue-change-check", true, 5, "03:00")]
+    [InlineData("catalogue-refresh", true, null, "24:00")]
+    [InlineData("catalogue-refresh", true, 5, "03:00")]
+    public async Task ScheduleConfigurationShouldRejectInvalidOrReadOnlyRequests(
+        string name,
+        bool? enabled,
+        int? intervalMinutes,
+        string? dailyTime)
+    {
+        using var isolatedFactory = new LyrionVoiceMcpApiFactory();
+        using var client = isolatedFactory.CreateClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/scheduled-jobs/{name}/configuration",
+            new ScheduledJobConfigurationRequest(enabled, intervalMinutes, dailyTime),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(
+            "errors",
+            await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
