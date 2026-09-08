@@ -97,7 +97,9 @@ check_json_endpoint "/api/search-observations?limit=1" "Search observation endpo
 check_json_endpoint "/api/jobs?limit=1" "Jobs endpoint" \
   '(.items | type) == "array" and .retentionDays == 90'
 check_json_endpoint "/api/scheduled-jobs" "Scheduled jobs endpoint" \
-  'length == 4 and any(.name == "catalogue-refresh" and .enabled == false)'
+  'length == 5
+    and any(.name == "catalogue-refresh" and .enabled == false)
+    and any(.name == "catalogue-change-check" and .enabled == true)'
 check_json_endpoint "/api/error-logs?limit=1" "Error logs endpoint" \
   '(.items | type) == "array" and .retentionDays == 90'
 check_json_endpoint "/api/tool-calls?limit=1" "Tool calls endpoint" \
