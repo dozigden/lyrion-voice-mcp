@@ -18,7 +18,11 @@ public static class ServiceCollectionExtensions
                 $"LyrionVoiceMcp/{applicationVersion}");
         });
         services.AddTransient<ILmsConnectionProbe, LmsConnectionProbe>();
-        services.AddTransient<ICatalogueSourceReader, LmsCatalogueReader>();
+        services.AddTransient<LmsCatalogueReader>();
+        services.AddTransient<ICatalogueSourceReader>(provider =>
+            provider.GetRequiredService<LmsCatalogueReader>());
+        services.AddTransient<ICatalogueSourceChangeTokenReader>(provider =>
+            provider.GetRequiredService<LmsCatalogueReader>());
         services.AddTransient<ILmsBrowseClient, LmsBrowseClient>();
         services.AddTransient<ILmsPlaybackClient, LmsPlaybackClient>();
         services.AddTransient<ILmsPlayerControlClient, LmsPlayerControlClient>();

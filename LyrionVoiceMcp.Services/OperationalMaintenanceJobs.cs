@@ -98,11 +98,12 @@ public abstract class SingleOperationalSchedule(
     public abstract string DisplayName { get; }
     protected abstract string JobType { get; }
     protected virtual string PayloadJson => "{}";
+    protected virtual bool IsAvailable => true;
     public string SchedulerStateName => $"schedule:{Name}";
 
     public Task<ScheduledJobConfiguration> GetConfigurationAsync(
         CancellationToken cancellationToken) => Task.FromResult(new ScheduledJobConfiguration(
-        configuration.Enabled,
+        configuration.Enabled && IsAvailable,
         configuration.CronExpression,
         configuration.RunOnInitialisation));
 
@@ -118,12 +119,53 @@ public abstract class SingleOperationalSchedule(
     }
 }
 
-public sealed class CatalogueRefreshSchedule(OperationalSchedulePolicy policy)
+public sealed class CatalogueRefreshSchedule(
+    OperationalSchedulePolicy policy,
+    CatalogueInitialisationPolicy initialisationPolicy)
     : SingleOperationalSchedule(policy.CatalogueRefresh)
 {
     public override string Name => "catalogue-refresh";
     public override string DisplayName => "Catalogue refresh";
     protected override string JobType => JobTypes.CatalogueRefresh;
+    protected override bool IsAvailable => initialisationPolicy.SourceConfigured;
+}
+
+public sealed class CatalogueChangeCheckSchedule(
+    OperationalSchedulePolicy policy,
+    IDbContextScopeFactory scopeFactory,
+    IJobRepository jobs) : IScheduledJobDefinition
+{
+    public string Name => "catalogue-change-check";
+    public string DisplayName => "Check LMS catalogue changes";
+    public string SchedulerStateName => $"schedule:{Name}";
+
+    public Task<ScheduledJobConfiguration> GetConfigurationAsync(
+        CancellationToken cancellationToken) => Task.FromResult(new ScheduledJobConfiguration(
+        policy.CatalogueChangeCheck.Enabled,
+        policy.CatalogueChangeCheck.CronExpression,
+        policy.CatalogueChangeCheck.RunOnInitialisation));
+
+    public async Task<IReadOnlyList<ScheduledJobOccurrence>> CreateOccurrencesAsync(
+        DateTimeOffset dueAt,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateReadOnly();
+        if (await jobs.GetLatestActiveByTypeAsync(
+                JobTypes.CatalogueChangeCheck,
+                cancellationToken) is not null)
+        {
+            return [];
+        }
+
+        var correlation = string.Create(
+            CultureInfo.InvariantCulture,
+            $"scheduled:{Name}:{dueAt.UtcDateTime:yyyyMMdd'T'HHmmss.fffffff'Z'}");
+        return [new ScheduledJobOccurrence(
+            JobTypes.CatalogueChangeCheck,
+            dueAt,
+            "{}",
+            correlation)];
+    }
 }
 
 public sealed class ErrorLogPurgeSchedule(OperationalSchedulePolicy policy)

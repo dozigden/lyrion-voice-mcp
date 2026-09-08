@@ -11,6 +11,81 @@ public sealed class LmsCatalogueReaderTests
     private static readonly DateTimeOffset CapturedAt =
         new(2026, 8, 15, 12, 30, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData("library-a", "1786379003", true)]
+    [InlineData("library-a", "1786379004", false)]
+    [InlineData("library-b", "1786379003", false)]
+    public async Task ChangeTokenShouldCompareServerAndCompletedScanOnly(
+        string uuid,
+        string lastScan,
+        bool matches)
+    {
+        var responseCount = 0;
+        var handler = new CatalogueHandler(_ =>
+        {
+            responseCount++;
+            var responseUuid = responseCount == 1 ? "library-a" : uuid;
+            var responseLastScan = responseCount == 1 ? "1786379003" : lastScan;
+            return JsonSerializer.Serialize(new
+            {
+                id = 1,
+                result = new Dictionary<string, object?>
+                {
+                    ["uuid"] = responseUuid,
+                    ["lastscan"] = responseLastScan,
+                    ["rescan"] = 0,
+                    ["info total songs"] = 99
+                }
+            });
+        });
+        using var httpClient = new HttpClient(handler);
+        ICatalogueSourceChangeTokenReader reader = CreateReader(httpClient);
+
+        var first = await reader.ReadChangeTokenAsync(TestContext.Current.CancellationToken);
+        var second = await reader.ReadChangeTokenAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Equal(matches, string.Equals(first, second, StringComparison.Ordinal));
+        Assert.All(handler.Commands, command => Assert.Equal(["serverstatus", "0", "0"], command));
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"uuid\":\"library-a\"}")]
+    [InlineData("{\"lastscan\":1786379003}")]
+    [InlineData("{\"uuid\":42,\"lastscan\":1786379003}")]
+    [InlineData("{\"uuid\":\"library-a\",\"lastscan\":0}")]
+    [InlineData("{\"uuid\":\"library-a\",\"lastscan\":-1}")]
+    [InlineData("{\"uuid\":\"library-a\",\"lastscan\":253402300800}")]
+    [InlineData("{\"uuid\":\"library-a\",\"lastscan\":\"invalid\"}")]
+    [InlineData("{\"uuid\":\"library-a\",\"lastscan\":1786379003,\"rescan\":1}")]
+    [InlineData("{\"uuid\":\"library-a\",\"lastscan\":1786379003,\"lastscanfailed\":\"failure\"}")]
+    public async Task ChangeTokenShouldBeUnavailableForAnUnsafeSignal(string result)
+    {
+        var handler = new CatalogueHandler(_ => "{\"id\":1,\"result\":" + result + "}");
+        using var httpClient = new HttpClient(handler);
+
+        var token = await CreateReader(httpClient).ReadChangeTokenAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Null(token);
+        Assert.Single(handler.Commands);
+    }
+
+    [Theory]
+    [InlineData("{\"id\":1,\"result\":[]}")]
+    [InlineData("{\"id\":1,\"result\":{\"rescan\":\"invalid\"}}")]
+    [InlineData("{\"id\":1,\"error\":{\"code\":-1},\"result\":{}}")]
+    public async Task ChangeTokenShouldRejectMalformedStatusResponses(string response)
+    {
+        var handler = new CatalogueHandler(_ => response);
+        using var httpClient = new HttpClient(handler);
+
+        await Assert.ThrowsAsync<LmsRequestException>(() =>
+            CreateReader(httpClient).ReadChangeTokenAsync(TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task ReadShouldWriteSupportedCataloguePagesAndRelationships()
     {
@@ -19,7 +94,7 @@ public sealed class LmsCatalogueReaderTests
         {
             "serverstatus" =>
                 """
-                {"id":1,"result":{"version":"9.1.2","lastscan":"1786379003","info total artists":3,"info total albums":1,"info total genres":2,"info total songs":1}}
+                {"id":1,"result":{"uuid":"fictional-library","version":"9.1.2","lastscan":"1786379003","info total artists":3,"info total albums":1,"info total genres":2,"info total songs":1}}
                 """,
             "artists" =>
                 """
@@ -75,6 +150,7 @@ public sealed class LmsCatalogueReaderTests
         // Assert
         Assert.Equal("development", result.Source.Id);
         Assert.Equal("9.1.2", result.Source.Version);
+        Assert.Equal("[\"lms-scan\",\"fictional-library\",\"1786379003\"]", result.Source.ChangeToken);
         Assert.Equal(CapturedAt, result.CapturedAt);
         Assert.Equal(3, result.ArtistLookupCount);
         Assert.Equal(1, result.TrackCount);
@@ -233,6 +309,7 @@ public sealed class LmsCatalogueReaderTests
             result = new Dictionary<string, object?>
             {
                 ["version"] = "9.1.2",
+                ["uuid"] = "fictional-library",
                 ["lastscan"] = "1786379003",
                 ["info total artists"] = artists,
                 ["info total albums"] = albums,

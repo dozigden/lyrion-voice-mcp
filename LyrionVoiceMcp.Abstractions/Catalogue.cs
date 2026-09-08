@@ -4,7 +4,8 @@ public sealed record CatalogueImportSource(
     string Id,
     string Provider,
     string? Version,
-    string? Revision);
+    string? Revision,
+    string? ChangeToken = null);
 
 public sealed record CatalogueImportArtist(
     string SourceId,
@@ -135,6 +136,11 @@ public interface ICatalogueSourceReader
         CancellationToken cancellationToken);
 }
 
+public interface ICatalogueSourceChangeTokenReader
+{
+    Task<string?> ReadChangeTokenAsync(CancellationToken cancellationToken);
+}
+
 public sealed record CatalogueSummary(
     string SourceId,
     string Provider,
@@ -164,7 +170,8 @@ public sealed record CatalogueState(
     CatalogueStateStatus Status,
     DateTimeOffset StartedAt,
     DateTimeOffset? CompletedAt,
-    CatalogueSummary? Summary);
+    CatalogueSummary? Summary,
+    string? SourceChangeToken = null);
 
 public enum CatalogueRefreshLogLevel
 {

@@ -27,11 +27,13 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IScheduledJobService, ScheduledJobService>();
         services.AddTransient<ICronOccurrenceCalculator, CronOccurrenceCalculator>();
         services.AddTransient<IJobHandler, CatalogueRefreshJobHandler>();
+        services.AddTransient<IJobHandler, CatalogueChangeCheckJobHandler>();
         services.AddTransient<IJobHandler, SearchIndexRebuildJobHandler>();
         services.AddTransient<IJobHandler, ErrorLogPurgeJobHandler>();
         services.AddTransient<IJobHandler, JobHistoryPurgeJobHandler>();
         services.AddTransient<IJobHandler, ToolCallHistoryPurgeJobHandler>();
         services.AddTransient<IScheduledJobDefinition, CatalogueRefreshSchedule>();
+        services.AddTransient<IScheduledJobDefinition, CatalogueChangeCheckSchedule>();
         services.AddTransient<IScheduledJobDefinition, ErrorLogPurgeSchedule>();
         services.AddTransient<IScheduledJobDefinition, JobHistoryPurgeSchedule>();
         services.AddTransient<IScheduledJobDefinition, ToolCallHistoryPurgeSchedule>();

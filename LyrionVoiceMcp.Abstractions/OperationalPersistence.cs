@@ -14,6 +14,7 @@ public sealed record OperationalSchedule(
 
 public sealed record OperationalSchedulePolicy(
     OperationalSchedule CatalogueRefresh,
+    OperationalSchedule CatalogueChangeCheck,
     OperationalSchedule ErrorLogPurge,
     OperationalSchedule JobHistoryPurge,
     OperationalSchedule ToolCallHistoryPurge);

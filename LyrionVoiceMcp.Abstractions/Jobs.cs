@@ -3,6 +3,7 @@ namespace LyrionVoiceMcp.Abstractions;
 public static class JobTypes
 {
     public const string CatalogueRefresh = "catalogue.refresh";
+    public const string CatalogueChangeCheck = "catalogue.change-check";
     public const string SearchIndexRebuild = "search-index.rebuild";
     public const string ErrorLogPurge = "error-log.purge";
     public const string JobHistoryPurge = "job-history.purge";

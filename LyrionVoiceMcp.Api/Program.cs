@@ -48,8 +48,10 @@ var operationalSettings = OperationalSettings.FromValues(
     builder.Configuration["LyrionVoiceMcpOperations:ToolCallJsonMaximumCharacters"],
     builder.Configuration["LyrionVoiceMcpOperations:TimeZoneId"]);
 var operationalSchedules = OperationalSettings.CreateSchedulePolicy(
-    ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:CatalogueRefresh:Enabled"]),
+    ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:CatalogueRefresh:Enabled"], true),
     builder.Configuration["LyrionVoiceMcpOperations:Schedules:CatalogueRefresh:Cron"],
+    ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:CatalogueChangeCheck:Enabled"], true),
+    builder.Configuration["LyrionVoiceMcpOperations:Schedules:CatalogueChangeCheck:Cron"],
     ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:ErrorLogPurge:Enabled"], true),
     builder.Configuration["LyrionVoiceMcpOperations:Schedules:ErrorLogPurge:Cron"],
     ReadBoolean(builder.Configuration["LyrionVoiceMcpOperations:Schedules:JobHistoryPurge:Enabled"], true),

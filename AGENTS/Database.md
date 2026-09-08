@@ -11,6 +11,8 @@ Read this before adding application data, entities, repositories, scopes, or mig
 
 Catalogue data, search observations, and operational jobs, schedules, errors, and MCP tool-call history are authoritative in the EF application database. Catalogue data is rebuilt from LMS after installation or a persistence reset.
 
+`EntityCatalogueState.SourceChangeToken` stores the opaque LMS token captured at the beginning of the most recent successful refresh. A later failed, cancelled, or interrupted refresh preserves it. Null means no safe baseline is available; persistence must not interpret or synthesise it.
+
 ## Service and repository responsibilities
 
 - Application services create the read-only or read/write context scope, coordinate repositories, and call `SaveChangesAsync` once for the unit of work.

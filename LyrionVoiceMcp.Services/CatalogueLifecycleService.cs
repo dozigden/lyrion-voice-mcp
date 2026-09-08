@@ -104,7 +104,11 @@ public sealed class CatalogueLifecycleService(
             counts.TrackCount,
             counts.VirtualLibraryCount,
             existingWarningCount + warnings.Count);
-        await StoreCompletedRefreshAsync(refreshId, summary, cancellationToken);
+        await StoreCompletedRefreshAsync(
+            refreshId,
+            summary,
+            source.Source.ChangeToken,
+            cancellationToken);
         return new CatalogueRefreshCompletion(summary, warnings);
     }
 
@@ -353,6 +357,7 @@ public sealed class CatalogueLifecycleService(
     private async Task StoreCompletedRefreshAsync(
         string refreshId,
         CatalogueSummary summary,
+        string? sourceChangeToken,
         CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.Create(DbContextScopeOption.ForceCreateNew);
@@ -370,6 +375,7 @@ public sealed class CatalogueLifecycleService(
         state.SourceId = summary.SourceId;
         state.SourceProvider = summary.Provider;
         state.SourceRevision = summary.SourceRevision;
+        state.SourceChangeToken = sourceChangeToken;
         state.SourceVersion = summary.SourceVersion;
         state.CapturedAtUtc = summary.CapturedAt.UtcDateTime;
         state.SourceLastScanAtUtc = summary.SourceLastScanAt?.UtcDateTime;

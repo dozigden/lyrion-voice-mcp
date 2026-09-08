@@ -11,6 +11,7 @@ Read this before changing background work, scheduling, error capture, retention,
 - Expected handler outcomes return `JobHandlerResult`; unexpected exceptions are persisted through `IErrorLogService` with the job ID and then fail the job.
 - Keep payload and result JSON inspectable and valid. Correlations are stable idempotency keys, not display labels.
 - Catalogue refresh and production search-index rebuild are separate jobs. A successful catalogue job queues one correlated production rebuild; the single runner serialises expensive work. Manual rebuilds use unique correlations, reject a concurrent rebuild, and target the current successful catalogue refresh.
+- `catalogue.change-check` is cheap durable work that reads an optional source-owned token and may enqueue the ordinary catalogue-refresh job. It performs no ingestion and never mutates catalogue readiness or its successful baseline. Provider-request failures are job failures with warning logs; cancellation propagates.
 - After interrupted-job recovery and the first scheduled-job check, startup readiness runs once in the background scheduler. When LMS is configured, it requests a catalogue refresh whenever the catalogue is not successful. Otherwise, it requests an inspectably correlated index rebuild when the successful catalogue has no matching compatible artifact. These checks are independent of recurring schedules. A failed readiness check is retried by the scheduler loop and must not stop ordinary job processing.
 
 ## Scheduling
@@ -18,7 +19,7 @@ Read this before changing background work, scheduling, error capture, retention,
 - Each `IScheduledJobDefinition` supplies its configuration and one or more deterministic occurrences. Scheduled correlation IDs must identify a unique occurrence; ad-hoc run-now correlations must also be unique per emitted job.
 - Cron expressions are evaluated in the configured operational time zone through `ICronOccurrenceCalculator`.
 - Scheduler state and jobs are durable. Polling may repeat; idempotent correlation checks prevent duplicate enqueue.
-- Catalogue refresh is defined but disabled by default. Retention schedules are enabled by default.
+- Full catalogue refresh is enabled by default at `0 3 * * *` when LMS is configured and is effectively disabled without a configured source. The lightweight `catalogue-change-check` schedule is independently enabled by default at `*/15 * * * *`; its first registration establishes scheduler state without running immediately, and an active check suppresses another occurrence. Retention schedules are enabled by default.
 
 ## Error log
 

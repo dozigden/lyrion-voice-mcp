@@ -107,6 +107,9 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
 
         Assert.Equal(1, completion.Summary.ArtistCount);
         Assert.Equal(0, completion.Summary.WarningCount);
+        Assert.Equal(
+            "change-token-refresh-1",
+            (await lifecycle.GetStateAsync(TestContext.Current.CancellationToken))?.SourceChangeToken);
         Assert.DoesNotContain(projected, item => item.Title == "Unused Person");
         Assert.Contains(projected, item =>
             item.Identity.Kind == MediaEntityKind.Album
@@ -185,6 +188,7 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
 
         Assert.Equal(CatalogueStateStatus.Failed, failed?.Status);
         Assert.Null(failed?.Summary);
+        Assert.Equal("change-token-refresh-old", failed?.SourceChangeToken);
 
         await WriteSmallCatalogueAsync("refresh-new", "new", "New Signal");
         var projected = await ReadDocumentsAsync("refresh-new", 500);
@@ -295,7 +299,12 @@ public sealed class EfCataloguePersistenceTests : IAsyncLifetime
         int tracks,
         int libraries,
         int libraryTracks) => new(
-        new CatalogueImportSource("fictional", "lms", "1.0", revision),
+        new CatalogueImportSource(
+            "fictional",
+            "lms",
+            "1.0",
+            revision,
+            $"change-token-{revision}"),
         Now,
         null,
         artistLookups,

@@ -19,6 +19,7 @@ public sealed class CatalogueStateConfiguration
         builder.Property(item => item.SourceId).HasMaxLength(512);
         builder.Property(item => item.SourceProvider).HasMaxLength(128);
         builder.Property(item => item.SourceRevision).HasMaxLength(512);
+        builder.Property(item => item.SourceChangeToken).HasMaxLength(1024);
         builder.Property(item => item.SourceVersion).HasMaxLength(128);
         builder.ToTable(
             "CatalogueStates",

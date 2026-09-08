@@ -53,7 +53,8 @@ internal static class CatalogueEntityMapper
             },
             ToDateTimeOffset(entity.StartedAtUtc),
             ToDateTimeOffset(entity.CompletedAtUtc),
-            summary);
+            summary,
+            entity.SourceChangeToken);
     }
 
     private static InvalidOperationException MissingSummary(string field) =>

@@ -19,6 +19,7 @@ public sealed class EntityCatalogueState
     public string? SourceId { get; set; }
     public string? SourceProvider { get; set; }
     public string? SourceRevision { get; set; }
+    public string? SourceChangeToken { get; set; }
     public string? SourceVersion { get; set; }
     public DateTime? CapturedAtUtc { get; set; }
     public DateTime? SourceLastScanAtUtc { get; set; }

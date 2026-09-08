@@ -170,7 +170,7 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
     }
 
     [Fact]
-    public async Task ScheduledJobsShouldExposeDisabledCatalogueAndEnabledMaintenanceDefinitions()
+    public async Task ScheduledJobsShouldDisableFullRefreshWithoutAConfiguredSource()
     {
         using var client = factory.CreateClient();
 
@@ -178,8 +178,9 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
             "/api/scheduled-jobs",
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(4, schedules?.Length);
+        Assert.Equal(5, schedules?.Length);
         Assert.False(Assert.Single(schedules!, item => item.Name == "catalogue-refresh").Enabled);
+        Assert.True(Assert.Single(schedules!, item => item.Name == "catalogue-change-check").Enabled);
         Assert.True(Assert.Single(schedules!, item => item.Name == "error-log-purge").Enabled);
     }
 

@@ -189,6 +189,158 @@ public sealed class JobArchitectureTests : IDisposable
         Assert.Single(jobs.Items);
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task CatalogueRefreshScheduleShouldRequireAConfiguredSource(
+        bool sourceConfigured,
+        bool expectedEnabled)
+    {
+        var schedules = new OperationalSchedulePolicy(
+            new OperationalSchedule(true, "0 3 * * *"),
+            new OperationalSchedule(true, "*/15 * * * *"),
+            new OperationalSchedule(true, "15 3 * * *"),
+            new OperationalSchedule(true, "30 3 * * *"),
+            new OperationalSchedule(true, "45 3 * * *"));
+        var schedule = new CatalogueRefreshSchedule(
+            schedules,
+            new CatalogueInitialisationPolicy(sourceConfigured));
+
+        var configuration = await schedule.GetConfigurationAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedEnabled, configuration.Enabled);
+    }
+
+    [Fact]
+    public async Task CatalogueChangeCheckShouldNotRefreshWhenTheTokenMatches()
+    {
+        var service = CreateJobService(new JobCancellationRegistry(), new JobLifecycleGate());
+        var logs = new RecordingLogWriter();
+        var handler = new CatalogueChangeCheckJobHandler(
+            new FixedChangeTokenReader("token-a"),
+            new TestCatalogueStore(CreateCatalogueState("job-41", "token-a")),
+            new CatalogueInitialisationPolicy(true),
+            scopeFactory,
+            jobRepository,
+            service,
+            logs,
+            timeProvider);
+
+        var result = await handler.HandleAsync(
+            new JobContext(42, JobTypes.CatalogueChangeCheck, "{}"),
+            TestContext.Current.CancellationToken);
+        var refreshes = await service.BrowseAsync(
+            new JobQuery(Type: JobTypes.CatalogueRefresh),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.Success);
+        Assert.Empty(refreshes.Items);
+        Assert.Contains(logs.Messages, message => message.Contains("matches", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CatalogueChangeCheckShouldEnqueueRefreshWhenTheTokenChanges()
+    {
+        var service = CreateJobService(new JobCancellationRegistry(), new JobLifecycleGate());
+        var logs = new RecordingLogWriter();
+        var handler = new CatalogueChangeCheckJobHandler(
+            new FixedChangeTokenReader("token-b"),
+            new TestCatalogueStore(CreateCatalogueState("job-41", "token-a")),
+            new CatalogueInitialisationPolicy(true),
+            scopeFactory,
+            jobRepository,
+            service,
+            logs,
+            timeProvider);
+
+        var result = await handler.HandleAsync(
+            new JobContext(42, JobTypes.CatalogueChangeCheck, "{}"),
+            TestContext.Current.CancellationToken);
+        var refreshes = await service.BrowseAsync(
+            new JobQuery(Type: JobTypes.CatalogueRefresh),
+            TestContext.Current.CancellationToken);
+
+        var refresh = Assert.Single(refreshes.Items);
+        Assert.True(result.Success);
+        Assert.Equal("change:catalogue.refresh:42", refresh.CorrelationId);
+        Assert.Contains(logs.Messages, message => message.Contains("scan change", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CatalogueChangeCheckShouldIgnoreAnUnavailableToken()
+    {
+        var service = CreateJobService(new JobCancellationRegistry(), new JobLifecycleGate());
+        var handler = new CatalogueChangeCheckJobHandler(
+            new FixedChangeTokenReader(null),
+            new TestCatalogueStore(CreateCatalogueState("job-41", "token-a")),
+            new CatalogueInitialisationPolicy(true),
+            scopeFactory,
+            jobRepository,
+            service,
+            new RecordingLogWriter(),
+            timeProvider);
+
+        var result = await handler.HandleAsync(
+            new JobContext(42, JobTypes.CatalogueChangeCheck, "{}"),
+            TestContext.Current.CancellationToken);
+        var refreshes = await service.BrowseAsync(
+            new JobQuery(Type: JobTypes.CatalogueRefresh),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.Success);
+        Assert.Empty(refreshes.Items);
+    }
+
+    [Fact]
+    public async Task CatalogueChangeCheckShouldFailSafelyWhenStatusCannotBeRead()
+    {
+        var service = CreateJobService(new JobCancellationRegistry(), new JobLifecycleGate());
+        var logs = new RecordingLogWriter();
+        var handler = new CatalogueChangeCheckJobHandler(
+            new ThrowingChangeTokenReader(),
+            new TestCatalogueStore(CreateCatalogueState("job-41", "token-a")),
+            new CatalogueInitialisationPolicy(true),
+            scopeFactory,
+            jobRepository,
+            service,
+            logs,
+            timeProvider);
+
+        var result = await handler.HandleAsync(
+            new JobContext(42, JobTypes.CatalogueChangeCheck, "{}"),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.Success);
+        Assert.Contains(logs.Messages, message => message.Contains("could not be read", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CatalogueChangeCheckShouldSkipAnActiveRefreshBeforeCallingLms()
+    {
+        var service = CreateJobService(new JobCancellationRegistry(), new JobLifecycleGate());
+        await service.EnqueueAsync(
+            new CreateJob(JobTypes.CatalogueRefresh, "{}", Now, "manual:refresh"),
+            TestContext.Current.CancellationToken);
+        var changeTokens = new RecordingChangeTokenReader("token-b");
+        var handler = new CatalogueChangeCheckJobHandler(
+            changeTokens,
+            new TestCatalogueStore(CreateCatalogueState("job-41", "token-a")),
+            new CatalogueInitialisationPolicy(true),
+            scopeFactory,
+            jobRepository,
+            service,
+            new RecordingLogWriter(),
+            timeProvider);
+
+        var result = await handler.HandleAsync(
+            new JobContext(42, JobTypes.CatalogueChangeCheck, "{}"),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.Success);
+        Assert.Equal(0, changeTokens.CallCount);
+    }
+
     [Fact]
     public async Task ErrorLogShouldRetainBoundedDiagnosticTextAndStructuredContext()
     {
@@ -472,7 +624,9 @@ public sealed class JobArchitectureTests : IDisposable
         public override DateTimeOffset GetUtcNow() => now;
     }
 
-    private static CatalogueState CreateCatalogueState(string refreshId)
+    private static CatalogueState CreateCatalogueState(
+        string refreshId,
+        string? sourceChangeToken = null)
     {
         var summary = new CatalogueSummary(
             "development",
@@ -493,7 +647,8 @@ public sealed class JobArchitectureTests : IDisposable
             CatalogueStateStatus.Succeeded,
             Now,
             Now,
-            summary);
+            summary,
+            sourceChangeToken);
     }
 
     private sealed class RecordingIndexBuilder : ISearchIndexBuilder
@@ -526,6 +681,31 @@ public sealed class JobArchitectureTests : IDisposable
                 50,
                 1_024));
         }
+    }
+
+    private sealed class FixedChangeTokenReader(string? token)
+        : ICatalogueSourceChangeTokenReader
+    {
+        public Task<string?> ReadChangeTokenAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(token);
+    }
+
+    private sealed class RecordingChangeTokenReader(string? token)
+        : ICatalogueSourceChangeTokenReader
+    {
+        public int CallCount { get; private set; }
+
+        public Task<string?> ReadChangeTokenAsync(CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return Task.FromResult(token);
+        }
+    }
+
+    private sealed class ThrowingChangeTokenReader : ICatalogueSourceChangeTokenReader
+    {
+        public Task<string?> ReadChangeTokenAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Fictional LMS failure.");
     }
 
     private sealed class RecordingLogWriter : IJobLogWriter

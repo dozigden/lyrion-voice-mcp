@@ -7,10 +7,13 @@ namespace LyrionVoiceMcp.Lms;
 public sealed class LmsCatalogueReader(
     LmsJsonRpcClient jsonRpcClient,
     LmsConnectionSettings settings,
-    TimeProvider timeProvider) : ICatalogueSourceReader
+    TimeProvider timeProvider) : ICatalogueSourceReader, ICatalogueSourceChangeTokenReader
 {
     private const int PageSize = 500;
     private const string TrackTags = "uxoeyiqtdfTnDUESPROWCb1hzJ";
+
+    public async Task<string?> ReadChangeTokenAsync(CancellationToken cancellationToken) =>
+        CreateChangeToken(await ReadStatusAsync(cancellationToken));
 
     public async Task<CatalogueSourceReadResult> ReadAsync(
         string refreshId,
@@ -104,7 +107,8 @@ public sealed class LmsCatalogueReader(
                 sourceId,
                 "lms",
                 initialStatus.Version,
-                initialStatus.LastScan),
+                initialStatus.LastScan,
+                CreateChangeToken(initialStatus)),
             timeProvider.GetUtcNow(),
             ReadUnixTime(initialStatus.LastScan, "server status", "lastscan"),
             artistLookupCount,
@@ -137,6 +141,8 @@ public sealed class LmsCatalogueReader(
             LmsJson.ReadString(result, "version"),
             LmsJson.ReadString(result, "lastscan"),
             ReadBoolean(result, "rescan") ?? false,
+            ReadStatusUuid(result),
+            result.TryGetProperty("lastscanfailed", out _),
             ReadOptionalNonNegativeInt(result, "info total artists", "server status"),
             ReadOptionalNonNegativeInt(result, "info total albums", "server status"),
             ReadOptionalNonNegativeInt(result, "info total genres", "server status"),
@@ -376,7 +382,8 @@ public sealed class LmsCatalogueReader(
         LmsCatalogueStatus final)
     {
         EnsureReady(final);
-        if (!string.Equals(initial.Version, final.Version, StringComparison.Ordinal)
+        if (!string.Equals(initial.ServerUuid, final.ServerUuid, StringComparison.Ordinal)
+            || !string.Equals(initial.Version, final.Version, StringComparison.Ordinal)
             || !string.Equals(initial.LastScan, final.LastScan, StringComparison.Ordinal)
             || initial.ArtistCount != final.ArtistCount
             || initial.AlbumCount != final.AlbumCount
@@ -386,6 +393,41 @@ public sealed class LmsCatalogueReader(
             throw new LmsRequestException(
                 "LMS catalogue changed while it was being read.");
         }
+    }
+
+    private static string? CreateChangeToken(LmsCatalogueStatus status)
+    {
+        if (status.Rescan
+            || status.ScanFailed
+            || string.IsNullOrWhiteSpace(status.ServerUuid)
+            || !long.TryParse(
+                status.LastScan,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var lastScan)
+            || lastScan <= 0
+            || lastScan > DateTimeOffset.MaxValue.ToUnixTimeSeconds())
+        {
+            return null;
+        }
+
+        return JsonSerializer.Serialize(new[]
+        {
+            "lms-scan",
+            status.ServerUuid,
+            lastScan.ToString(CultureInfo.InvariantCulture)
+        });
+    }
+
+    private static string? ReadStatusUuid(JsonElement result, string name = "uuid")
+    {
+        if (!result.TryGetProperty(name, out var property)
+            || property.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        return property.GetString();
     }
 
     private static int CountServerTotalMismatches(
@@ -673,6 +715,8 @@ public sealed class LmsCatalogueReader(
         string? Version,
         string? LastScan,
         bool Rescan,
+        string? ServerUuid,
+        bool ScanFailed,
         int? ArtistCount,
         int? AlbumCount,
         int? GenreCount,

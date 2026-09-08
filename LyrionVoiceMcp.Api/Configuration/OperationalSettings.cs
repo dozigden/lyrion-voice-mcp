@@ -42,6 +42,8 @@ public sealed record OperationalSettings(
     public static OperationalSchedulePolicy CreateSchedulePolicy(
         bool catalogueRefreshEnabled,
         string? catalogueRefreshCron,
+        bool catalogueChangeCheckEnabled,
+        string? catalogueChangeCheckCron,
         bool errorLogPurgeEnabled,
         string? errorLogPurgeCron,
         bool jobHistoryPurgeEnabled,
@@ -49,6 +51,7 @@ public sealed record OperationalSettings(
         bool toolCallHistoryPurgeEnabled,
         string? toolCallHistoryPurgeCron) => new(
         new(catalogueRefreshEnabled, CronOrDefault(catalogueRefreshCron, "0 3 * * *")),
+        new(catalogueChangeCheckEnabled, CronOrDefault(catalogueChangeCheckCron, "*/15 * * * *")),
         new(errorLogPurgeEnabled, CronOrDefault(errorLogPurgeCron, "15 3 * * *")),
         new(jobHistoryPurgeEnabled, CronOrDefault(jobHistoryPurgeCron, "30 3 * * *")),
         new(toolCallHistoryPurgeEnabled, CronOrDefault(toolCallHistoryPurgeCron, "45 3 * * *")));
