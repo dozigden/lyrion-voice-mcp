@@ -51,7 +51,7 @@ describe('OperationalHomeView', () => {
     expect(wrapper.text()).not.toContain('A voice-oriented bridge');
     expect(wrapper.text()).not.toContain('Streamable HTTP');
     expect(wrapper.text()).not.toContain('Channel');
-    expect(wrapper.find('.hero__icon').exists()).toBe(true);
+    expect(wrapper.get('h1').text()).toBe('System overview');
     expect(wrapper.findAll('.operation-row')).toHaveLength(2);
   });
 
@@ -135,7 +135,7 @@ describe('OperationalHomeView', () => {
     expect(wrapper.text()).toContain('catalogue-phuzzy-sqlite');
     expect(wrapper.text()).toContain('1,234 candidates');
     expect(wrapper.text()).toContain('Job 42 · pending');
-    expect(api.rebuildSearchIndex).toHaveBeenCalledWith(undefined);
+    expect(api.rebuildSearchIndex).toHaveBeenCalledWith(expect.any(AbortSignal));
     wrapper.unmount();
   });
 });

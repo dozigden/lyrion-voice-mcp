@@ -45,7 +45,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
+import { array, object, oneOf, optional, string } from '../../shared/api/decoder';
+import { request } from '../../shared/api/http';
 
 type LicenceEcosystem = 'product' | 'npm' | 'nuget';
 
@@ -88,7 +90,16 @@ const manifest = ref<LicenceManifest | null>(null);
 const licenceEntries = ref<LicenceEntry[]>([]);
 const unresolvedPackages = computed(() => manifest.value?.unresolvedPackages ?? []);
 
+const controller = new AbortController();
 onMounted(loadLicences);
+onBeforeUnmount(() => controller.abort());
+const ecosystem = oneOf('product', 'npm', 'nuget');
+const manifestDecoder = object({
+  copiedLicences: array(object({ ecosystem, entryType: optional(oneOf('licence', 'notice')), packageName: string,
+    displayName: optional(string), version: string, declaredLicence: optional(string), outputFile: string,
+    coveredPackages: optional(array(object({ packageName: string, version: string }))) })),
+  unresolvedPackages: array(object({ ecosystem, packageName: string, version: string, reason: string }))
+});
 
 function ecosystemLabel(ecosystem: LicenceEcosystem) {
   if (ecosystem === 'product') {
@@ -110,15 +121,8 @@ function coveredPackageLabels(coveredPackages: CoveredPackage[]) {
 
 async function loadLicences() {
   try {
-    const manifestResponse = await fetch('/third-party-licenses/manifest.json', { cache: 'no-store' });
-    if (!manifestResponse.ok) {
-      throw new Error(`Failed to load the licence manifest (HTTP ${manifestResponse.status}).`);
-    }
-
-    const parsedManifest = await manifestResponse.json() as LicenceManifest;
-    if (!Array.isArray(parsedManifest.copiedLicences) || !Array.isArray(parsedManifest.unresolvedPackages)) {
-      throw new Error('The licence manifest is invalid.');
-    }
+    const parsedManifest = await request('/third-party-licenses/manifest.json', manifestDecoder, { cache: 'no-store', signal: controller.signal });
+    if (controller.signal.aborted) return;
     manifest.value = parsedManifest;
 
     const entries = await Promise.all(parsedManifest.copiedLicences.map(async entry => {
@@ -128,7 +132,7 @@ async function loadLicences() {
       }
 
       try {
-        const response = await fetch(`/third-party-licenses/${encodeURIComponent(fileName)}`, { cache: 'no-store' });
+        const response = await fetch(`/third-party-licenses/${encodeURIComponent(fileName)}`, { cache: 'no-store', signal: controller.signal });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -152,8 +156,9 @@ async function loadLicences() {
         || left.packageName.localeCompare(right.packageName)
         || left.version.localeCompare(right.version);
     });
-    licenceEntries.value = entries;
+    if (!controller.signal.aborted) licenceEntries.value = entries;
   } catch (error) {
+    if (controller.signal.aborted) return;
     manifestError.value = error instanceof Error ? error.message : 'Failed to load licence information.';
   } finally {
     loading.value = false;
@@ -162,112 +167,6 @@ async function loadLicences() {
 </script>
 
 <style scoped>
-.licences-page {
-  width: min(960px, calc(100% - 40px));
-  margin: 0 auto;
-  padding: 48px 0 64px;
-}
-
-.licences-header h1,
-.unresolved h2 {
-  margin: 0;
-}
-
-.licences-header h1 {
-  font: 600 clamp(2rem, 6vw, 3.4rem)/1 var(--font-display);
-}
-
-.licences-state {
-  margin-top: 12px;
-  color: var(--text-muted);
-}
-
-.licences-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 28px;
-}
-
-.licence-entry,
-.unresolved {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-}
-
-.licence-entry summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 15px 17px;
-  cursor: pointer;
-}
-
-.licence-entry summary:hover {
-  color: var(--accent-soft);
-}
-
-.badge {
-  padding: 3px 7px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  color: var(--text-muted);
-  font-size: .72rem;
-}
-
-.badge--ecosystem {
-  color: var(--accent);
-  letter-spacing: .04em;
-}
-
-.licence-entry pre {
-  max-height: 28rem;
-  margin: 0 17px 17px;
-  padding: 15px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: rgba(15, 14, 11, .7);
-  color: var(--text);
-  font: .79rem/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.licence-coverage {
-  margin: 0 17px 10px;
-  color: var(--text-muted);
-  font-size: .82rem;
-}
-
-.licences-error {
-  color: var(--danger-text);
-}
-
-.licence-entry .licences-error {
-  margin: 0 17px 17px;
-}
-
-.unresolved {
-  margin-top: 24px;
-  padding: 17px;
-}
-
-.unresolved h2 {
-  font: 600 1.2rem var(--font-display);
-}
-
-.unresolved ul {
-  display: grid;
-  gap: 10px;
-  margin: 14px 0 0;
-  padding-left: 20px;
-}
-
-.unresolved li span {
-  display: block;
-  margin-top: 3px;
-  color: var(--text-muted);
-}
+.licences-page { width:min(1200px,100%); margin:0 auto; padding:28px 34px 40px; }.licences-header h1 { font-size:22px; margin:0; }.licences-state { color:var(--text-muted); }.licences-list { margin-top:24px; }.licence-entry { border-bottom:1px solid var(--border); }.licence-entry summary { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:14px 18px; cursor:pointer; }.licence-entry[open] summary { background:var(--heading-band); color:var(--selection); }.licence-entry summary:hover { background:var(--selection-hover); }.badge { font-size:14px; color:var(--text-muted); }.badge--ecosystem { color:var(--selection); min-width:48px; }.licence-entry pre { max-height:32rem; margin:16px 18px; }.licence-coverage { margin:14px 18px; font-size:14px; color:var(--text-muted); }.licences-error { color:var(--danger-text); }.licence-entry .licences-error { margin:14px 18px; }.unresolved { margin-top:24px; padding:18px; background:var(--heading-band); }.unresolved h2 { font-size:18px; }.unresolved li span { display:block; color:var(--text-muted); }
+@media(max-width:720px) { .licences-page { padding:24px 18px; } }
 </style>

@@ -44,7 +44,7 @@ describe('LicencesView', () => {
       'NuGetLucene.Net 4.8.0 — shared third-party notices (2 packages)Notice'
     ]);
     expect(wrapper.text()).toContain('Covers: Lucene.Net 4.8.0, Lucene.Net.Analysis.Common 4.8.0');
-    expect(fetchMock).toHaveBeenCalledWith('/third-party-licenses/manifest.json', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith('/third-party-licenses/manifest.json', expect.objectContaining({ cache: 'no-store', signal: expect.any(AbortSignal) }));
   });
 
   it('reports a missing manifest', async () => {

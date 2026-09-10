@@ -60,9 +60,9 @@
             class="save"
             type="submit"
             :aria-label="`Save ${schedule.displayName} schedule`"
-            :disabled="saving === schedule.name || needsSimpleValue(schedule)"
+            :disabled="!!store.pending[schedule.name] || needsSimpleValue(schedule)"
           >
-            {{ saving === schedule.name ? 'Saving…' : 'Save' }}
+            {{ store.pending[schedule.name] === 'saving' ? 'Saving…' : 'Save' }}
           </button>
         </form>
 
@@ -99,10 +99,10 @@
           class="run"
           type="button"
           :aria-label="`Run ${schedule.displayName} now`"
-          :disabled="running === schedule.name"
+          :disabled="!!store.pending[schedule.name]"
           @click="run(schedule.name)"
         >
-          {{ running === schedule.name ? 'Queuing…' : 'Run now' }}
+          {{ store.pending[schedule.name] === 'running' ? 'Queuing…' : 'Run now' }}
         </button>
       </article>
     </section>
@@ -110,14 +110,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, onBeforeUnmount, ref } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useSchedulesStore } from './schedulesStore';
 import { RouterLink } from 'vue-router';
-import {
-  listSchedules,
-  runSchedule,
-  updateScheduleConfiguration,
-  type ScheduledJob
-} from './operationalHistoryApi';
+import type { ScheduledJob } from './operationalHistoryApi';
 
 interface ScheduleDraft {
   enabled: boolean;
@@ -126,65 +123,20 @@ interface ScheduleDraft {
 }
 
 const intervals = [1, 5, 10, 15, 30, 60];
-const schedules = ref<ScheduledJob[]>([]);
+const store = useSchedulesStore();
+const { schedules, loading, error } = storeToRefs(store);
 const drafts = ref<Record<string, ScheduleDraft>>({});
-const loading = ref(false);
-const running = ref<string | null>(null);
-const saving = ref<string | null>(null);
-const error = ref<string | null>(null);
-
-onMounted(load);
-
-async function load() {
-  loading.value = true;
-  error.value = null;
-  try {
-    schedules.value = await listSchedules();
-    schedules.value.forEach(syncDraft);
-  } catch (reason) {
-    error.value = errorMessage(reason, 'Schedules could not be loaded.');
-  } finally {
-    loading.value = false;
-  }
-}
-
+onMounted(async () => { const result = await store.load(); result?.forEach(syncDraft); });
+onBeforeUnmount(store.cancel);
 async function save(schedule: ScheduledJob) {
   const draft = drafts.value[schedule.name];
   if (!draft) return;
-
-  saving.value = schedule.name;
-  error.value = null;
-  try {
-    await updateScheduleConfiguration(schedule.name, draft);
-    await reloadSchedule(schedule.name);
-  } catch (reason) {
-    error.value = errorMessage(reason, 'The schedule could not be saved.');
-  } finally {
-    saving.value = null;
-  }
+  const refreshed = await store.save(schedule.name, { ...draft });
+  if (refreshed) syncDraft(refreshed);
 }
-
 async function run(name: string) {
-  running.value = name;
-  error.value = null;
-  try {
-    await runSchedule(name);
-    await reloadSchedule(name);
-  } catch (reason) {
-    error.value = errorMessage(reason, 'The job could not be queued.');
-  } finally {
-    running.value = null;
-  }
-}
-
-async function reloadSchedule(name: string) {
-  const refreshed = await listSchedules();
-  const schedule = refreshed.find(item => item.name === name);
-  if (!schedule) throw new Error('The updated schedule was not returned.');
-
-  const index = schedules.value.findIndex(item => item.name === name);
-  if (index >= 0) schedules.value.splice(index, 1, schedule);
-  syncDraft(schedule);
+  // Running a job must not overwrite unsaved configuration drafts.
+  await store.run(name);
 }
 
 function syncDraft(schedule: ScheduledJob) {
@@ -224,35 +176,13 @@ function formatOptional(value: string | null) {
     : '—';
 }
 
-function errorMessage(reason: unknown, fallback: string) {
-  return reason instanceof Error ? reason.message : fallback;
-}
 </script>
 
 <style scoped>
-.page { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 48px 0 64px; }
-h1 { margin: 0; font: 620 clamp(2.2rem, 5vw, 4rem) / 1 var(--font-display); }
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 26px; }
-.card { padding: 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
-.heading { display: flex; justify-content: space-between; gap: 14px; }
-h2 { margin: 0 0 8px; font-size: 1.1rem; }
-code { color: var(--accent-soft); }
-.tag { height: max-content; padding: 5px 8px; border-radius: 999px; color: var(--success); background: rgba(95, 211, 151, .08); font-size: .72rem; }
-.tag.disabled { color: var(--text-muted); background: rgba(255, 255, 255, .05); }
-.configuration { display: grid; gap: 12px; margin: 20px 0; padding: 15px; border: 1px solid var(--border); border-radius: 12px; }
-.configuration label { display: grid; gap: 6px; color: var(--text-dim); font-size: .78rem; }
-.configuration .toggle { display: flex; align-items: center; gap: 8px; color: var(--text); }
-select, input[type="time"] { padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: #211f19; font: inherit; }
-.hint { margin: 0; color: var(--text-muted); font-size: .78rem; line-height: 1.4; }
-dl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
-dt { color: var(--text-dim); font-size: .72rem; }
-dd { margin: 5px 0 0; font-size: .84rem; }
-a { color: var(--accent); }
-button { padding: 10px 13px; border: 1px solid var(--accent); border-radius: 9px; font: inherit; font-weight: 700; cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: .58; }
-.save { justify-self: start; color: #21170a; background: var(--accent); }
-.run { color: var(--accent); background: transparent; }
-.error { color: var(--danger-text); }
-.empty { color: var(--text-muted); }
-@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.page { width:min(1200px,100%); margin:0 auto; padding:28px 34px 40px; }h1 { font-size:22px; margin:0; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:28px 32px; margin-top:24px; }.card { min-width:0; padding-bottom:24px; border-bottom:1px solid var(--border); }
+.heading { display:flex; justify-content:space-between; align-items:start; gap:14px; padding:12px 18px; background:var(--heading-band); color:var(--selection); }h2 { margin:0 0 6px; font-size:16px; }code,.tag { font-size:14px; }.tag { white-space:nowrap; }
+.configuration { display:grid; gap:12px; margin:20px 0; }.configuration label { display:grid; gap:6px; color:var(--text-muted); font-size:14px; }.configuration .toggle { display:flex; align-items:center; gap:8px; color:var(--text); }input[type=checkbox] { accent-color:var(--selection); }.hint { font-size:14px; color:var(--text-muted); margin:0; }
+dl { display:grid; grid-template-columns:1fr 1fr; gap:16px 24px; margin:20px 0; }dt { font-size:14px; color:var(--text-muted); }dd { margin:4px 0 0; overflow-wrap:anywhere; font-size:14px; }.save { justify-self:start; background:var(--selection); border-color:var(--selection); color:#fff7ef; }.run { border-color:var(--selection); color:var(--selection); background:transparent; }.empty { color:var(--text-muted); }
+@media(max-width:760px) { .page { padding:24px 18px; }.grid { grid-template-columns:1fr; } }
 </style>

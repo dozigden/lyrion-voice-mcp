@@ -38,7 +38,7 @@ Read this before changing background work, scheduling, error capture, retention,
 
 ## Administration surface
 
-- Jobs, schedules, errors, MCP calls, search observations, and production search-index controls are REST/UI administration features, never MCP tools. Candidate-level search observations may expose the persisted winning resolver match signal for review.
+- Jobs, schedules, errors, MCP calls and production search-index controls are REST/UI administration features, never MCP tools. Search observations retain their administration API and persisted winning resolver match signal, but have no frontend pages.
 - `PUT /api/scheduled-jobs/{name}/configuration` accepts only editable catalogue schedules and their matching simple interval or daily-time value. Validation, conversion to canonical cron, configured-versus-effective availability, and cursor reset remain Services policy rather than endpoint logic.
 - Maintain lightweight paged summaries and complete detail views. List queries must not load payloads, results, stack traces or context; keep those values and relevant cross-links inspectable through detail routes.
-- Retention is enforced by scheduled maintenance jobs and must remain visible where relevant in the UI.
+- Retention is enforced by scheduled maintenance jobs. Keep the maintenance schedules inspectable in System; the tool log deliberately omits retention text.

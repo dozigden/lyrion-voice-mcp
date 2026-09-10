@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,7 +28,7 @@ describe('operational history views', () => {
     await router.isReady();
     const wrapper = mount(OperationalRecordListView, {
       props: { kind: 'jobs' },
-      global: { plugins: [router] }
+      global: { plugins: [createPinia(), router] }
     });
     await flushPromises();
 
@@ -35,8 +36,8 @@ describe('operational history views', () => {
     await wrapper.get('.pagination button:last-child').trigger('click');
     await flushPromises();
 
-    expect(list).toHaveBeenNthCalledWith(1, '?offset=0&limit=50');
-    expect(list).toHaveBeenNthCalledWith(2, '?offset=50&limit=50');
+    expect(list).toHaveBeenNthCalledWith(1, '?offset=0&limit=50', expect.any(AbortSignal));
+    expect(list).toHaveBeenNthCalledWith(2, '?offset=50&limit=50', expect.any(AbortSignal));
     expect(wrapper.text()).toContain('51–51 of 51');
     expect(wrapper.text()).toContain('#1 · test.work');
     expect(wrapper.text()).not.toContain('Operational history');
@@ -58,7 +59,7 @@ describe('operational history views', () => {
         kind: 'daily_time', configuredEnabled: true, intervalMinutes: null, dailyTime: '03:00'
       }
     }]);
-    const run = vi.spyOn(api, 'runSchedule').mockResolvedValue({});
+    const run = vi.spyOn(api, 'runSchedule').mockResolvedValue({ enqueuedCount: 1, jobIds: [7] });
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -68,7 +69,7 @@ describe('operational history views', () => {
     });
     await router.push('/scheduled-jobs');
     await router.isReady();
-    const wrapper = mount(ScheduledJobsView, { global: { plugins: [router] } });
+    const wrapper = mount(ScheduledJobsView, { global: { plugins: [createPinia(), router] } });
     await flushPromises();
 
     expect(wrapper.text()).toContain('Last evaluated');
@@ -77,7 +78,7 @@ describe('operational history views', () => {
     await wrapper.get('button.run').trigger('click');
     await flushPromises();
 
-    expect(run).toHaveBeenCalledWith('catalogue-refresh');
+    expect(run).toHaveBeenCalledWith('catalogue-refresh', expect.any(AbortSignal));
     expect(list).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).not.toContain('Operational automation');
     expect(wrapper.text()).not.toContain('Review every schedule');
@@ -99,7 +100,7 @@ describe('operational history views', () => {
     });
     await router.push('/scheduled-jobs');
     await router.isReady();
-    const wrapper = mount(ScheduledJobsView, { global: { plugins: [router] } });
+    const wrapper = mount(ScheduledJobsView, { global: { plugins: [createPinia(), router] } });
     await flushPromises();
 
     const initialNextRun = wrapper.findAll('dd')[2].text();
@@ -109,7 +110,7 @@ describe('operational history views', () => {
 
     expect(update).toHaveBeenCalledWith('catalogue-change-check', {
       enabled: true, intervalMinutes: 10, dailyTime: null
-    });
+    }, expect.any(AbortSignal));
     expect(list).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('*/10 * * * *');
     expect(wrapper.findAll('dd')[2].text()).not.toBe(initialNextRun);
@@ -121,11 +122,26 @@ describe('operational history views', () => {
       .toBe('Run Check LMS catalogue changes now');
   });
 
+  it('keeps unsaved schedule drafts when Run now refreshes operational state', async () => {
+    vi.spyOn(api, 'listSchedules').mockResolvedValue([schedule('*/5 * * * *', 5, null)]);
+    vi.spyOn(api, 'runSchedule').mockResolvedValue({ enqueuedCount: 1, jobIds: [7] });
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: '/scheduled-jobs', component: ScheduledJobsView },
+      { path: '/jobs/:id', name: 'jobs-detail', component: { template: '<div />' } }
+    ] });
+    await router.push('/scheduled-jobs');
+    const wrapper = mount(ScheduledJobsView, { global: { plugins: [createPinia(), router] } });
+    await flushPromises();
+    await wrapper.get('select').setValue('15');
+    await wrapper.get('button.run').trigger('click'); await flushPromises();
+    expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('15');
+    wrapper.unmount();
+  });
   it('keeps run-now available and reports save errors', async () => {
     vi.spyOn(api, 'listSchedules').mockResolvedValue([schedule('*/5 * * * *', 5, null)]);
     vi.spyOn(api, 'updateScheduleConfiguration')
       .mockRejectedValue(new Error('Choose a supported interval.'));
-    const run = vi.spyOn(api, 'runSchedule').mockResolvedValue({});
+    const run = vi.spyOn(api, 'runSchedule').mockResolvedValue({ enqueuedCount: 1, jobIds: [7] });
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -135,7 +151,7 @@ describe('operational history views', () => {
     });
     await router.push('/scheduled-jobs');
     await router.isReady();
-    const wrapper = mount(ScheduledJobsView, { global: { plugins: [router] } });
+    const wrapper = mount(ScheduledJobsView, { global: { plugins: [createPinia(), router] } });
     await flushPromises();
 
     await wrapper.get('form').trigger('submit');
@@ -145,7 +161,7 @@ describe('operational history views', () => {
     expect(wrapper.get('button.run').attributes('disabled')).toBeUndefined();
     await wrapper.get('button.run').trigger('click');
     await flushPromises();
-    expect(run).toHaveBeenCalledWith('catalogue-change-check');
+    expect(run).toHaveBeenCalledWith('catalogue-change-check', expect.any(AbortSignal));
   });
 });
 

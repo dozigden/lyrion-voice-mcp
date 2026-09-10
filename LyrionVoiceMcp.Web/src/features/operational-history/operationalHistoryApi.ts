@@ -1,3 +1,6 @@
+import { array, boolean, date, nullable, number, object, oneOf, string } from '../../shared/api/decoder';
+import { request } from '../../shared/api/http';
+
 export interface Job {
   id: number; type: string; status: string; runAfter: string; payloadJson: string;
   resultJson: string; errorMessage: string | null; startedAt: string | null;
@@ -47,49 +50,39 @@ export interface ToolCallSummary {
 }
 export interface ToolCallPage { items: ToolCallSummary[]; total: number; offset: number; limit: number; retentionDays: number; }
 
-export const listJobs = (query = '') => get<JobPage>(`/api/jobs${query}`);
-export const getJob = (id: string) => get<JobDetails>(`/api/jobs/${encodeURIComponent(id)}`);
-export const cancelJob = (id: number) => post<Job>(`/api/jobs/${id}/cancel`);
-export const listSchedules = () => get<ScheduledJob[]>('/api/scheduled-jobs');
-export const updateScheduleConfiguration = (
-  name: string,
-  update: ScheduledJobConfigurationUpdate
-) => put<ScheduledJob>(`/api/scheduled-jobs/${encodeURIComponent(name)}/configuration`, update);
-export const runSchedule = (name: string) => post(`/api/scheduled-jobs/${encodeURIComponent(name)}/run`);
-export const listErrors = (query = '') => get<ErrorLogPage>(`/api/error-logs${query}`);
-export const getError = (id: string) => get<ErrorLog>(`/api/error-logs/${encodeURIComponent(id)}`);
-export const listToolCalls = (query = '') => get<ToolCallPage>(`/api/tool-calls${query}`);
-export const getToolCall = (id: string) => get<ToolCall>(`/api/tool-calls/${encodeURIComponent(id)}`);
+const ns = nullable(string), nn = nullable(number), nd = nullable(date);
+const jobFields = { id: number, type: string, status: string, runAfter: date, startedAt: nd,
+  completedAt: nd, correlationId: ns, createdAt: date, updatedAt: date };
+const job = object({ ...jobFields, payloadJson: string, resultJson: string, errorMessage: ns });
+const jobDetails = object({ job, logs: array(object({ id: number, level: string, message: string, dataJson: ns, loggedAt: date })) });
+const pageFields = { total: number, offset: number, limit: number, retentionDays: number };
+const jobPage = object({ ...pageFields, items: array(object(jobFields)) });
+const run = object({ id: number, status: string, startedAt: nd });
+const schedule = object({ name: string, displayName: string, enabled: boolean, cronExpression: string, timeZoneId: string,
+  lastEvaluatedAt: nd, nextOccurrenceAt: nd, currentJob: nullable(run), lastStartedJob: nullable(run),
+  editableConfiguration: nullable(object({ kind: oneOf('interval', 'daily_time'), configuredEnabled: boolean,
+    intervalMinutes: nn, dailyTime: ns })) });
+const errorFields = { id: number, occurredAt: date, source: string, area: string, exceptionType: string,
+  message: string, traceIdentifier: ns, jobId: nn };
+const errorLog = object({ ...errorFields, reportId: ns, stackTrace: ns, requestMethod: ns, requestPath: ns, contextJson: ns, createdAt: date });
+const errorPage = object({ ...pageFields, items: array(object(errorFields)) });
+const toolFields = { id: string, toolName: string, status: string, startedAt: date, completedAt: nd,
+  durationMilliseconds: nn, traceIdentifier: ns, errorLogId: nn };
+const toolCall = object({ ...toolFields, argumentsJson: string, argumentsTruncated: boolean,
+  resultJson: ns, resultTruncated: boolean, errorMessage: ns });
+const toolPage = object({ ...pageFields, items: array(object(toolFields)) });
 
-async function get<T>(url: string): Promise<T> {
-  const response = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}.`);
-  return await response.json() as T;
-}
-
-async function post<T = unknown>(url: string): Promise<T> {
-  const response = await fetch(url, { method: 'POST', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}.`);
-  return await response.json() as T;
-}
-
-async function put<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+export const listJobs = (query = '', signal?: AbortSignal): Promise<JobPage> => request(`/api/jobs${query}`, jobPage, { signal });
+export const getJob = (id: string, signal?: AbortSignal): Promise<JobDetails> => request(`/api/jobs/${encodeURIComponent(id)}`, jobDetails, { signal });
+export const cancelJob = (id: number, signal?: AbortSignal): Promise<Job> => request(`/api/jobs/${id}/cancel`, job, { method: 'POST', signal });
+export const listSchedules = (signal?: AbortSignal): Promise<ScheduledJob[]> => request('/api/scheduled-jobs', array(schedule), { signal });
+export const updateScheduleConfiguration = (name: string, update: ScheduledJobConfigurationUpdate, signal?: AbortSignal): Promise<ScheduledJob> =>
+  request(`/api/scheduled-jobs/${encodeURIComponent(name)}/configuration`, schedule, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(update), signal
   });
-  if (!response.ok) throw new Error(await responseError(response, url));
-  return await response.json() as T;
-}
-
-async function responseError(response: Response, url: string): Promise<string> {
-  try {
-    const problem = await response.json() as { errors?: Record<string, string[]> };
-    const message = Object.values(problem.errors ?? {}).flat()[0];
-    if (message) return message;
-  } catch {
-    // The HTTP status remains a useful fallback when the response is not JSON.
-  }
-  return `${url} returned HTTP ${response.status}.`;
-}
+export const runSchedule = (name: string, signal?: AbortSignal) => request(`/api/scheduled-jobs/${encodeURIComponent(name)}/run`,
+  object({ enqueuedCount: number, jobIds: array(number) }), { method: 'POST', signal });
+export const listErrors = (query = '', signal?: AbortSignal): Promise<ErrorLogPage> => request(`/api/error-logs${query}`, errorPage, { signal });
+export const getError = (id: string, signal?: AbortSignal): Promise<ErrorLog> => request(`/api/error-logs/${encodeURIComponent(id)}`, errorLog, { signal });
+export const listToolCalls = (query = '', signal?: AbortSignal): Promise<ToolCallPage> => request(`/api/tool-calls${query}`, toolPage, { signal });
+export const getToolCall = (id: string, signal?: AbortSignal): Promise<ToolCall> => request(`/api/tool-calls/${encodeURIComponent(id)}`, toolCall, { signal });

@@ -14,8 +14,8 @@ describe('operational history API', () => {
 
   it('uses the paged list and detail routes', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ items: [], total: 0, offset: 0, limit: 50 }))
-      .mockResolvedValueOnce(jsonResponse({ job: { id: 42 }, logs: [] }))
+      .mockResolvedValueOnce(jsonResponse({ items: [], total: 0, offset: 0, limit: 50, retentionDays: 90 }))
+      .mockResolvedValueOnce(jsonResponse({ job: { id: 42, type: 'test.work', status: 'succeeded', runAfter: '2026-01-01T00:00:00Z', payloadJson: '{}', resultJson: '{}', errorMessage: null, startedAt: null, completedAt: null, correlationId: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }, logs: [] }))
       .mockResolvedValueOnce(jsonResponse({ items: [], total: 0, offset: 0, limit: 50, retentionDays: 90 }))
       .mockResolvedValueOnce(jsonResponse({ items: [], total: 0, offset: 0, limit: 50, retentionDays: 30 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -31,7 +31,7 @@ describe('operational history API', () => {
   it('exposes schedule listing and run-now', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse([]))
-      .mockResolvedValueOnce(jsonResponse({ name: 'catalogue-change-check' }))
+      .mockResolvedValueOnce(jsonResponse({ name: 'catalogue-change-check', displayName: 'Check catalogue', enabled: true, cronExpression: '*/10 * * * *', timeZoneId: 'Europe/London', lastEvaluatedAt: null, nextOccurrenceAt: null, currentJob: null, lastStartedJob: null, editableConfiguration: { kind: 'interval', configuredEnabled: true, intervalMinutes: 10, dailyTime: null } }))
       .mockResolvedValueOnce(jsonResponse({ enqueuedCount: 1, jobIds: [7] }));
     vi.stubGlobal('fetch', fetchMock);
 

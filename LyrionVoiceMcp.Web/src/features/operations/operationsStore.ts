@@ -1,153 +1,49 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
-import {
-  getCatalogue,
-  getLmsConnection,
-  getSearchIndex,
-  getVersion,
-  rebuildCatalogue,
-  rebuildSearchIndex,
-  type CatalogueStatusResponse,
-  type LmsConnectionResponse,
-  type SearchIndexStatusResponse,
-  type VersionResponse
-} from './operationsApi';
-
+import { computed } from 'vue';
+import { remoteResource } from '../../shared/state/remoteResource';
+import * as api from './operationsApi';
 export const useOperationsStore = defineStore('operations', () => {
-  const loading = ref(false);
-  const version = ref<VersionResponse | null>(null);
-  const lmsConnection = ref<LmsConnectionResponse | null>(null);
-  const errorMessage = ref<string | null>(null);
-  const catalogue = ref<CatalogueStatusResponse | null>(null);
-  const catalogueLoading = ref(false);
-  const catalogueRebuildPending = ref(false);
-  const catalogueErrorMessage = ref<string | null>(null);
-  const searchIndex = ref<SearchIndexStatusResponse | null>(null);
-  const searchIndexesLoading = ref(false);
-  const searchIndexRebuildPending = ref(false);
-  const searchIndexesErrorMessage = ref<string | null>(null);
-
-  const catalogueRebuilding = computed(
-    () => catalogue.value?.latestRefresh?.status === 'running');
-  const searchIndexesRebuilding = computed(() =>
-    searchIndex.value?.latestJob?.status === 'pending'
-    || searchIndex.value?.latestJob?.status === 'running');
-
-  async function load(signal?: AbortSignal): Promise<void> {
-    loading.value = true;
-    errorMessage.value = null;
-
-    try {
-      const [versionResult, lmsResult] = await Promise.all([
-        getVersion(signal),
-        getLmsConnection(signal)
-      ]);
-      version.value = versionResult;
-      lmsConnection.value = lmsResult;
-    } catch (error) {
-      version.value = null;
-      lmsConnection.value = null;
-      errorMessage.value = describeError(error);
-    } finally {
-      loading.value = false;
-    }
+  const runtime = remoteResource<{ version: api.VersionResponse; lms: api.LmsConnectionResponse }>();
+  const catalogue = remoteResource<api.CatalogueStatusResponse>();
+  const index = remoteResource<api.SearchIndexStatusResponse>();
+  const catalogueMutation = remoteResource<api.CatalogueStatusResponse>();
+  const indexMutation = remoteResource<api.SearchIndexStatusResponse>();
+  const version = computed(() => runtime.data.value?.version ?? null);
+  const lmsConnection = computed(() => runtime.data.value?.lms ?? null);
+  const catalogueRebuilding = computed(() => catalogue.data.value?.latestRefresh?.status === 'running');
+  const searchIndexesRebuilding = computed(() => ['pending', 'running'].includes(index.data.value?.latestJob?.status ?? ''));
+  const catalogueErrorMessage = computed(() => catalogueMutation.error.value ?? catalogue.error.value);
+  const searchIndexesErrorMessage = computed(() => indexMutation.error.value ?? index.error.value);
+  async function load(signal?: AbortSignal) {
+    await runtime.load(async requestSignal => {
+      const [version, lms] = await Promise.all([api.getVersion(requestSignal), api.getLmsConnection(requestSignal)]);
+      return { version, lms };
+    }, false, signal);
   }
-
-  async function loadCatalogue(signal?: AbortSignal): Promise<void> {
-    catalogueLoading.value = true;
-    catalogueErrorMessage.value = null;
-
-    try {
-      catalogue.value = await getCatalogue(signal);
-    } catch (error) {
-      catalogueErrorMessage.value = describeCatalogueError(error);
-    } finally {
-      catalogueLoading.value = false;
-    }
+  async function loadCatalogue(signal?: AbortSignal) {
+    if (catalogueMutation.loading.value) return;
+    const result = await catalogue.load(api.getCatalogue, true, signal);
+    if (result) catalogueMutation.error.value = null;
   }
-
-  async function rebuild(signal?: AbortSignal): Promise<void> {
-    catalogueRebuildPending.value = true;
-    catalogueErrorMessage.value = null;
-
-    try {
-      catalogue.value = await rebuildCatalogue(signal);
-    } catch (error) {
-      catalogueErrorMessage.value = describeCatalogueError(error);
-    } finally {
-      catalogueRebuildPending.value = false;
-    }
+  async function loadSearchIndexes(signal?: AbortSignal) {
+    if (indexMutation.loading.value) return;
+    const result = await index.load(api.getSearchIndex, true, signal);
+    if (result) indexMutation.error.value = null;
   }
-
-  async function loadSearchIndexes(signal?: AbortSignal): Promise<void> {
-    searchIndexesLoading.value = true;
-    searchIndexesErrorMessage.value = null;
-
-    try {
-      searchIndex.value = await getSearchIndex(signal);
-    } catch (error) {
-      searchIndexesErrorMessage.value = describeSearchIndexError(error);
-    } finally {
-      searchIndexesLoading.value = false;
-    }
+  async function rebuild(signal?: AbortSignal) {
+    if (catalogueMutation.loading.value) return;
+    catalogue.cancel();
+    const result = await catalogueMutation.load(api.rebuildCatalogue, false, signal);
+    if (result) { catalogue.data.value = result; catalogue.error.value = null; }
   }
-
-  async function rebuildIndex(signal?: AbortSignal): Promise<void> {
-    searchIndexRebuildPending.value = true;
-    searchIndexesErrorMessage.value = null;
-
-    try {
-      searchIndex.value = await rebuildSearchIndex(signal);
-    } catch (error) {
-      searchIndexesErrorMessage.value = describeSearchIndexError(error);
-    } finally {
-      searchIndexRebuildPending.value = false;
-    }
+  async function rebuildIndex(signal?: AbortSignal) {
+    if (indexMutation.loading.value) return;
+    index.cancel();
+    const result = await indexMutation.load(api.rebuildSearchIndex, false, signal);
+    if (result) { index.data.value = result; index.error.value = null; }
   }
-
-  return {
-    loading,
-    version,
-    lmsConnection,
-    errorMessage,
-    catalogue,
-    catalogueLoading,
-    catalogueRebuildPending,
-    catalogueErrorMessage,
-    searchIndex,
-    searchIndexesLoading,
-    searchIndexRebuildPending,
-    searchIndexesErrorMessage,
-    catalogueRebuilding,
-    searchIndexesRebuilding,
-    load,
-    loadCatalogue,
-    rebuild,
-    loadSearchIndexes,
-    rebuildIndex
-  };
+  return { version, lmsConnection, loading: runtime.loading, errorMessage: runtime.error,
+    catalogue: catalogue.data, catalogueLoading: catalogue.loading, catalogueRebuildPending: catalogueMutation.loading, catalogueErrorMessage,
+    searchIndex: index.data, searchIndexesLoading: index.loading, searchIndexRebuildPending: indexMutation.loading, searchIndexesErrorMessage,
+    catalogueRebuilding, searchIndexesRebuilding, load, loadCatalogue, loadSearchIndexes, rebuild, rebuildIndex };
 });
-
-function describeError(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return 'The operational API could not be reached.';
-}
-
-function describeCatalogueError(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return 'The catalogue API could not be reached.';
-}
-
-function describeSearchIndexError(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return 'The search-index API could not be reached.';
-}

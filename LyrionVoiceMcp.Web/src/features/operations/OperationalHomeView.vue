@@ -1,11 +1,6 @@
 <template>
   <main class="operations-page">
-    <section class="hero" aria-labelledby="page-title">
-      <div class="hero__mark" aria-hidden="true">
-        <span class="hero__icon"></span>
-      </div>
-      <h1 id="page-title">Lyrion Voice MCP</h1>
-    </section>
+    <header class="page-heading"><h1 id="page-title">System overview</h1></header>
 
     <section class="status-grid" aria-label="Service status">
       <article class="status-card">
@@ -108,7 +103,7 @@
             <a
               v-if="operations.searchIndex?.latestJob"
               class="job-link"
-              :href="`/jobs/${operations.searchIndex.latestJob.id}`"
+              :href="`/system/jobs/${operations.searchIndex.latestJob.id}`"
             >
               Job {{ operations.searchIndex.latestJob.id }} · {{ operations.searchIndex.latestJob.status }}
             </a>
@@ -135,12 +130,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
+import { catalogueHeadline, indexHeadline } from './headlineStatus';
 import { useOperationsStore } from './operationsStore';
 
 const operations = useOperationsStore();
 const mcpEndpoint = new URL('/mcp', window.location.origin).href;
 let operationPollTimer: ReturnType<typeof setTimeout> | undefined;
 let operationPollingActive = false;
+const controller = new AbortController();
 
 const lmsStatusLabel = computed(() => {
   if (operations.loading) {
@@ -155,6 +152,7 @@ const lmsStatusLabel = computed(() => {
     return 'Unavailable';
   }
 
+  if (operations.errorMessage) return 'Unavailable';
   return 'Not configured';
 });
 
@@ -163,27 +161,7 @@ const lmsStatusPillClass = computed(() => ({
   'status-pill--error': operations.lmsConnection?.status === 'unavailable'
 }));
 
-const catalogueStatusLabel = computed(() => {
-  if (operations.catalogueLoading && operations.catalogue === null) {
-    return 'Checking';
-  }
-
-  if (operations.catalogueRebuilding) {
-    return 'Rebuilding';
-  }
-
-  if (operations.catalogue?.latestRefresh?.status === 'failed'
-    || operations.catalogue?.latestRefresh?.status === 'interrupted'
-    || operations.catalogue?.latestRefresh?.status === 'cancelled') {
-    return 'Attention';
-  }
-
-  if (operations.catalogue?.summary) {
-    return 'Ready';
-  }
-
-  return 'Not built';
-});
+const catalogueStatusLabel = computed(() => catalogueHeadline(operations.catalogue, operations.catalogueLoading, operations.catalogueErrorMessage));
 
 const catalogueStatusPillClass = computed(() => ({
   'status-pill--online': operations.catalogue !== null
@@ -199,25 +177,7 @@ const catalogueButtonDisabled = computed(() =>
   || operations.catalogueRebuildPending
   || operations.catalogueRebuilding);
 
-const indexStatusLabel = computed(() => {
-  if (operations.searchIndexesLoading && !operations.searchIndex) {
-    return 'Checking';
-  }
-
-  if (operations.searchIndexesRebuilding) {
-    return 'Rebuilding';
-  }
-
-  if (operations.searchIndex?.latestJob?.status === 'failed') {
-    return 'Attention';
-  }
-
-  if (operations.searchIndex?.artifact) {
-    return 'Ready';
-  }
-
-  return 'Not built';
-});
+const indexStatusLabel = computed(() => indexHeadline(operations.searchIndex, operations.searchIndexesLoading, operations.searchIndexesErrorMessage));
 
 const indexStatusPillClass = computed(() => ({
   'status-pill--online': indexStatusLabel.value === 'Ready',
@@ -229,25 +189,26 @@ const indexStatusPillClass = computed(() => ({
 onMounted(async () => {
   operationPollingActive = true;
   await Promise.all([
-    operations.load(),
-    operations.loadCatalogue(),
-    operations.loadSearchIndexes()
+    operations.load(controller.signal),
+    operations.loadCatalogue(controller.signal),
+    operations.loadSearchIndexes(controller.signal)
   ]);
   scheduleOperationPoll();
 });
 
 onUnmounted(() => {
   operationPollingActive = false;
+  controller.abort();
   clearOperationPoll();
 });
 
 async function rebuildCatalogue(): Promise<void> {
-  await operations.rebuild();
+  await operations.rebuild(controller.signal);
   scheduleOperationPoll();
 }
 
 async function rebuildIndex(): Promise<void> {
-  await operations.rebuildIndex();
+  await operations.rebuildIndex(controller.signal);
   scheduleOperationPoll();
 }
 
@@ -260,8 +221,8 @@ function scheduleOperationPoll(): void {
 
   operationPollTimer = setTimeout(async () => {
     await Promise.all([
-      operations.loadCatalogue(),
-      operations.loadSearchIndexes()
+      operations.loadCatalogue(controller.signal),
+      operations.loadSearchIndexes(controller.signal)
     ]);
     scheduleOperationPoll();
   }, 2_000);
@@ -308,309 +269,18 @@ function formatBytes(value: number): string {
 </script>
 
 <style scoped>
-.operations-page {
-  width: min(1120px, calc(100% - 40px));
-  margin: 0 auto;
-  padding: 60px 0 36px;
-}
-
-.hero {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  margin-bottom: 38px;
-}
-
-.hero__mark {
-  width: 92px;
-  height: 92px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px solid var(--border-strong);
-  border-radius: 26px;
-  background: linear-gradient(145deg, rgba(244, 175, 65, 0.16), rgba(244, 175, 65, 0.03));
-  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.28);
-}
-
-.hero__icon {
-  width: 44px;
-  height: 62px;
-  background: var(--accent);
-  filter: drop-shadow(0 0 12px rgba(244, 175, 65, 0.4));
-  -webkit-mask: url('../../assets/fuzzy-music-match-icon.svg') center / contain no-repeat;
-  mask: url('../../assets/fuzzy-music-match-icon.svg') center / contain no-repeat;
-}
-
-.status-card__label {
-  margin: 0 0 8px;
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-}
-
-h1,
-h2,
-p {
-  margin-top: 0;
-}
-
-h1 {
-  margin-bottom: 0;
-  font-family: var(--font-display);
-  font-size: clamp(2.5rem, 6vw, 4.7rem);
-  font-weight: 620;
-  letter-spacing: -0.055em;
-  line-height: 0.98;
-}
-
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.status-card {
-  padding: 26px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  background: var(--surface);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16);
-}
-
-.status-card__heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.status-card h2 {
-  margin-bottom: 18px;
-  font-size: 1.22rem;
-  font-weight: 650;
-}
-
-.status-card__copy,
-.error-message {
-  color: var(--text-muted);
-  line-height: 1.55;
-}
-
-.error-message {
-  color: var(--danger-text);
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 11px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.status-pill__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.status-pill--online {
-  border-color: rgba(95, 211, 151, 0.34);
-  color: var(--success);
-}
-
-.status-pill--error {
-  border-color: rgba(255, 119, 119, 0.34);
-  color: var(--danger-text);
-}
-
-.status-pill--working {
-  border-color: rgba(244, 175, 65, 0.4);
-  color: var(--accent);
-}
-
-.refresh-button {
-  padding: 10px 15px;
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  color: var(--text);
-  background: transparent;
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.refresh-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.refresh-button:disabled {
-  cursor: wait;
-  opacity: 0.5;
-}
-
-code {
-  display: block;
-  max-width: 100%;
-  margin: 0;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--accent-soft);
-  background: rgba(0, 0, 0, 0.22);
-  font-size: 1rem;
-  overflow-wrap: anywhere;
-}
-
-.connection-url {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.server-version {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 0.78rem;
-}
-
-.status-card--maintenance {
-  grid-column: 1 / -1;
-  background: linear-gradient(145deg, rgba(38, 34, 27, 0.96), rgba(25, 23, 19, 0.98));
-}
-
-.operation-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 24px;
-  padding: 4px 0 22px;
-}
-
-.operation-row + .operation-row {
-  padding: 22px 0 4px;
-  border-top: 1px solid var(--border);
-}
-
-.operation-row__title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 7px;
-}
-
-.operation-row h2 {
-  margin: 0;
-}
-
-.operation-row p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.83rem;
-  line-height: 1.55;
-}
-
-.operation-row .error-message + .error-message {
-  margin-top: 5px;
-}
-
-.operation-row .error-message {
-  color: var(--danger-text);
-}
-
-.operation-row__actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.job-link {
-  color: var(--accent-soft);
-  font-size: 0.78rem;
-  white-space: nowrap;
-}
-
-.index-rebuild {
-  min-width: 92px;
-}
-
-.catalogue-rebuild {
-  min-width: 170px;
-}
-
-footer {
-  display: flex;
-  gap: 9px;
-  justify-content: center;
-  padding: 28px 0 0;
-  color: var(--text-dim);
-  font-size: 0.78rem;
-}
-
-@media (max-width: 850px) {
-  .operations-page {
-    padding-top: 42px;
-  }
-
-  .status-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-}
-
-@media (max-width: 560px) {
-  .operations-page {
-    width: min(100% - 28px, 1120px);
-    padding-top: 28px;
-  }
-
-  .hero {
-    align-items: flex-start;
-    gap: 18px;
-    margin-bottom: 34px;
-  }
-
-  .hero__mark {
-    width: 64px;
-    height: 64px;
-    border-radius: 18px;
-  }
-
-  .hero__icon {
-    width: 31px;
-    height: 43px;
-  }
-
-  .status-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .operation-row {
-    grid-template-columns: 1fr;
-    align-items: flex-start;
-    gap: 16px;
-  }
-
-  .operation-row__actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  footer {
-    flex-wrap: wrap;
-  }
-}
+.operations-page { width:min(1200px,100%); margin:0 auto; padding:28px 34px 40px; }
+.page-heading h1 { margin:0 0 24px; font-size:22px; }
+.status-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px 32px; }
+.status-card { min-width:0; }.status-card__heading { display:flex; justify-content:space-between; align-items:start; gap:20px; }
+.status-card__label { margin:0 0 8px; font-size:14px; color:var(--text-muted); }.status-card h2 { font-size:18px; margin:0 0 8px; }
+.status-card__copy,.server-version { color:var(--text-muted); font-size:14px; }
+.status-card--endpoint { padding:18px 24px; background:var(--heading-band); align-self:start; color:var(--selection); }.status-card--endpoint .status-card__label { color:inherit; }
+.status-card--maintenance { grid-column:1/-1; }
+.operation-row { padding:0 0 22px; margin:8px 0 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:24px; }
+.operation-row__summary { flex:1; min-width:0; }.operation-row__title { padding:10px 18px; background:var(--heading-band); color:var(--selection); display:flex; justify-content:space-between; align-items:center; gap:16px; }.operation-row__title h2 { margin:0; font-size:16px; }.operation-row__summary > p { font-size:14px; margin:14px 18px 0; }
+.operation-row__actions { display:flex; flex-direction:column; align-items:flex-end; gap:12px; }.job-link { font-size:14px; }.status-pill { font-size:14px; white-space:nowrap; }.status-pill--error { color:var(--danger-text); }
+.refresh-button { color:var(--selection); background:transparent; border-color:var(--selection); }.error-message { color:var(--danger-text); }
+footer { display:flex; gap:10px; color:var(--text-muted); font-size:14px; border-top:1px solid var(--border); padding-top:16px; }
+@media(max-width:720px) { .operations-page { padding:24px 18px; }.status-grid { grid-template-columns:1fr; }.operation-row { align-items:stretch; flex-direction:column; gap:16px; }.operation-row > button { align-self:flex-start; }.operation-row__actions { flex-direction:row; justify-content:space-between; align-items:center; } }
 </style>
