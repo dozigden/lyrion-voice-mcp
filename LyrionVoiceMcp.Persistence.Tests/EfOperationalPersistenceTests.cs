@@ -194,6 +194,27 @@ public sealed class EfOperationalPersistenceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ToolCallPageShouldSummariseOnlyTheRequestedPageAndRespectTruncation()
+    {
+        var calls = CreateToolCallService();
+        await calls.StartAsync("search", """{"name":"First fictional search"}""", null, TestContext.Current.CancellationToken);
+        var second = await calls.StartAsync("search", """{"name":"Second fictional search"}""", null, TestContext.Current.CancellationToken);
+        await calls.StartAsync("browse", "{}", null, TestContext.Current.CancellationToken);
+        await calls.StartAsync("search", System.Text.Json.JsonSerializer.Serialize(new { name = new string('x', 5000) }), null, TestContext.Current.CancellationToken);
+
+        var page = await calls.BrowseAsync(new ToolCallQuery(Offset: 1, Limit: 1, ToolName: "search"), TestContext.Current.CancellationToken);
+        var newest = await calls.BrowseAsync(new ToolCallQuery(Offset: 0, Limit: 1, ToolName: "search"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, page.Total);
+        Assert.Equal(1, page.Offset);
+        Assert.Equal(1, page.Limit);
+        var summary = Assert.Single(page.Items);
+        Assert.Equal(second!.Id, summary.Id);
+        Assert.Equal("Second fictional search", summary.RequestSummary);
+        Assert.Null(Assert.Single(newest.Items).RequestSummary);
+    }
+
+    [Fact]
     public async Task StartupRecoveryShouldInterruptEveryRunningToolCall()
     {
         var calls = CreateToolCallService();

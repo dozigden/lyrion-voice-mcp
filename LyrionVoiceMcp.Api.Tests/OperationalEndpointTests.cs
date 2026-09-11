@@ -18,6 +18,33 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
     }
 
     [Fact]
+    public async Task ToolCallListShouldExposeRequestSummariesWithoutFullArgumentsOrResults()
+    {
+        using var isolatedFactory = new LyrionVoiceMcpApiFactory();
+        using var client = isolatedFactory.CreateClient();
+        var calls = isolatedFactory.Services.GetRequiredService<IToolCallHistoryService>();
+        var search = await calls.StartAsync(
+            "search", """{"name":"The Lantern Hours","genre":"Jazz"}""", null,
+            TestContext.Current.CancellationToken);
+        var malformed = await calls.StartAsync(
+            "search", "{broken", null, TestContext.Current.CancellationToken);
+
+        using var response = await client.GetAsync(
+            "/api/tool-calls?toolName=search", TestContext.Current.CancellationToken);
+        using var json = System.Text.Json.JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var items = json.RootElement.GetProperty("items").EnumerateArray().ToArray();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var summary = Assert.Single(items, item => item.GetProperty("id").GetString() == search!.Id);
+        Assert.Equal("The Lantern Hours · Genre: Jazz", summary.GetProperty("requestSummary").GetString());
+        Assert.False(summary.TryGetProperty("argumentsJson", out _));
+        Assert.False(summary.TryGetProperty("resultJson", out _));
+        var unavailable = Assert.Single(items, item => item.GetProperty("id").GetString() == malformed!.Id);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, unavailable.GetProperty("requestSummary").ValueKind);
+    }
+
+    [Fact]
     public async Task HealthShouldReportOk()
     {
         // Arrange

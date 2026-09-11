@@ -47,6 +47,7 @@ export interface ToolCall {
 export interface ToolCallSummary {
   id: string; toolName: string; status: string; startedAt: string; completedAt: string | null;
   durationMilliseconds: number | null; traceIdentifier: string | null; errorLogId: number | null;
+  requestSummary: string | null;
 }
 export interface ToolCallPage { items: ToolCallSummary[]; total: number; offset: number; limit: number; retentionDays: number; }
 
@@ -70,7 +71,7 @@ const toolFields = { id: string, toolName: string, status: string, startedAt: da
   durationMilliseconds: nn, traceIdentifier: ns, errorLogId: nn };
 const toolCall = object({ ...toolFields, argumentsJson: string, argumentsTruncated: boolean,
   resultJson: ns, resultTruncated: boolean, errorMessage: ns });
-const toolPage = object({ ...pageFields, items: array(object(toolFields)) });
+const toolPage = object({ ...pageFields, items: array(object({ ...toolFields, requestSummary: ns })) });
 
 export const listJobs = (query = '', signal?: AbortSignal): Promise<JobPage> => request(`/api/jobs${query}`, jobPage, { signal });
 export const getJob = (id: string, signal?: AbortSignal): Promise<JobDetails> => request(`/api/jobs/${encodeURIComponent(id)}`, jobDetails, { signal });

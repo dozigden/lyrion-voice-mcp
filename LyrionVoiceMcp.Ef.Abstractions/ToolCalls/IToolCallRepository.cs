@@ -29,7 +29,9 @@ public sealed record EntityToolCallSummary(
     DateTime? CompletedAtUtc,
     long? DurationMilliseconds,
     string? TraceIdentifier,
-    int? ErrorLogId);
+    int? ErrorLogId,
+    string ArgumentsJson,
+    bool ArgumentsTruncated);
 
 public sealed record EntityToolCallPage(
     IReadOnlyList<EntityToolCallSummary> Items,

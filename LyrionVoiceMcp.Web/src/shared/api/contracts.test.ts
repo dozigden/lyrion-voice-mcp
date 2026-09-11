@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getCatalogue, getSearchIndex, rebuildSearchIndex } from '../../features/operations/operationsApi';
-import { getJob, getToolCall, listJobs, listSchedules, runSchedule } from '../../features/operational-history/operationalHistoryApi';
-import { call } from '../../features/tool-log/toolLogFixtures';
+import { getJob, getToolCall, listToolCalls, listJobs, listSchedules, runSchedule } from '../../features/operational-history/operationalHistoryApi';
+import { call, summary } from '../../features/tool-log/toolLogFixtures';
 afterEach(() => vi.unstubAllGlobals());
 const respond = (value: unknown, status = 200) => vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(value), { status })));
 describe('frontend API contract boundary', () => {
@@ -23,6 +23,14 @@ describe('frontend API contract boundary', () => {
     await expect(getToolCall(record.id)).rejects.toThrow('invalid response');
     respond({ ...record, startedAt: 'not a date' });
     await expect(getToolCall(record.id)).rejects.toThrow('invalid response');
+  });
+  it.each(['The Lantern Hours', null])('accepts a nullable request summary in list responses', async requestSummary => {
+    respond({ items: [{ ...summary('fiction'), requestSummary }], total: 1, offset: 0, limit: 50, retentionDays: 30 });
+    expect((await listToolCalls()).items[0]!.requestSummary).toBe(requestSummary);
+  });
+  it.each([42, undefined])('rejects invalid or missing list summaries', async requestSummary => {
+    respond({ items: [{ ...summary('fiction'), requestSummary }], total: 1, offset: 0, limit: 50, retentionDays: 30 });
+    await expect(listToolCalls()).rejects.toThrow('invalid response');
   });
   it('uses the same backend message and HTTP fallback for reads and mutations', async () => {
     respond({ message: 'A rebuild is already pending.' }, 409);

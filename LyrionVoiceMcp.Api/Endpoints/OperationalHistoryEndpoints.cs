@@ -241,7 +241,7 @@ public static class OperationalHistoryEndpoints
 
     private static ToolCallSummaryResponse ToSummaryResponse(ToolCallSummary item) => new(
         item.Id, item.ToolName, ToText(item.Status), item.StartedAt, item.CompletedAt,
-        item.DurationMilliseconds, item.TraceIdentifier, item.ErrorLogId);
+        item.DurationMilliseconds, item.TraceIdentifier, item.ErrorLogId, item.RequestSummary);
 
     private static bool ValidPage(int? offset, int? limit) =>
         offset is null or >= 0 && limit is null or >= 1 and <= 200;

@@ -15,7 +15,8 @@ public sealed record ToolCallSummaryResponse(
     DateTimeOffset? CompletedAt,
     long? DurationMilliseconds,
     string? TraceIdentifier,
-    long? ErrorLogId);
+    long? ErrorLogId,
+    string? RequestSummary);
 
 public sealed record ToolCallResponse(
     string Id,

@@ -22,5 +22,5 @@ export function call(toolName = 'search', id = 'call-fiction', structured: unkno
     resultTruncated: false, errorMessage: null, traceIdentifier: 'trace-fiction', errorLogId: null };
 }
 export function summary(id: string, toolName = 'search'): ToolCallSummary {
-  return { id, toolName, status: 'succeeded', startedAt: '2026-01-02T13:04:05Z', completedAt: '2026-01-02T13:04:06Z', durationMilliseconds: 420, traceIdentifier: null, errorLogId: null };
+  return { id, toolName, status: 'succeeded', startedAt: '2026-01-02T13:04:05Z', completedAt: '2026-01-02T13:04:06Z', durationMilliseconds: 420, traceIdentifier: null, errorLogId: null, requestSummary: 'The Lantern Hours' };
 }

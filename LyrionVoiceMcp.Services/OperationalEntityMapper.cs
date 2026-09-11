@@ -90,7 +90,8 @@ internal static class OperationalEntityMapper
         ToNullableDateTimeOffset(entity.CompletedAtUtc),
         entity.DurationMilliseconds,
         entity.TraceIdentifier,
-        entity.ErrorLogId);
+        entity.ErrorLogId,
+        ToolCallRequestSummary.Create(entity.ToolName, entity.ArgumentsJson, entity.ArgumentsTruncated));
 
     public static EntityJobStatus ToEntity(JobStatus status) => status switch
     {

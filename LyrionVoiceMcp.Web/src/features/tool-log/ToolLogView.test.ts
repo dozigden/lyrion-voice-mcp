@@ -32,6 +32,19 @@ describe('tool log navigation', () => {
     expect(wrapper.text()).not.toContain('Retained');
     expect(wrapper.get('.call-row.selected').text()).toContain('search');
   });
+  it('shows bounded request summaries directly from the list and leaves unavailable rows compact', async () => {
+    const text = 'Paper Satellites · Genre: Jazz · Years: 1990–2000';
+    vi.mocked(api.listToolCalls).mockResolvedValue({ items: [
+      { ...summary('first'), requestSummary: text },
+      { ...summary('second'), requestSummary: null }
+    ], total: 2, offset: 0, limit: 50, retentionDays: 30 });
+    const { wrapper } = await open();
+    const rows = wrapper.findAll('.call-row');
+    expect(rows[0]!.get('.row-summary').text()).toBe(text);
+    expect(rows[0]!.get('.row-summary').attributes('title')).toBe(text);
+    expect(rows[1]!.find('.row-summary').exists()).toBe(false);
+    expect(api.getToolCall).toHaveBeenCalledTimes(1);
+  });
   it('honours direct links outside the current page, reuses the pane, preserves scroll and supports Back', async () => {
     const { wrapper, router } = await open('/tool-calls/direct');
     expect(api.getToolCall).toHaveBeenCalledWith('direct', expect.any(AbortSignal));
