@@ -13,6 +13,7 @@ import PlayResult from './renderers/PlayResult.vue';
 import RecordedValue from './components/RecordedValue.vue';
 import ReferenceArguments from './components/ReferenceArguments.vue';
 import ResultSection from './components/ResultSection.vue';
+import ToolIcon from './components/ToolIcon.vue';
 const props = defineProps<{ call: ToolCall }>();
 const tab = ref<'details' | 'raw'>('details');
 const presentation = computed(() => presentCall(props.call));
@@ -40,7 +41,7 @@ function switchTab(event: KeyboardEvent) {
 }
 </script>
 <template>
-  <header class="call-heading"><div><h2>{{ call.toolName }}</h2><span><span aria-hidden="true" class="outcome-symbol">{{ outcomeSymbol(call.status) }}</span> {{ label(call.status) }}</span></div><div class="timing"><time :datetime="call.startedAt">{{ formatDate(call.startedAt) }}</time><span>{{ duration(call.durationMilliseconds) }}</span></div></header>
+  <header class="call-heading"><div><h2><ToolIcon :tool="call.toolName" />{{ call.toolName }}</h2><span><span aria-hidden="true" class="outcome-symbol">{{ outcomeSymbol(call.status) }}</span> {{ label(call.status) }}</span></div><div class="timing"><time :datetime="call.startedAt">{{ formatDate(call.startedAt) }}</time><span>{{ duration(call.durationMilliseconds) }}</span></div></header>
   <div class="tabs" role="tablist" aria-label="Call presentation" @keydown="switchTab">
     <button id="call-tab-details" role="tab" :aria-selected="tab === 'details'" :tabindex="tab === 'details' ? 0 : -1" aria-controls="call-panel" @click="showDetails">Details</button>
     <button id="call-tab-raw" role="tab" :aria-selected="tab === 'raw'" :tabindex="tab === 'raw' ? 0 : -1" aria-controls="call-panel" @click="showRaw">Raw JSON</button>
@@ -76,7 +77,7 @@ function switchTab(event: KeyboardEvent) {
 </template>
 <style scoped>
 .call-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:10px var(--detail-inset); background:var(--heading-main); color:var(--selection); flex-shrink:0; }
-h2 { font-size:22px; margin:0 0 5px; overflow-wrap:anywhere; } .call-heading span,.call-heading time { display:block; font-size:14px; }.call-heading .outcome-symbol { display:inline; }.timing { text-align:right; font-variant-numeric:tabular-nums; }.timing span { margin-top:5px; }
+h2 { display:flex; align-items:center; gap:10px; font-size:22px; margin:0 0 5px; overflow-wrap:anywhere; } h2 .tool-icon { font-size:26px; }.call-heading span,.call-heading time { display:block; font-size:14px; }.call-heading .outcome-symbol { display:inline; }.timing { text-align:right; font-variant-numeric:tabular-nums; }.timing span { margin-top:5px; }
 .tabs { display:flex; gap:28px; padding:0 var(--detail-inset); border-bottom:1px solid var(--border); flex-shrink:0; }
 .tabs button { border:0; border-bottom:2px solid transparent; background:transparent; border-radius:0; padding:16px 1px 11px; font-size:14px; color:var(--text-muted); }
 .tabs button[aria-selected=true] { border-color:var(--selection); color:var(--selection); font-weight:650; }

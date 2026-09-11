@@ -31,6 +31,7 @@ describe('tool log navigation', () => {
     expect(wrapper.get('.workspace').classes()).not.toContain('mobile-detail');
     expect(wrapper.text()).not.toContain('Retained');
     expect(wrapper.get('.call-row.selected').text()).toContain('search');
+    expect(wrapper.get('.call-row.selected .tool-icon').classes()).toContain('tool-icon--search');
     expect(wrapper.find('.apply').exists()).toBe(false);
     expect(wrapper.find('.row-outcome').exists()).toBe(false);
     expect(wrapper.get('.log-pane').text()).not.toContain('420 ms');

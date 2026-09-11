@@ -8,6 +8,7 @@ describe('recorded MCP tool presentation', () => {
     const wrapper = mount(ToolCallDetail, { props: { call: call(tool, tool, results[tool]) } });
     expect(wrapper.find('pre').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('does not match a supported presentation');
+    expect(wrapper.get('.call-heading .tool-icon').classes()).toContain(`tool-icon--${tool}`);
     const headings = wrapper.findAll('.result-section h3');
     expect(headings.length).toBeGreaterThan(1);
     expect(headings[0]!.text()).not.toBe('Other');
@@ -100,6 +101,10 @@ describe('recorded MCP tool presentation', () => {
     const wrapper = mount(ToolCallDetail, { props: { call: record } });
     expect(wrapper.text()).toContain('Inspect Raw JSON');
     expect(wrapper.find('pre').exists()).toBe(false);
+  });
+  it('uses a neutral icon for an unknown historical tool', () => {
+    const wrapper = mount(ToolCallDetail, { props: { call: call('future_tool') } });
+    expect(wrapper.get('.call-heading .tool-icon').classes()).toContain('tool-icon--unknown');
   });
   it('distinguishes truncation and missing results, and resets the tab for a different call', async () => {
     const wrapper = mount(ToolCallDetail, { props: { call: { ...call(), argumentsTruncated: true, resultJson: null } } });
