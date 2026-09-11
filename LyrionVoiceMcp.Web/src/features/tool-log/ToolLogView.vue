@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToolLogStore } from './toolLogStore';
 import ToolCallDetail from './ToolCallDetail.vue';
-import { duration, formatDate, callTime, callDay, label, outcomeSymbol } from '../../shared/format';
+import { formatDate, callTime, callDay, label, outcomeSymbol } from '../../shared/format';
 const route = useRoute(), router = useRouter(), log = useToolLogStore();
 const tools = ['search', 'browse', 'get_player_status', 'control_player', 'get_queue', 'manage_queue', 'play'];
 const statuses = ['running', 'succeeded', 'tool_error', 'cancelled', 'failed', 'interrupted'];
@@ -42,6 +42,16 @@ watch(query, () => {
   status.value = typeof route.query.status === 'string' ? route.query.status : '';
   void loadPage();
 }, { immediate: true });
+watch([tool, status], () => {
+  const routeTool = typeof route.query.toolName === 'string' ? route.query.toolName : '';
+  const routeStatus = typeof route.query.status === 'string' ? route.query.status : '';
+  if (tool.value === routeTool && status.value === routeStatus) return;
+  log.scrollTop = 0;
+  void router.replace({
+    name: 'tool-calls',
+    query: { toolName: tool.value || undefined, status: status.value || undefined }
+  });
+});
 watch(selectedId, async id => {
   if (id) await log.loadDetail(id);
   else {
@@ -68,11 +78,6 @@ function changePage(nextOffset: number) {
   log.scrollTop = 0;
   void router.push({ name: 'tool-calls', query: { toolName: tool.value || undefined, status: status.value || undefined, offset: nextOffset || undefined } });
 }
-function applyFilters() {
-  if (offset.value === 0 && tool.value === (route.query.toolName ?? '') && status.value === (route.query.status ?? '')) {
-    void loadPage();
-  } else changePage(0);
-}
 function previousPage() { changePage(Math.max(0, offset.value - 50)); }
 function nextPage() { changePage(offset.value + 50); }
 function retryList() { void loadPage(); }
@@ -82,10 +87,9 @@ function retryDetail() { if (selectedId.value) void log.loadDetail(selectedId.va
   <main class="workspace" :class="{ 'mobile-detail': mobileDetail }">
     <aside class="log-pane" aria-label="MCP calls">
       <header class="log-header"><div class="log-title"><h1>Tool log</h1><span class="muted">Newest first</span></div>
-        <form class="filters" @submit.prevent="applyFilters">
+        <form class="filters" @submit.prevent>
           <label>Tool<input v-model="tool" list="tool-names" placeholder="All tools" type="search"><datalist id="tool-names"><option v-for="name in tools" :key="name" :value="name" /></datalist></label>
           <label>Outcome<select v-model="status"><option value="">All outcomes</option><option v-for="value in statuses" :key="value" :value="value">{{ label(value) }}</option></select></label>
-          <button class="apply" type="submit">Apply filters</button>
         </form>
       </header>
       <div ref="listElement" class="log-list" :aria-busy="log.listLoading" @scroll="rememberScroll">
@@ -95,7 +99,7 @@ function retryDetail() { if (selectedId.value) void log.loadDetail(selectedId.va
         <button v-for="call in log.page?.items ?? []" :key="call.id" class="call-row" :class="{ selected: call.id === selectedId }" :aria-current="call.id === selectedId" @click="selectCall(call.id)">
           <span class="row-top"><strong>{{ call.toolName }}</strong><time :datetime="call.startedAt" :title="formatDate(call.startedAt)"><span v-if="callDay(call.startedAt)">{{ callDay(call.startedAt) }} · </span>{{ callTime(call.startedAt) }}</time></span>
           <span v-if="call.requestSummary" class="row-summary" :title="call.requestSummary">{{ call.requestSummary }}</span>
-          <span class="row-bottom"><span :class="{ danger: ['failed', 'tool_error', 'interrupted'].includes(call.status) }"><span aria-hidden="true" class="outcome-symbol">{{ outcomeSymbol(call.status) }}</span> {{ label(call.status) }}</span><span>{{ duration(call.durationMilliseconds) }}</span></span>
+          <span v-if="call.status !== 'succeeded'" class="row-outcome" :class="{ danger: ['failed', 'tool_error', 'interrupted'].includes(call.status) }"><span aria-hidden="true" class="outcome-symbol">{{ outcomeSymbol(call.status) }}</span> {{ label(call.status) }}</span>
         </button>
       </div>
       <nav class="pagination" aria-label="Tool log pages"><span>{{ first }}–{{ last }} of {{ log.page?.total ?? 0 }} calls</span><div><button aria-label="Previous page" :disabled="log.listLoading || offset === 0" @click="previousPage">←</button><button aria-label="Next page" :disabled="log.listLoading || !log.page || offset + 50 >= log.page.total" @click="nextPage">→</button></div></nav>
@@ -112,12 +116,12 @@ function retryDetail() { if (selectedId.value) void log.loadDetail(selectedId.va
 <style scoped>
 .workspace { flex:1; display:grid; grid-template-columns:355px minmax(0,1fr); min-height:0; }
 .log-pane { background:var(--sidebar); display:flex; flex-direction:column; min-height:0; border-right:1px solid var(--border); }
-.log-header { padding:24px 20px 17px; }.log-title { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:17px; } h1 { margin:0; font-size:22px; }.log-title span { font-size:14px; }
-.filters { display:grid; grid-template-columns:1fr 1fr; gap:10px; } label { display:grid; gap:5px; font-size:14px; color:var(--text-muted); } input,select { width:100%; min-width:0; font-size:14px; padding:7px 9px; }.apply { grid-column:1/-1; justify-self:end; padding:3px 0; border:0; background:transparent; color:var(--selection); font-size:14px; }
+.log-header { padding:14px 20px 12px; }.log-title { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px; } h1 { margin:0; font-size:22px; }.log-title span { font-size:14px; }
+.filters { display:grid; grid-template-columns:1fr 1fr; gap:10px; } label { display:grid; gap:5px; font-size:14px; color:var(--text-muted); } input,select { width:100%; min-width:0; font-size:14px; padding:7px 9px; }
 .log-list { overflow:auto; flex:1; border-top:1px solid var(--border); scrollbar-width:thin; }.list-message { padding:12px 20px; }
 .call-row { display:block; width:100%; text-align:left; border:0; border-left:3px solid transparent; border-bottom:1px solid var(--border); border-radius:0; background:transparent; padding:15px 19px 14px; }
-.call-row:hover { background:var(--selection-hover); }.call-row.selected { background:var(--selection); color:#fff7ef; border-left-color:#321d2c; }.row-top,.row-bottom { display:flex; justify-content:space-between; gap:10px; }.row-top { align-items:start; margin-bottom:8px; }.row-top strong { font:600 15px/1.4 ui-monospace,monospace; overflow-wrap:anywhere; }.row-top time { font-size:14px; color:var(--text-muted); text-align:right; max-width:125px; white-space:nowrap; flex-shrink:0; }.row-bottom .danger { color:var(--danger-text); }.selected .row-bottom .danger { color:#ffd7c9; }.outcome-symbol { color:var(--success); }.selected .outcome-symbol { color:#d2e5d5; }.danger .outcome-symbol { color:inherit; }.row-bottom { font-size:14px; color:var(--text-muted); }.selected time,.selected .row-bottom { color:#f0e2eb; }.call-row:focus-visible { outline-offset:-3px; outline-color:#c89bbd; }
-.row-summary { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; overflow-wrap:anywhere; text-align:left; font-size:14px; line-height:1.45; margin:0 0 9px; color:var(--text-muted); }.selected .row-summary { color:#f0e2eb; }
+.call-row:hover { background:var(--selection-hover); }.call-row.selected { background:var(--selection); color:#fff7ef; border-left-color:#321d2c; }.row-top { display:flex; justify-content:space-between; align-items:start; gap:10px; }.row-top strong { font:600 15px/1.4 ui-monospace,monospace; overflow-wrap:anywhere; }.row-top time { font-size:14px; color:var(--text-muted); text-align:right; max-width:125px; white-space:nowrap; flex-shrink:0; }.row-outcome.danger { color:var(--danger-text); }.selected .row-outcome.danger { color:#ffd7c9; }.outcome-symbol { color:var(--success); }.selected .outcome-symbol { color:#d2e5d5; }.danger .outcome-symbol { color:inherit; }.row-outcome { display:block; margin-top:8px; font-size:14px; color:var(--text-muted); }.selected time,.selected .row-outcome { color:#f0e2eb; }.call-row:focus-visible { outline-offset:-3px; outline-color:#c89bbd; }
+.row-summary { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; overflow-wrap:anywhere; text-align:left; font-size:14px; line-height:1.45; margin-top:8px; color:var(--text-muted); }.selected .row-summary { color:#f0e2eb; }
 .pagination { display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid var(--border); font-size:14px; }.pagination div { display:flex; gap:14px; }.pagination button { border:0; background:transparent; padding:3px; font-size:20px; }
 .detail-pane { --detail-inset:34px; display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--surface); }.detail-message { padding:24px var(--detail-inset); }.back-to-list { display:none; }
 @media(min-width:1600px) { .workspace { grid-template-columns:390px minmax(0,1fr); }.detail-pane { --detail-inset:42px; } }

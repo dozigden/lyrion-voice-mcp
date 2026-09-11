@@ -8,7 +8,10 @@ describe('recorded MCP tool presentation', () => {
     const wrapper = mount(ToolCallDetail, { props: { call: call(tool, tool, results[tool]) } });
     expect(wrapper.find('pre').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('does not match a supported presentation');
-    expect(wrapper.findAll('.result-section').length).toBeGreaterThan(0);
+    const headings = wrapper.findAll('.result-section h3');
+    expect(headings.length).toBeGreaterThan(1);
+    expect(headings[0]!.text()).not.toBe('Other');
+    expect(headings.at(-1)!.text()).toBe('Other');
   });
   it('lays out short groups horizontally and main tracks vertically, retaining ratings and references', () => {
     const wrapper = mount(ToolCallDetail, { props: { call: call() } });
@@ -17,6 +20,7 @@ describe('recorded MCP tool presentation', () => {
     expect(wrapper.text()).toContain('4.5');
     expect(wrapper.text()).toContain('browse-discography');
     expect(wrapper.text()).toContain('8 albums in discography');
+    expect(wrapper.findAll('.result-section h3')[0]!.text()).toBe('Exact artist');
   });
   it('shows skipped items and state refresh errors even when the call succeeded', () => {
     const wrapper = mount(ToolCallDetail, { props: { call: call('play', 'play-fiction', results.play) } });

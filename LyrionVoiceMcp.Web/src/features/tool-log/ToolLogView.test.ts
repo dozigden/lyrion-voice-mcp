@@ -31,6 +31,9 @@ describe('tool log navigation', () => {
     expect(wrapper.get('.workspace').classes()).not.toContain('mobile-detail');
     expect(wrapper.text()).not.toContain('Retained');
     expect(wrapper.get('.call-row.selected').text()).toContain('search');
+    expect(wrapper.find('.apply').exists()).toBe(false);
+    expect(wrapper.find('.row-outcome').exists()).toBe(false);
+    expect(wrapper.get('.log-pane').text()).not.toContain('420 ms');
   });
   it('shows bounded request summaries directly from the list and leaves unavailable rows compact', async () => {
     const text = 'Paper Satellites · Genre: Jazz · Years: 1990–2000';
@@ -64,10 +67,28 @@ describe('tool log navigation', () => {
     expect(router.currentRoute.value.params.id).toBe('older');
     expect(api.listToolCalls).toHaveBeenLastCalledWith('?offset=50&limit=50', expect.any(AbortSignal));
     vi.mocked(api.listToolCalls).mockResolvedValueOnce({ items: [], total: 0, offset: 0, limit: 50, retentionDays: 30 });
-    await wrapper.get('input').setValue('play'); await wrapper.get('form').trigger('submit'); await flushPromises();
+    await wrapper.get('input').setValue('play'); await flushPromises();
     expect(router.currentRoute.value.params.id).toBeUndefined();
     expect(wrapper.text()).toContain('No calls match these filters.');
     expect(wrapper.find('.call-heading').exists()).toBe(false);
+  });
+  it('applies filters immediately and shows only non-success outcomes in rows', async () => {
+    vi.mocked(api.listToolCalls).mockResolvedValue({ items: [
+      summary('first'),
+      { ...summary('second'), status: 'failed' }
+    ], total: 2, offset: 0, limit: 50, retentionDays: 30 });
+    const { wrapper, router } = await open();
+
+    await wrapper.get('input').setValue('play'); await flushPromises();
+    expect(router.currentRoute.value.query.toolName).toBe('play');
+    expect(api.listToolCalls).toHaveBeenLastCalledWith('?offset=0&limit=50&toolName=play', expect.any(AbortSignal));
+    await wrapper.get('select').setValue('failed'); await flushPromises();
+    expect(router.currentRoute.value.query.status).toBe('failed');
+    expect(api.listToolCalls).toHaveBeenLastCalledWith('?offset=0&limit=50&toolName=play&status=failed', expect.any(AbortSignal));
+
+    const rows = wrapper.findAll('.call-row');
+    expect(rows[0]!.find('.row-outcome').exists()).toBe(false);
+    expect(rows[1]!.get('.row-outcome').text()).toContain('Failed');
   });
   it('cancels superseded detail requests and ignores stale completion on route reuse and unmount', async () => {
     let finish!: (value: api.ToolCall) => void;
@@ -86,14 +107,13 @@ describe('tool log navigation', () => {
     finish(call('old_tool', 'another')); await flushPromises();
     expect(wrapper.text()).toBe('Elsewhere');
   });
-  it('retries an initial failed list and applies unchanged filters without losing a valid selection', async () => {
+  it('retries an initial failed list without losing a valid selection', async () => {
     vi.mocked(api.listToolCalls).mockRejectedValueOnce(new Error('Temporarily unavailable.'));
     const { wrapper, router } = await open();
     expect(wrapper.text()).toContain('Temporarily unavailable.');
     await wrapper.get('.list-message button').trigger('click'); await flushPromises();
     expect(router.currentRoute.value.params.id).toBe('first');
-    await wrapper.get('form').trigger('submit'); await flushPromises();
-    expect(api.listToolCalls).toHaveBeenCalledTimes(3);
+    expect(api.listToolCalls).toHaveBeenCalledTimes(2);
     expect(wrapper.get('.call-heading h2').text()).toBe('search');
   });
   it('keeps text-only and raw diagnostic content accessible through keyboard tabs', async () => {

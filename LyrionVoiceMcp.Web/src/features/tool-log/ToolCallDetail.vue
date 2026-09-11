@@ -12,6 +12,7 @@ import ManageQueueResult from './renderers/ManageQueueResult.vue';
 import PlayResult from './renderers/PlayResult.vue';
 import RecordedValue from './components/RecordedValue.vue';
 import ReferenceArguments from './components/ReferenceArguments.vue';
+import ResultSection from './components/ResultSection.vue';
 const props = defineProps<{ call: ToolCall }>();
 const tab = ref<'details' | 'raw'>('details');
 const presentation = computed(() => presentCall(props.call));
@@ -62,13 +63,13 @@ function switchTab(event: KeyboardEvent) {
       <QueueResult v-else-if="result?.tool === 'get_queue'" :result="result.data" />
       <ManageQueueResult v-else-if="result?.tool === 'manage_queue'" :result="result.data" />
       <PlayResult v-else-if="result?.tool === 'play'" :result="result.data" />
-      <div class="inset">
+      <ResultSection title="Other">
         <p v-if="call.resultJson === null" class="muted">No result recorded.</p>
         <p v-else-if="presentation.fallback" class="notice">This saved result does not match a supported presentation. <button class="text-button" @click="showRaw">Inspect Raw JSON</button></p>
         <p v-if="presentation.hasOtherContent" class="notice">Additional non-text content is available in Raw JSON.</p>
         <details v-if="presentation.references.length" class="technical"><summary>References and response guidance</summary><dl><div v-for="entry in presentation.references" :key="entry.path"><dt>{{ entry.path }}</dt><dd>{{ entry.value }}</dd></div></dl></details>
         <details class="technical"><summary>Call diagnostics</summary><dl><div><dt>Call ID</dt><dd>{{ call.id }}</dd></div><div><dt>Completed</dt><dd>{{ formatDate(call.completedAt) }}</dd></div><div><dt>Trace</dt><dd>{{ call.traceIdentifier ?? 'Not recorded' }}</dd></div><div v-if="call.errorLogId !== null"><dt>Error log</dt><dd><RouterLink :to="{ name: 'errors-detail', params: { id: call.errorLogId } }">Error #{{ call.errorLogId }}</RouterLink></dd></div></dl></details>
-      </div>
+      </ResultSection>
     </template>
     <div v-else class="inset raw"><h3>Arguments</h3><pre>{{ pretty(call.argumentsJson) }}</pre><h3>Result</h3><pre>{{ pretty(call.resultJson) }}</pre></div>
   </div>
