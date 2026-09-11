@@ -100,7 +100,8 @@ public interface IRatingBrowseResolver
 public sealed record BrowseReferenceValue(
     BrowseTarget? Target,
     PlayableMedia? Media,
-    string? SearchCorrelationId = null);
+    string? SearchCorrelationId = null,
+    ReferenceDisplayMetadata? DisplayMetadata = null);
 
 public interface IBrowseReferenceCodec
 {

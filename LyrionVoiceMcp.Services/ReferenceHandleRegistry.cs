@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Services;
 
@@ -46,7 +47,10 @@ internal sealed class ReferenceHandleRegistry
         this.capacity = capacity;
     }
 
-    public string Issue<TValue>(string prefix, TValue value)
+    public string Issue<TValue>(
+        string prefix,
+        TValue value,
+        ReferenceDisplayMetadata? displayMetadata = null)
         where TValue : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
@@ -68,7 +72,11 @@ internal sealed class ReferenceHandleRegistry
             }
             while (entries.ContainsKey(handle));
 
-            var entry = new Entry(handle, value, now.Add(lifetime));
+            var entry = new Entry(
+                handle,
+                value,
+                ReferenceDisplayMetadataPolicy.Bound(displayMetadata),
+                now.Add(lifetime));
             entries.Add(handle, entry);
             issuanceOrder.Enqueue(entry);
             return handle;
@@ -100,6 +108,32 @@ internal sealed class ReferenceHandleRegistry
             }
 
             return value;
+        }
+    }
+
+    public ReferenceDisplayMetadata? ResolveDisplayMetadata(string reference)
+    {
+        if (string.IsNullOrEmpty(reference))
+        {
+            return null;
+        }
+
+        lock (sync)
+        {
+            var now = timeProvider.GetUtcNow();
+            RemoveExpired(now);
+            if (!entries.TryGetValue(reference, out var entry))
+            {
+                return null;
+            }
+
+            if (entry.ExpiresAt <= now)
+            {
+                RemoveIfCurrent(entry);
+                return null;
+            }
+
+            return entry.DisplayMetadata;
         }
     }
 
@@ -160,5 +194,6 @@ internal sealed class ReferenceHandleRegistry
     private sealed record Entry(
         string Handle,
         object Value,
+        ReferenceDisplayMetadata? DisplayMetadata,
         DateTimeOffset ExpiresAt);
 }

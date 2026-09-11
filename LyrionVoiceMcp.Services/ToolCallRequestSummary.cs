@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using LyrionVoiceMcp.Abstractions;
 
 namespace LyrionVoiceMcp.Services;
 
@@ -7,7 +8,11 @@ internal static class ToolCallRequestSummary
 {
     internal const int MaximumLength = 240;
 
-    public static string? Create(string toolName, string argumentsJson, bool argumentsTruncated)
+    public static string? Create(
+        string toolName,
+        string argumentsJson,
+        bool argumentsTruncated,
+        IReadOnlyList<ToolCallReferenceSnapshot>? referenceSnapshots = null)
     {
         if (argumentsTruncated)
         {
@@ -26,11 +31,14 @@ internal static class ToolCallRequestSummary
             var summary = toolName switch
             {
                 "search" => Search(arguments),
-                "browse" => Text(arguments, "browseRef") ?? EmptyRequest(arguments, "Library roots"),
+                "browse" => Browse(arguments, referenceSnapshots),
                 "get_player_status" => EmptyRequest(arguments, "All players"),
                 "get_queue" => Text(arguments, "player"),
                 "control_player" => PlayerRequest(arguments, includeItems: false),
-                "manage_queue" or "play" => PlayerRequest(arguments, includeItems: true),
+                "manage_queue" or "play" => PlayerRequest(
+                    arguments,
+                    includeItems: true,
+                    referenceSnapshots),
                 _ => null
             };
             return Bound(summary);
@@ -40,6 +48,17 @@ internal static class ToolCallRequestSummary
             // A malformed or incomplete recording must not prevent the history page from loading.
             return null;
         }
+    }
+
+    private static string? Browse(
+        JsonElement arguments,
+        IReadOnlyList<ToolCallReferenceSnapshot>? referenceSnapshots)
+    {
+        var snapshot = referenceSnapshots?.FirstOrDefault(
+            item => item.ArgumentPath == "browseRef");
+        return snapshot is null
+            ? Text(arguments, "browseRef") ?? EmptyRequest(arguments, "Library roots")
+            : ReferenceLabel(snapshot);
     }
 
     private static string? Search(JsonElement arguments)
@@ -79,7 +98,10 @@ internal static class ToolCallRequestSummary
         return Join(parts) ?? EmptyRequest(arguments, "Broad search");
     }
 
-    private static string? PlayerRequest(JsonElement arguments, bool includeItems)
+    private static string? PlayerRequest(
+        JsonElement arguments,
+        bool includeItems,
+        IReadOnlyList<ToolCallReferenceSnapshot>? referenceSnapshots = null)
     {
         var parts = new List<string>();
         Add(parts, Text(arguments, "player"));
@@ -91,10 +113,48 @@ internal static class ToolCallRequestSummary
         if (includeItems && Property(arguments, "items") is { ValueKind: JsonValueKind.Array } items)
         {
             var count = items.GetArrayLength();
-            var noun = count == 1 ? "item" : "items";
-            parts.Add($"{count.ToString(CultureInfo.InvariantCulture)} requested {noun}");
+            var itemSnapshots = referenceSnapshots?
+                .Where(item => item.ArgumentPath.StartsWith("items[", StringComparison.Ordinal))
+                .ToArray();
+            if (itemSnapshots is { Length: > 0 })
+            {
+                var itemSummary = ReferenceLabel(itemSnapshots[0]);
+                if (itemSnapshots.Length > 1)
+                {
+                    itemSummary += $" + {itemSnapshots.Length - 1} more";
+                }
+                parts.Add(itemSummary);
+            }
+            else
+            {
+                var noun = count == 1 ? "item" : "items";
+                parts.Add($"{count.ToString(CultureInfo.InvariantCulture)} requested {noun}");
+            }
         }
         return Join(parts);
+    }
+
+    private static string ReferenceLabel(ToolCallReferenceSnapshot snapshot)
+    {
+        if (snapshot.DisplayMetadata is not { } metadata)
+        {
+            return SingleLine(snapshot.Reference);
+        }
+
+        var parts = new List<string> { SingleLine(metadata.Title) };
+        if (!string.IsNullOrWhiteSpace(metadata.Artist)
+            && !string.Equals(metadata.Artist, metadata.Title, StringComparison.OrdinalIgnoreCase))
+        {
+            parts.Add(SingleLine(metadata.Artist));
+        }
+        if (!string.IsNullOrWhiteSpace(metadata.Album)
+            && !string.Equals(metadata.Album, metadata.Title, StringComparison.OrdinalIgnoreCase))
+        {
+            parts.Add(SingleLine(metadata.Album));
+        }
+
+        var label = string.Join(" · ", parts);
+        return metadata.IsContinuation ? label + " · Continued" : label;
     }
 
     private static JsonElement? Property(JsonElement arguments, string name) =>
@@ -109,9 +169,14 @@ internal static class ToolCallRequestSummary
             return null;
         }
         var text = value.GetString()!;
-        var normalised = new string(text.Select(character => char.IsControl(character) ? ' ' : character).ToArray());
-        var singleLine = string.Join(' ', normalised.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        var singleLine = SingleLine(text);
         return singleLine.Length == 0 ? null : singleLine;
+    }
+
+    private static string SingleLine(string text)
+    {
+        var normalised = new string(text.Select(character => char.IsControl(character) ? ' ' : character).ToArray());
+        return string.Join(' ', normalised.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static string? Number(JsonElement arguments, string name) =>

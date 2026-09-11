@@ -16,6 +16,7 @@ public sealed class ToolCallConfiguration : IEntityTypeConfiguration<EntityToolC
         builder.Property(item => item.Status).IsRequired();
         builder.Property(item => item.StartedAtUtc).IsRequired();
         builder.Property(item => item.ArgumentsJson).IsRequired();
+        builder.Property(item => item.ReferenceSnapshotsJson);
         builder.Property(item => item.TraceIdentifier).HasMaxLength(128);
 
         builder.HasIndex(item => item.ToolCallId).IsUnique();

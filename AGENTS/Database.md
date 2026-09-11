@@ -11,6 +11,8 @@ Read this before adding application data, entities, repositories, scopes, or mig
 
 Catalogue data, search observations, and operational jobs, schedules, errors, and MCP tool-call history are authoritative in the EF application database. Catalogue data is rebuilt from LMS after installation or a persistence reset.
 
+`ToolCalls.ReferenceSnapshotsJson` stores nullable, bounded display metadata captured for reference-bearing requests. It supplements rather than rewrites the recorded arguments, and null remains valid for history recorded before snapshot capture or when best-effort capture was unavailable.
+
 `ScheduledJobConfigurations` stores operator-saved enabled state and canonical cron expressions keyed by schedule name, with audit timestamps. These persisted values override deployment defaults. Scheduler evaluation cursors remain separate in `ScheduledJobStates` and are reset to the save time when editable configuration changes.
 
 `EntityCatalogueState.SourceChangeToken` stores the opaque LMS token captured at the beginning of the most recent successful refresh. A later failed, cancelled, or interrupted refresh preserves it. Null means no safe baseline is available; persistence must not interpret or synthesise it.

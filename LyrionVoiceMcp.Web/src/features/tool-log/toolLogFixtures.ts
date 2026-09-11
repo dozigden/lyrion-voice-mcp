@@ -18,6 +18,7 @@ export const results: ToolResults = {
 export function call(toolName = 'search', id = 'call-fiction', structured: unknown = results.search): ToolCall {
   return { id, toolName, status: 'succeeded', startedAt: '2026-01-02T13:04:05Z', completedAt: '2026-01-02T13:04:06Z', durationMilliseconds: 420,
     argumentsJson: JSON.stringify({ name: 'The Lantern Hours' }), argumentsTruncated: false,
+    referenceSnapshots: null, referenceSnapshotsTruncated: false,
     resultJson: JSON.stringify({ structuredContent: structured, content: [{ type: 'text', text: JSON.stringify(structured) }] }),
     resultTruncated: false, errorMessage: null, traceIdentifier: 'trace-fiction', errorLogId: null };
 }

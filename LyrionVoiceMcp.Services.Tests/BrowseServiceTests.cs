@@ -10,12 +10,13 @@ public sealed class BrowseServiceTests
     {
         // Arrange
         var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage([], 0));
-        var codec = new ReferenceCodecTestContext().Browse;
+        var references = new ReferenceCodecTestContext();
+        var codec = references.Browse;
         var service = new BrowseService(
             lmsClient,
             NullRatingBrowseResolver.Instance,
             codec,
-            new ReferenceCodecTestContext().Search,
+            references.Search,
             PassthroughCatalogueSearchAvailabilityService.Instance);
 
         // Act
@@ -46,17 +47,22 @@ public sealed class BrowseServiceTests
         });
         Assert.Null(result.Continuation);
         Assert.Null(lmsClient.Request);
+        Assert.Equal(
+            "Albums",
+            references.DisplayMetadata.Resolve(
+                Assert.Single(result.Items, item => item.Title == "Albums").Reference)?.Title);
     }
 
     [Fact]
     public async Task RatingsShouldExposeSixIntegerBuckets()
     {
-        var codec = new ReferenceCodecTestContext().Browse;
+        var references = new ReferenceCodecTestContext();
+        var codec = references.Browse;
         var service = new BrowseService(
             new StubLmsBrowseClient(new LmsBrowsePage([], 0)),
             NullRatingBrowseResolver.Instance,
             codec,
-            new ReferenceCodecTestContext().Search,
+            references.Search,
             PassthroughCatalogueSearchAvailabilityService.Instance);
         var root = Assert.IsType<BrowseSucceeded>(await service.BrowseAsync(
             null,
@@ -82,6 +88,9 @@ public sealed class BrowseServiceTests
                 BrowseTargetKind.RatingTracks,
                 codec.TryDecode(item.Reference)?.Target?.Kind);
         });
+        Assert.Equal(
+            "Rating 4",
+            references.DisplayMetadata.Resolve(result.Items[4].Reference)?.Title);
     }
 
     [Fact]
@@ -98,12 +107,13 @@ public sealed class BrowseServiceTests
         ],
         true));
         var lmsClient = new StubLmsBrowseClient(new LmsBrowsePage([], 0));
-        var codec = new ReferenceCodecTestContext().Browse;
+        var references = new ReferenceCodecTestContext();
+        var codec = references.Browse;
         var service = new BrowseService(
             lmsClient,
             ratingResolver,
             codec,
-            new ReferenceCodecTestContext().Search,
+            references.Search,
             PassthroughCatalogueSearchAvailabilityService.Instance);
         var reference = codec.Encode(new BrowseReferenceValue(
             new BrowseTarget(BrowseTargetKind.RatingTracks, "4", 0),
@@ -125,6 +135,13 @@ public sealed class BrowseServiceTests
         Assert.Equal(0, ratingResolver.Offset);
         Assert.Equal(50, ratingResolver.Limit);
         Assert.Equal(1, codec.TryDecode(result.Continuation!)?.Target?.Offset);
+        var trackMetadata = references.DisplayMetadata.Resolve(item.Reference);
+        Assert.Equal("Ninety Point Signal", trackMetadata?.Title);
+        Assert.Equal("The Imaginaries", trackMetadata?.Artist);
+        Assert.Equal("Imaginary Signals", trackMetadata?.Album);
+        var continuationMetadata = references.DisplayMetadata.Resolve(result.Continuation!);
+        Assert.Equal("Rating 4", continuationMetadata?.Title);
+        Assert.True(continuationMetadata?.IsContinuation);
         Assert.Null(lmsClient.Request);
     }
 

@@ -413,7 +413,8 @@ public interface ISearchService
 
 public sealed record SearchResultReferenceValue(
     string CorrelationId,
-    MediaIdentity Identity);
+    MediaIdentity Identity,
+    ReferenceDisplayMetadata? DisplayMetadata = null);
 
 public interface ISearchResultReferenceCodec
 {

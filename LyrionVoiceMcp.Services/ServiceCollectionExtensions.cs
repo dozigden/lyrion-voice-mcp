@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ISearchService, SearchService>();
         services.AddTransient<ISearchObservationReviewService, SearchObservationReviewService>();
         services.AddSingleton<ReferenceHandleRegistry>();
+        services.AddSingleton<IReferenceDisplayMetadataResolver, ReferenceDisplayMetadataResolver>();
         services.AddSingleton<IBrowseReferenceCodec>(provider =>
             new BrowseReferenceCodec(
                 provider.GetRequiredService<ReferenceHandleRegistry>()));

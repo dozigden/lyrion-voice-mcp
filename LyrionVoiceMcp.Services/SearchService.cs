@@ -831,7 +831,8 @@ internal sealed partial class SearchService(
         new(
             referenceCodec.Encode(new SearchResultReferenceValue(
                 candidate.CorrelationId,
-                candidate.Identity)),
+                candidate.Identity,
+                DisplayMetadata(candidate))),
             candidate.Identity.Kind,
             candidate.Title,
             candidate.Artist,
@@ -849,7 +850,23 @@ internal sealed partial class SearchService(
                     candidate.Identity.Id,
                     0),
                 null,
-                candidate.CorrelationId)));
+                candidate.CorrelationId,
+                DisplayMetadata(candidate))));
+
+    private static ReferenceDisplayMetadata DisplayMetadata(
+        SearchCandidateOccurrence candidate) => new(
+        candidate.Identity.Kind switch
+        {
+            MediaEntityKind.Artist => ReferenceDisplayKind.Artist,
+            MediaEntityKind.Album => ReferenceDisplayKind.Album,
+            MediaEntityKind.Playlist => ReferenceDisplayKind.Playlist,
+            MediaEntityKind.Track => ReferenceDisplayKind.Track,
+            _ => throw new InvalidOperationException(
+                $"Unsupported search media kind {candidate.Identity.Kind}.")
+        },
+        candidate.Title,
+        candidate.Artist,
+        candidate.Album);
 
     [GeneratedRegex(
         @"(?:\b(?:rating|rated)\s*(?:(?:at\s+least|exactly|of)\s*)?(?::|=)?\s*\d+(?:\.\d+)?(?:\s*(?:\+|/5))?|\b\d+(?:\.\d+)?\s*(?:\+|/5)?\s*(?:star(?:s)?|rating)\b|\b[0-5](?:\.\d+)?\s*\+(?=\s|$))",

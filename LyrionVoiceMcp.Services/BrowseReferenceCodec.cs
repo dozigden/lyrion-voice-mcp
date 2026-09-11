@@ -21,7 +21,10 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             throw new ArgumentException("The browse reference value is invalid.", nameof(value));
         }
 
-        return registry.Issue(ReferencePrefixes.ForBrowse(value), value);
+        return registry.Issue(
+            ReferencePrefixes.ForBrowse(value),
+            value,
+            value.DisplayMetadata);
     }
 
     public BrowseReferenceValue? TryDecode(string reference)

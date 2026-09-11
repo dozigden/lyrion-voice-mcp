@@ -101,6 +101,38 @@ public sealed class ReferenceHandleRegistryTests
     }
 
     [Fact]
+    public void DisplayMetadataShouldFollowTheSameExpiryAndRestartRulesAsTheHandle()
+    {
+        // Arrange
+        var timeProvider = new MutableTimeProvider(Now);
+        var registry = new ReferenceHandleRegistry(
+            timeProvider,
+            TimeSpan.FromHours(24),
+            10);
+        var metadata = new ReferenceDisplayMetadata(
+            ReferenceDisplayKind.Track,
+            "Paper Satellites",
+            "The Lantern Hours",
+            "Northern Windows");
+        var reference = new SearchResultReferenceCodec(registry).Encode(
+            SearchValue("display") with { DisplayMetadata = metadata });
+        var resolver = new ReferenceDisplayMetadataResolver(registry);
+
+        // Act
+        var beforeExpiry = resolver.Resolve(reference);
+        timeProvider.Advance(TimeSpan.FromHours(24));
+        var afterExpiry = resolver.Resolve(reference);
+        var afterRestart = new ReferenceDisplayMetadataResolver(
+            new ReferenceHandleRegistry(timeProvider, TimeSpan.FromHours(24), 10))
+            .Resolve(reference);
+
+        // Assert
+        Assert.Equal(metadata, beforeExpiry);
+        Assert.Null(afterExpiry);
+        Assert.Null(afterRestart);
+    }
+
+    [Fact]
     public void StoredValueTypeShouldPreventCrossCodecResolutionWhenPrefixesMatch()
     {
         // Arrange

@@ -33,7 +33,8 @@ public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
 
         return registry.Issue(
             ReferencePrefixes.ForMedia(value.Identity.Kind),
-            value);
+            value,
+            value.DisplayMetadata);
     }
 
     public SearchResultReferenceValue? TryDecode(string reference)

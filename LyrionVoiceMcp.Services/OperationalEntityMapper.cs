@@ -76,6 +76,10 @@ internal static class OperationalEntityMapper
         entity.DurationMilliseconds,
         entity.ArgumentsJson,
         entity.ArgumentsTruncated,
+        ToolCallReferenceSnapshots.Deserialise(
+            entity.ReferenceSnapshotsJson,
+            entity.ReferenceSnapshotsTruncated),
+        entity.ReferenceSnapshotsTruncated,
         entity.ResultJson,
         entity.ResultTruncated,
         entity.ErrorMessage,
@@ -91,7 +95,13 @@ internal static class OperationalEntityMapper
         entity.DurationMilliseconds,
         entity.TraceIdentifier,
         entity.ErrorLogId,
-        ToolCallRequestSummary.Create(entity.ToolName, entity.ArgumentsJson, entity.ArgumentsTruncated));
+        ToolCallRequestSummary.Create(
+            entity.ToolName,
+            entity.ArgumentsJson,
+            entity.ArgumentsTruncated,
+            ToolCallReferenceSnapshots.Deserialise(
+                entity.ReferenceSnapshotsJson,
+                entity.ReferenceSnapshotsTruncated)));
 
     public static EntityJobStatus ToEntity(JobStatus status) => status switch
     {

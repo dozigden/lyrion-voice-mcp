@@ -69,7 +69,8 @@ public sealed class BrowseService(
             ? browseReferenceCodec.Encode(new BrowseReferenceValue(
                 target with { Offset = nextOffset },
                 null,
-                decoded.SearchCorrelationId))
+                decoded.SearchCorrelationId,
+                ContinuationMetadata(decoded.DisplayMetadata)))
             : null;
         return new BrowseSucceeded(items, continuation);
     }
@@ -90,7 +91,9 @@ public sealed class BrowseService(
         new(
             browseReferenceCodec.Encode(new BrowseReferenceValue(
                 new BrowseTarget(kind, null, 0),
-                null)),
+                null,
+                null,
+                DisplayMetadata(BrowseItemKind.Category, title))),
             BrowseItemKind.Category,
             title,
             null,
@@ -106,7 +109,9 @@ public sealed class BrowseService(
                         BrowseTargetKind.RatingTracks,
                         bucket.ToString(System.Globalization.CultureInfo.InvariantCulture),
                         0),
-                    null)),
+                    null,
+                    null,
+                    DisplayMetadata(BrowseItemKind.Category, $"Rating {bucket}"))),
                 BrowseItemKind.Category,
                 bucket.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 null,
@@ -152,7 +157,13 @@ public sealed class BrowseService(
         var items = page.Items.Select(item => new BrowseItemResult(
             browseReferenceCodec.Encode(new BrowseReferenceValue(
                 null,
-                new PlayableMedia(item.Identity))),
+                new PlayableMedia(item.Identity),
+                null,
+                DisplayMetadata(
+                    BrowseItemKind.Track,
+                    item.Title,
+                    item.Artist,
+                    item.Album))),
             BrowseItemKind.Track,
             item.Title,
             item.Artist,
@@ -163,7 +174,12 @@ public sealed class BrowseService(
         var continuation = page.HasMore
             ? browseReferenceCodec.Encode(new BrowseReferenceValue(
                 target with { Offset = target.Offset + items.Length },
-                null))
+                null,
+                null,
+                DisplayMetadata(
+                    BrowseItemKind.Category,
+                    $"Rating {target.FilterId}",
+                    isContinuation: true)))
             : null;
         return new BrowseSucceeded(items, continuation);
     }
@@ -178,7 +194,8 @@ public sealed class BrowseService(
             browseReferenceCodec.Encode(new BrowseReferenceValue(
                 target,
                 media,
-                searchCorrelationId)),
+                searchCorrelationId,
+                DisplayMetadata(item.Kind, item.Title, item.Artist, item.Album))),
             item.Kind,
             item.Title,
             item.Artist,
@@ -201,7 +218,8 @@ public sealed class BrowseService(
             : new BrowseReferenceValue(
                 TargetForSearchIdentity(searchReference.Identity),
                 PlayableMedia(searchReference.Identity),
-                searchReference.CorrelationId);
+                searchReference.CorrelationId,
+                searchReference.DisplayMetadata);
     }
 
     private static BrowseTarget? TargetForSearchIdentity(MediaIdentity identity) =>
@@ -217,6 +235,34 @@ public sealed class BrowseService(
             _ => throw new InvalidOperationException(
                 $"Unsupported search media kind {identity.Kind}.")
         };
+
+    private static ReferenceDisplayMetadata? ContinuationMetadata(
+        ReferenceDisplayMetadata? metadata) => metadata is null
+        ? null
+        : metadata with { IsContinuation = true };
+
+    private static ReferenceDisplayMetadata DisplayMetadata(
+        BrowseItemKind kind,
+        string title,
+        string? artist = null,
+        string? album = null,
+        bool isContinuation = false) => new(
+        kind switch
+        {
+            BrowseItemKind.Category => ReferenceDisplayKind.Category,
+            BrowseItemKind.AlbumArtist => ReferenceDisplayKind.AlbumArtist,
+            BrowseItemKind.Artist => ReferenceDisplayKind.Artist,
+            BrowseItemKind.Album => ReferenceDisplayKind.Album,
+            BrowseItemKind.Genre => ReferenceDisplayKind.Genre,
+            BrowseItemKind.Playlist => ReferenceDisplayKind.Playlist,
+            BrowseItemKind.Year => ReferenceDisplayKind.Year,
+            BrowseItemKind.Track => ReferenceDisplayKind.Track,
+            _ => throw new InvalidOperationException($"Unsupported browse item kind {kind}.")
+        },
+        title,
+        artist,
+        album,
+        isContinuation);
 
     private static BrowseTarget? NextTarget(LmsBrowseItem item) => item.Kind switch
     {

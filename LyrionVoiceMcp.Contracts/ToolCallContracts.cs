@@ -27,8 +27,22 @@ public sealed record ToolCallResponse(
     long? DurationMilliseconds,
     string ArgumentsJson,
     bool ArgumentsTruncated,
+    IReadOnlyList<ToolCallReferenceSnapshotResponse>? ReferenceSnapshots,
+    bool ReferenceSnapshotsTruncated,
     string? ResultJson,
     bool ResultTruncated,
     string? ErrorMessage,
     string? TraceIdentifier,
     long? ErrorLogId);
+
+public sealed record ToolCallReferenceSnapshotResponse(
+    string ArgumentPath,
+    string Reference,
+    ReferenceDisplayMetadataResponse? DisplayMetadata);
+
+public sealed record ReferenceDisplayMetadataResponse(
+    string Kind,
+    string Title,
+    string? Artist,
+    string? Album,
+    bool IsContinuation);

@@ -10,6 +10,35 @@ public enum ToolCallStatus
     Interrupted
 }
 
+public enum ReferenceDisplayKind
+{
+    Category,
+    AlbumArtist,
+    Artist,
+    Album,
+    Genre,
+    Playlist,
+    Year,
+    Track
+}
+
+public sealed record ReferenceDisplayMetadata(
+    ReferenceDisplayKind Kind,
+    string Title,
+    string? Artist = null,
+    string? Album = null,
+    bool IsContinuation = false);
+
+public sealed record ToolCallReferenceSnapshot(
+    string ArgumentPath,
+    string Reference,
+    ReferenceDisplayMetadata? DisplayMetadata);
+
+public interface IReferenceDisplayMetadataResolver
+{
+    ReferenceDisplayMetadata? Resolve(string reference);
+}
+
 public sealed record ToolCall(
     string Id,
     string ToolName,
@@ -19,6 +48,8 @@ public sealed record ToolCall(
     long? DurationMilliseconds,
     string ArgumentsJson,
     bool ArgumentsTruncated,
+    IReadOnlyList<ToolCallReferenceSnapshot>? ReferenceSnapshots,
+    bool ReferenceSnapshotsTruncated,
     string? ResultJson,
     bool ResultTruncated,
     string? ErrorMessage,

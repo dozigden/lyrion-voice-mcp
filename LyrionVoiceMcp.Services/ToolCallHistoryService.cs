@@ -13,6 +13,7 @@ public sealed class ToolCallHistoryService(
     IToolCallRepository repository,
     OperationalPolicy policy,
     TimeProvider timeProvider,
+    IReferenceDisplayMetadataResolver referenceDisplayMetadataResolver,
     ILogger<ToolCallHistoryService> logger) : IToolCallHistoryService
 {
     private const int DeleteBatchSize = 200;
@@ -48,6 +49,10 @@ public sealed class ToolCallHistoryService(
         try
         {
             var bounded = BoundJson(argumentsJson);
+            var referenceSnapshots = CaptureReferenceSnapshots(toolName, argumentsJson);
+            var boundedReferenceSnapshots = referenceSnapshots is null
+                ? null
+                : BoundJson(ToolCallReferenceSnapshots.Serialise(referenceSnapshots));
             using var suppression = scopeFactory.SuppressAmbientContext();
             using var scope = scopeFactory.Create(DbContextScopeOption.ForceCreateNew);
             repository.Add(new EntityToolCall
@@ -58,6 +63,8 @@ public sealed class ToolCallHistoryService(
                 StartedAtUtc = OperationalEntityMapper.ToUtcDateTime(startedAt),
                 ArgumentsJson = bounded.Json,
                 ArgumentsTruncated = bounded.Truncated,
+                ReferenceSnapshotsJson = boundedReferenceSnapshots?.Json,
+                ReferenceSnapshotsTruncated = boundedReferenceSnapshots?.Truncated ?? false,
                 TraceIdentifier = traceIdentifier
             });
             await scope.SaveChangesAsync(cancellationToken);
@@ -73,6 +80,43 @@ public sealed class ToolCallHistoryService(
                 exception,
                 "Failed to start the durable MCP tool-call record for {ToolName}.",
                 toolName);
+            return null;
+        }
+    }
+
+    private IReadOnlyList<ToolCallReferenceSnapshot>? CaptureReferenceSnapshots(
+        string toolName,
+        string argumentsJson)
+    {
+        try
+        {
+            return ToolCallReferenceSnapshots.Capture(
+                toolName,
+                argumentsJson,
+                ResolveDisplayMetadata);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Could not capture reference display metadata for MCP tool {ToolName}.",
+                toolName);
+            return null;
+        }
+    }
+
+    private ReferenceDisplayMetadata? ResolveDisplayMetadata(string reference)
+    {
+        try
+        {
+            return referenceDisplayMetadataResolver.Resolve(reference);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Could not capture display metadata for MCP reference {Reference}.",
+                reference);
             return null;
         }
     }

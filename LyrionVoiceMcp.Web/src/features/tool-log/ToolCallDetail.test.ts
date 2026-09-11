@@ -25,6 +25,50 @@ describe('recorded MCP tool presentation', () => {
     expect(wrapper.text()).toContain('Player state could not be refreshed.');
     expect(wrapper.text()).toContain('Refreshed player state was not returned.');
   });
+  it('shows captured reference names in request order with an honest unresolved fallback', () => {
+    const record = { ...call('play', 'labelled-play', results.play),
+      argumentsJson: JSON.stringify({ player: 'Studio player', items: ['track-one', 'unknown-two'] }),
+      referenceSnapshots: [
+        { argumentPath: 'items[0]', reference: 'track-one', displayMetadata: { kind: 'track', title: 'Paper Satellites', artist: 'The Lantern Hours', album: 'Northern Windows', isContinuation: false } },
+        { argumentPath: 'items[1]', reference: 'unknown-two', displayMetadata: null }
+      ] };
+
+    const wrapper = mount(ToolCallDetail, { props: { call: record } });
+
+    expect(wrapper.find('.references.horizontal').exists()).toBe(true);
+    expect(wrapper.findAll('.references li').map(item => item.text())).toEqual([
+      expect.stringContaining('Paper Satellites'),
+      expect.stringContaining('Name not captured')
+    ]);
+    expect(wrapper.text()).toContain('track-one');
+    expect(wrapper.text()).toContain('unknown-two');
+  });
+  it('renders more than five captured references vertically', () => {
+    const references = Array.from({ length: 6 }, (_, index) => ({
+      argumentPath: `items[${index}]`, reference: `track-${index}`,
+      displayMetadata: { kind: 'track', title: `Fictional Track ${index + 1}`, artist: null, album: null, isContinuation: false }
+    }));
+    const record = { ...call('play', 'long-play', results.play),
+      argumentsJson: JSON.stringify({ player: 'Studio player', items: references.map(item => item.reference) }),
+      referenceSnapshots: references };
+
+    const wrapper = mount(ToolCallDetail, { props: { call: record } });
+
+    expect(wrapper.find('.references.vertical').exists()).toBe(true);
+    expect(wrapper.findAll('.references li')).toHaveLength(6);
+  });
+  it('falls back to original arguments for history without usable snapshots', () => {
+    const historical = { ...call('browse', 'historical-browse', results.browse),
+      argumentsJson: JSON.stringify({ browseRef: 'album_historical' }), referenceSnapshots: null };
+    const truncated = { ...historical, id: 'truncated-labels', referenceSnapshotsTruncated: true };
+
+    const historicalWrapper = mount(ToolCallDetail, { props: { call: historical } });
+    const truncatedWrapper = mount(ToolCallDetail, { props: { call: truncated } });
+
+    expect(historicalWrapper.text()).toContain('album_historical');
+    expect(truncatedWrapper.text()).toContain('album_historical');
+    expect(truncatedWrapper.text()).toContain('Captured reference labels were truncated.');
+  });
   it('deduplicates equivalent structured text but preserves distinct messages and raw recording', async () => {
     const record = call();
     const data = JSON.parse(record.resultJson!);

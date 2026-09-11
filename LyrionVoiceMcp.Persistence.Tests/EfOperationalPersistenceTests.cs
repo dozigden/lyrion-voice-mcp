@@ -215,6 +215,98 @@ public sealed class EfOperationalPersistenceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ToolCallReferencesShouldRemainLabelledAfterTheLiveResolverIsUnavailable()
+    {
+        // Arrange
+        const string arguments =
+            """{"player":"Studio player","items":["track_fiction","unknown_fiction"]}""";
+        var metadata = new ReferenceDisplayMetadata(
+            ReferenceDisplayKind.Track,
+            "Paper Satellites",
+            "The Lantern Hours",
+            "Northern Windows");
+        var calls = CreateToolCallService(new FixedReferenceDisplayMetadataResolver(
+            new Dictionary<string, ReferenceDisplayMetadata>
+            {
+                ["track_fiction"] = metadata
+            }));
+        var recording = await calls.StartAsync(
+            "play",
+            arguments,
+            null,
+            TestContext.Current.CancellationToken);
+
+        // Act
+        var restartedCalls = CreateToolCallService();
+        var call = await restartedCalls.GetAsync(
+            recording!.Id,
+            TestContext.Current.CancellationToken);
+        var page = await restartedCalls.BrowseAsync(
+            new ToolCallQuery(ToolName: "play"),
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(arguments, call?.ArgumentsJson);
+        Assert.False(call?.ReferenceSnapshotsTruncated);
+        var snapshots = Assert.IsAssignableFrom<IReadOnlyList<ToolCallReferenceSnapshot>>(
+            call!.ReferenceSnapshots);
+        Assert.Equal(["track_fiction", "unknown_fiction"], snapshots.Select(item => item.Reference));
+        Assert.Equal(metadata, snapshots[0].DisplayMetadata);
+        Assert.Null(snapshots[1].DisplayMetadata);
+        Assert.Equal(
+            "Studio player · Paper Satellites · The Lantern Hours · Northern Windows + 1 more",
+            Assert.Single(page.Items).RequestSummary);
+    }
+
+    [Fact]
+    public async Task ReferenceCaptureFailureShouldRetainTheCallAndOriginalReference()
+    {
+        var calls = CreateToolCallService(new ThrowingReferenceDisplayMetadataResolver());
+
+        var recording = await calls.StartAsync(
+            "browse",
+            """{"browseRef":"albums_fiction"}""",
+            null,
+            TestContext.Current.CancellationToken);
+        var call = await calls.GetAsync(recording!.Id, TestContext.Current.CancellationToken);
+
+        var snapshot = Assert.Single(call!.ReferenceSnapshots!);
+        Assert.Equal("albums_fiction", snapshot.Reference);
+        Assert.Null(snapshot.DisplayMetadata);
+    }
+
+    [Fact]
+    public async Task ReferenceSnapshotsShouldRespectTheToolCallJsonBound()
+    {
+        var references = Enumerable.Range(0, 10)
+            .Select(index => $"track_{index}")
+            .ToArray();
+        var metadata = references.ToDictionary(
+            reference => reference,
+            reference => new ReferenceDisplayMetadata(
+                ReferenceDisplayKind.Track,
+                reference + new string('x', 500),
+                new string('y', 500),
+                new string('z', 500)));
+        var calls = CreateToolCallService(new FixedReferenceDisplayMetadataResolver(metadata));
+
+        var recording = await calls.StartAsync(
+            "play",
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                player = "Studio player",
+                items = references
+            }),
+            null,
+            TestContext.Current.CancellationToken);
+        var call = await calls.GetAsync(recording!.Id, TestContext.Current.CancellationToken);
+
+        Assert.False(call?.ArgumentsTruncated);
+        Assert.True(call?.ReferenceSnapshotsTruncated);
+        Assert.Null(call?.ReferenceSnapshots);
+    }
+
+    [Fact]
     public async Task StartupRecoveryShouldInterruptEveryRunningToolCall()
     {
         var calls = CreateToolCallService();
@@ -339,12 +431,36 @@ public sealed class EfOperationalPersistenceTests : IAsyncLifetime
         timeProvider,
         NullLogger<ErrorLogService>.Instance);
 
-    private ToolCallHistoryService CreateToolCallService() => new(
+    private ToolCallHistoryService CreateToolCallService(
+        IReferenceDisplayMetadataResolver? referenceResolver = null) => new(
         scopeFactory,
         toolCallRepository,
         policy,
         timeProvider,
+        referenceResolver ?? NullReferenceDisplayMetadataResolver.Instance,
         NullLogger<ToolCallHistoryService>.Instance);
+
+    private sealed class FixedReferenceDisplayMetadataResolver(
+        IReadOnlyDictionary<string, ReferenceDisplayMetadata> metadata)
+        : IReferenceDisplayMetadataResolver
+    {
+        public ReferenceDisplayMetadata? Resolve(string reference) =>
+            metadata.GetValueOrDefault(reference);
+    }
+
+    private sealed class ThrowingReferenceDisplayMetadataResolver
+        : IReferenceDisplayMetadataResolver
+    {
+        public ReferenceDisplayMetadata? Resolve(string reference) =>
+            throw new InvalidOperationException("Fictional capture failure.");
+    }
+
+    private sealed class NullReferenceDisplayMetadataResolver : IReferenceDisplayMetadataResolver
+    {
+        public static readonly NullReferenceDisplayMetadataResolver Instance = new();
+
+        public ReferenceDisplayMetadata? Resolve(string reference) => null;
+    }
 
     private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
     {

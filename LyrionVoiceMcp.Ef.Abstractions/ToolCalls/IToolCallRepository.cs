@@ -31,7 +31,9 @@ public sealed record EntityToolCallSummary(
     string? TraceIdentifier,
     int? ErrorLogId,
     string ArgumentsJson,
-    bool ArgumentsTruncated);
+    bool ArgumentsTruncated,
+    string? ReferenceSnapshotsJson,
+    bool ReferenceSnapshotsTruncated);
 
 public sealed record EntityToolCallPage(
     IReadOnlyList<EntityToolCallSummary> Items,

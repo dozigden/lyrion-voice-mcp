@@ -6,6 +6,8 @@ namespace LyrionVoiceMcp.Api.Endpoints;
 
 public static class OperationalHistoryEndpoints
 {
+    private const int MaximumHistoryPageSize = 100;
+
     public static IEndpointRouteBuilder MapOperationalHistoryEndpoints(
         this IEndpointRouteBuilder endpoints)
     {
@@ -130,7 +132,7 @@ public static class OperationalHistoryEndpoints
     {
         if (!ValidPage(offset, limit))
         {
-            return Invalid("Use offset >= 0 and limit between 1 and 200.");
+            return Invalid($"Use offset >= 0 and limit between 1 and {MaximumHistoryPageSize}.");
         }
 
         var page = await service.BrowseAsync(
@@ -164,7 +166,8 @@ public static class OperationalHistoryEndpoints
         if (!ValidPage(offset, limit)
             || !TryParseOptional(status?.Replace("_", string.Empty, StringComparison.Ordinal), out ToolCallStatus? parsedStatus))
         {
-            return Invalid("Use a valid tool-call status, offset >= 0 and limit between 1 and 200.");
+            return Invalid(
+                $"Use a valid tool-call status, offset >= 0 and limit between 1 and {MaximumHistoryPageSize}.");
         }
 
         var page = await service.BrowseAsync(
@@ -236,15 +239,30 @@ public static class OperationalHistoryEndpoints
     private static ToolCallResponse ToResponse(ToolCall item) => new(
         item.Id, item.ToolName, ToText(item.Status), item.StartedAt, item.CompletedAt,
         item.DurationMilliseconds, item.ArgumentsJson, item.ArgumentsTruncated,
+        item.ReferenceSnapshots?.Select(ToResponse).ToArray(),
+        item.ReferenceSnapshotsTruncated,
         item.ResultJson, item.ResultTruncated, item.ErrorMessage, item.TraceIdentifier,
         item.ErrorLogId);
+
+    private static ToolCallReferenceSnapshotResponse ToResponse(
+        ToolCallReferenceSnapshot snapshot) => new(
+        snapshot.ArgumentPath,
+        snapshot.Reference,
+        snapshot.DisplayMetadata is null
+            ? null
+            : new ReferenceDisplayMetadataResponse(
+                ToText(snapshot.DisplayMetadata.Kind),
+                snapshot.DisplayMetadata.Title,
+                snapshot.DisplayMetadata.Artist,
+                snapshot.DisplayMetadata.Album,
+                snapshot.DisplayMetadata.IsContinuation));
 
     private static ToolCallSummaryResponse ToSummaryResponse(ToolCallSummary item) => new(
         item.Id, item.ToolName, ToText(item.Status), item.StartedAt, item.CompletedAt,
         item.DurationMilliseconds, item.TraceIdentifier, item.ErrorLogId, item.RequestSummary);
 
     private static bool ValidPage(int? offset, int? limit) =>
-        offset is null or >= 0 && limit is null or >= 1 and <= 200;
+        offset is null or >= 0 && limit is null or >= 1 and <= MaximumHistoryPageSize;
 
     private static bool TryParseOptional<T>(string? value, out T? parsed) where T : struct, Enum
     {

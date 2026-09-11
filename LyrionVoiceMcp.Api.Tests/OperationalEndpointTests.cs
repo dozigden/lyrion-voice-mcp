@@ -45,6 +45,74 @@ public sealed class OperationalEndpointTests : IClassFixture<LyrionVoiceMcpApiFa
     }
 
     [Fact]
+    public async Task ToolCallDetailShouldExposePersistedReferenceDisplayMetadata()
+    {
+        // Arrange
+        using var isolatedFactory = new LyrionVoiceMcpApiFactory();
+        using var client = isolatedFactory.CreateClient();
+        var references = isolatedFactory.Services.GetRequiredService<ISearchResultReferenceCodec>();
+        var reference = references.Encode(new SearchResultReferenceValue(
+            "123456781234123412341234567890ab",
+            new MediaIdentity(MediaEntityKind.Track, "fictional-track"),
+            new ReferenceDisplayMetadata(
+                ReferenceDisplayKind.Track,
+                "Paper Satellites",
+                "The Lantern Hours",
+                "Northern Windows")));
+        var calls = isolatedFactory.Services.GetRequiredService<IToolCallHistoryService>();
+        var recording = await calls.StartAsync(
+            "play",
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                player = "Studio player",
+                items = new[] { reference }
+            }),
+            null,
+            TestContext.Current.CancellationToken);
+
+        // Act
+        using var response = await client.GetAsync(
+            $"/api/tool-calls/{recording!.Id}",
+            TestContext.Current.CancellationToken);
+        using var json = System.Text.Json.JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(json.RootElement.GetProperty("referenceSnapshotsTruncated").GetBoolean());
+        var snapshot = Assert.Single(
+            json.RootElement.GetProperty("referenceSnapshots").EnumerateArray().ToArray());
+        Assert.Equal(reference, snapshot.GetProperty("reference").GetString());
+        var metadata = snapshot.GetProperty("displayMetadata");
+        Assert.Equal("track", metadata.GetProperty("kind").GetString());
+        Assert.Equal("Paper Satellites", metadata.GetProperty("title").GetString());
+        Assert.Equal("The Lantern Hours", metadata.GetProperty("artist").GetString());
+        Assert.Equal("Northern Windows", metadata.GetProperty("album").GetString());
+    }
+
+    [Theory]
+    [InlineData("/api/tool-calls")]
+    [InlineData("/api/error-logs")]
+    public async Task HistoryListsShouldAcceptAtMostOneHundredRows(string route)
+    {
+        using var client = factory.CreateClient();
+
+        using var maximumResponse = await client.GetAsync(
+            $"{route}?limit=100",
+            TestContext.Current.CancellationToken);
+        using var excessiveResponse = await client.GetAsync(
+            $"{route}?limit=101",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, maximumResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, excessiveResponse.StatusCode);
+        Assert.Contains(
+            "limit between 1 and 100",
+            await excessiveResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task HealthShouldReportOk()
     {
         // Arrange

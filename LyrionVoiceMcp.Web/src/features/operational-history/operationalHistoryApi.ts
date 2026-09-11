@@ -41,8 +41,15 @@ export interface ErrorLogPage { items: ErrorLogSummary[]; total: number; offset:
 export interface ToolCall {
   id: string; toolName: string; status: string; startedAt: string; completedAt: string | null;
   durationMilliseconds: number | null; argumentsJson: string; argumentsTruncated: boolean;
+  referenceSnapshots: ToolCallReferenceSnapshot[] | null; referenceSnapshotsTruncated: boolean;
   resultJson: string | null; resultTruncated: boolean; errorMessage: string | null;
   traceIdentifier: string | null; errorLogId: number | null;
+}
+export interface ToolCallReferenceSnapshot {
+  argumentPath: string; reference: string; displayMetadata: ReferenceDisplayMetadata | null;
+}
+export interface ReferenceDisplayMetadata {
+  kind: string; title: string; artist: string | null; album: string | null; isContinuation: boolean;
 }
 export interface ToolCallSummary {
   id: string; toolName: string; status: string; startedAt: string; completedAt: string | null;
@@ -70,6 +77,9 @@ const errorPage = object({ ...pageFields, items: array(object(errorFields)) });
 const toolFields = { id: string, toolName: string, status: string, startedAt: date, completedAt: nd,
   durationMilliseconds: nn, traceIdentifier: ns, errorLogId: nn };
 const toolCall = object({ ...toolFields, argumentsJson: string, argumentsTruncated: boolean,
+  referenceSnapshots: nullable(array(object({ argumentPath: string, reference: string,
+    displayMetadata: nullable(object({ kind: string, title: string, artist: ns, album: ns, isContinuation: boolean })) }))),
+  referenceSnapshotsTruncated: boolean,
   resultJson: ns, resultTruncated: boolean, errorMessage: ns });
 const toolPage = object({ ...pageFields, items: array(object({ ...toolFields, requestSummary: ns })) });
 

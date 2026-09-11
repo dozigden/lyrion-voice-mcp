@@ -11,14 +11,23 @@ import QueueResult from './renderers/QueueResult.vue';
 import ManageQueueResult from './renderers/ManageQueueResult.vue';
 import PlayResult from './renderers/PlayResult.vue';
 import RecordedValue from './components/RecordedValue.vue';
+import ReferenceArguments from './components/ReferenceArguments.vue';
 const props = defineProps<{ call: ToolCall }>();
 const tab = ref<'details' | 'raw'>('details');
 const presentation = computed(() => presentCall(props.call));
 const result = computed(() => presentation.value.result);
+const allCapturedReferences = computed(() => props.call.referenceSnapshotsTruncated
+  ? []
+  : props.call.referenceSnapshots ?? []);
 const requestLabels: Record<string, string> = { name: 'Name', genre: 'Genre', fromYear: 'From year', toYear: 'To year', rating: 'Rating', ratingMatch: 'Rating match', player: 'Player', action: 'Action', items: 'Item references', browseRef: 'Browse reference' };
 watch(() => props.call.id, () => { tab.value = 'details'; });
 function showDetails() { tab.value = 'details'; }
 function showRaw() { tab.value = 'raw'; }
+function capturedReferences(key: string) {
+  if (key === 'browseRef') return allCapturedReferences.value.filter(item => item.argumentPath === 'browseRef');
+  if (key === 'items') return allCapturedReferences.value.filter(item => item.argumentPath.startsWith('items['));
+  return [];
+}
 function switchTab(event: KeyboardEvent) {
   if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
     event.preventDefault();
@@ -37,8 +46,9 @@ function switchTab(event: KeyboardEvent) {
   </div>
   <div id="call-panel" class="detail-scroll" role="tabpanel" :aria-labelledby="`call-tab-${tab}`" tabindex="0">
     <div v-if="call.argumentsTruncated || call.resultTruncated" class="inset"><p class="notice">This recording was truncated before storage. Raw JSON contains only the saved portion.</p></div>
+    <div v-if="call.referenceSnapshotsTruncated" class="inset"><p class="notice">Captured reference labels were truncated. Original references remain in the recorded arguments where available.</p></div>
     <template v-if="tab === 'details'">
-      <section class="request inset" aria-label="Request"><h3>Arguments</h3><p v-if="presentation.requestUnavailable" class="muted">The request cannot be fully presented. Inspect Raw JSON.</p><p v-else-if="!presentation.requests.length" class="muted">No arguments supplied.</p><dl v-else><div v-for="field in presentation.requests" :key="field.key"><dt>{{ requestLabels[field.key] ?? field.key }}</dt><dd><RecordedValue :value="field.value" /></dd></div></dl></section>
+      <section class="request inset" aria-label="Request"><h3>Arguments</h3><p v-if="presentation.requestUnavailable" class="muted">The request cannot be fully presented. Inspect Raw JSON.</p><ReferenceArguments v-if="presentation.requestUnavailable && allCapturedReferences.length" :items="allCapturedReferences" /><p v-if="!presentation.requestUnavailable && !presentation.requests.length" class="muted">No arguments supplied.</p><dl v-if="!presentation.requestUnavailable && presentation.requests.length"><div v-for="field in presentation.requests" :key="field.key" :class="{ 'reference-field': capturedReferences(field.key).length }"><dt>{{ requestLabels[field.key] ?? field.key }}</dt><dd><ReferenceArguments v-if="capturedReferences(field.key).length" :items="capturedReferences(field.key)" /><RecordedValue v-else :value="field.value" /></dd></div></dl></section>
       <div v-if="call.errorMessage || presentation.isError || presentation.messages.length" class="inset">
         <p v-if="call.errorMessage" class="notice error">{{ call.errorMessage }}</p>
         <p v-else-if="presentation.isError" class="notice error">The tool returned an error.</p>
@@ -70,7 +80,7 @@ h2 { font-size:22px; margin:0 0 5px; overflow-wrap:anywhere; } .call-heading spa
 .tabs button { border:0; border-bottom:2px solid transparent; background:transparent; border-radius:0; padding:16px 1px 11px; font-size:14px; color:var(--text-muted); }
 .tabs button[aria-selected=true] { border-color:var(--selection); color:var(--selection); font-weight:650; }
 .detail-scroll { flex:1; overflow:auto; min-height:0; padding:22px 0 34px; scrollbar-width:thin; }
-.inset { padding:0 var(--detail-inset); }.request { display:flex; align-items:baseline; flex-wrap:wrap; gap:12px 28px; margin:0 var(--detail-inset); padding:0 0 18px; border-bottom:1px solid var(--border); }.request h3 { margin:0; font-size:16px; }.request dl { display:flex; flex-wrap:wrap; gap:14px 28px; margin:0; }.request dl div { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 12px; min-width:0; max-width:100%; }.request dd { margin:0; }.request > p { margin:0; } dt { color:var(--text-muted); font-size:14px; } dd { margin:4px 0 0; overflow-wrap:anywhere; }
+.inset { padding:0 var(--detail-inset); }.request { display:flex; align-items:baseline; flex-wrap:wrap; gap:12px 28px; margin:0 var(--detail-inset); padding:0 0 18px; border-bottom:1px solid var(--border); }.request h3 { margin:0; font-size:16px; }.request dl { display:flex; flex-wrap:wrap; gap:14px 28px; margin:0; width:100%; }.request dl div { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 12px; min-width:0; max-width:100%; }.request dl .reference-field { display:block; flex-basis:100%; }.request .reference-field dt { margin-bottom:8px; }.request .reference-field dd { width:100%; }.request dd { margin:0; }.request > p { margin:0; } dt { color:var(--text-muted); font-size:14px; } dd { margin:4px 0 0; overflow-wrap:anywhere; }
 .technical { border-top:1px solid var(--border); margin-top:20px; }.technical summary { padding-top:14px; font-size:14px; cursor:pointer; color:var(--text-muted); }.technical dl { font-size:14px; }.technical dl > div { margin:14px 0; }.message { white-space:pre-wrap; overflow-wrap:anywhere; }.raw h3 { font-size:16px; }
 @media(max-width:720px) { .call-heading { align-items:flex-start; gap:12px; }.timing { max-width:52%; } }
 </style>

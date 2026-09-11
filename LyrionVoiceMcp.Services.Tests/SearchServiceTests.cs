@@ -25,7 +25,8 @@ public sealed class SearchServiceTests
                 null,
                 null)
         ]);
-        var codec = new ReferenceCodecTestContext().Search;
+        var references = new ReferenceCodecTestContext();
+        var codec = references.Search;
         var observations = new RecordingSearchObservationStore();
         var service = CreateService(catalogue, playlists, codec, observations);
 
@@ -45,6 +46,11 @@ public sealed class SearchServiceTests
         Assert.Equal(
             observations.Recorded?.Candidates[0].CorrelationId,
             decoded?.CorrelationId);
+        Assert.Equal(ReferenceDisplayKind.Artist, decoded?.DisplayMetadata?.Kind);
+        Assert.Equal("Copper Lines", decoded?.DisplayMetadata?.Title);
+        Assert.Equal(
+            decoded?.DisplayMetadata,
+            references.DisplayMetadata.Resolve(results[0].Reference));
     }
 
     [Fact]

@@ -40,7 +40,9 @@ public sealed class ToolCallRepository(IAmbientDbContextLocator ambientDbContext
                 item.TraceIdentifier,
                 item.ErrorLogId,
                 item.ArgumentsJson,
-                item.ArgumentsTruncated))
+                item.ArgumentsTruncated,
+                item.ReferenceSnapshotsJson,
+                item.ReferenceSnapshotsTruncated))
             .ToArrayAsync(cancellationToken);
         return new EntityToolCallPage(items, total, query.Offset, query.Limit);
     }
