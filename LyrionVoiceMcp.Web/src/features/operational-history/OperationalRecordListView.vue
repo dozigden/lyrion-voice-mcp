@@ -97,7 +97,7 @@ function statusClass(status: string) { return { danger: ['failed', 'interrupted'
 .records { flex:1; min-height:0; overflow:auto; padding:5px; margin:-5px; }
 h1 { margin:0; font-size:22px; }
 .retention { font-size:14px; color:var(--text-muted); margin:0; }
-.filters { display:grid; flex-shrink:0; grid-template-columns:minmax(0,1fr) minmax(140px,220px) auto; align-items:end; gap:12px 16px; padding:12px 16px; margin-bottom:16px; background:var(--heading-band); color:var(--selection); }
+.filters { display:grid; flex-shrink:0; grid-template-columns:repeat(2,minmax(0,240px)) max-content; align-items:end; gap:12px 16px; padding:12px 16px; margin-bottom:16px; background:var(--heading-band); color:var(--selection); }
 .filters label { display:grid; gap:4px; min-width:0; font-size:14px; }
 .filters select { width:100%; min-width:0; color:var(--text); }
 .filters select,.filters button { padding:6px 12px; font-size:14px; }
@@ -114,4 +114,5 @@ h1 { margin:0; font-size:22px; }
   .pagination { justify-content:space-between; }
 }
 @media(max-height:520px) { .page { flex:none; }.records { flex:none; overflow:visible; } }
+@media(max-width:520px) { .filters { grid-template-columns:minmax(0,1fr); } }
 </style>
