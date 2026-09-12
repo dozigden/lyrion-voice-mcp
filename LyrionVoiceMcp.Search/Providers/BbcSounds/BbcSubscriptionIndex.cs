@@ -15,12 +15,7 @@ internal sealed class BbcSubscriptionIndex : IBbcSubscriptionIndex
             throw new InvalidOperationException("The subscription index exceeds its limit.");
         var shows = subscriptions.Shows.OrderBy(x => x.Title, StringComparer.OrdinalIgnoreCase)
             .ThenBy(x => x.Id, StringComparer.Ordinal).ToArray();
-        var entries = shows.Select(show =>
-        {
-            var title = CatalogueSearchText.Normalise(show.Title);
-            return new Entry(show, title, CatalogueSearchText.SplitTokens(title)
-                .Select(token => PhuzzyTextForms.Create(token)).ToArray());
-        }).ToArray();
+        var entries = shows.Select(show => new Entry(show, PhuzzyTextForms.Create(show.Title))).ToArray();
         Volatile.Write(ref snapshot, new Snapshot(subscriptions.Available, Array.AsReadOnly(shows), entries));
     }
 
@@ -28,15 +23,16 @@ internal sealed class BbcSubscriptionIndex : IBbcSubscriptionIndex
     {
         var current = Volatile.Read(ref snapshot);
         if (!current.Available) return [];
-        var normalised = CatalogueSearchText.Normalise(name);
-        var query = CatalogueSearchText.SplitTokens(normalised).Select(PhuzzyTextForms.Create).ToArray();
-        if (query.Length == 0) return [];
+        cancellationToken.ThrowIfCancellationRequested();
+        var query = BbcProgrammeQuery.Create(name);
+        if (query.Forms.Tokens.Count == 0) return [];
         var matches = new List<(Entry Entry, int Score, string Signal)>();
+        var titleForms = new Dictionary<string, PhuzzyTextForms>(StringComparer.Ordinal);
         foreach (var entry in current.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (score, signal) = Score(entry, normalised, query);
-            if (score > 0) matches.Add((entry, score, signal));
+            var match = Match(entry, query, titleForms, cancellationToken);
+            if (match.Score > 0) matches.Add((entry, match.Score, match.Signal));
         }
         return matches.OrderByDescending(x => x.Score)
             .ThenBy(x => x.Entry.Show.Title, StringComparer.OrdinalIgnoreCase)
@@ -44,50 +40,55 @@ internal sealed class BbcSubscriptionIndex : IBbcSubscriptionIndex
             .Select(x => new BbcShowMatch(x.Entry.Show, x.Signal)).ToArray();
     }
 
-    private static (int Score, string Signal) Score(Entry entry, string normalised, PhuzzyTextForms[] query)
+    private static (int Score, string Signal) Match(Entry entry, BbcProgrammeQuery query,
+        Dictionary<string, PhuzzyTextForms> titleForms, CancellationToken cancellationToken)
     {
-        if (entry.Title == normalised) return (4000, "exact_normalised");
-        for (var start = 0; start <= entry.Tokens.Length - query.Length; start++)
+        if (entry.Forms.Normalised == query.Forms.Normalised) return (1300, "exact_normalised");
+        if (query.NameInterpretation is { Forms.Tokens.Count: 0 }) return (0, string.Empty);
+        var best = ScoreName(entry, query, titleForms, cancellationToken);
+        if (query.NameInterpretation is { } name)
         {
-            if (query.Select((token, i) => token.Normalised == entry.Tokens[start + i].Normalised).All(x => x))
-                return (3000, "complete_title_span");
+            var alternative = ScoreName(entry, name, titleForms, cancellationToken);
+            if (alternative.Score - 80 > best.Score)
+                best = (alternative.Score - 80, $"programme_context_{alternative.Signal}");
         }
-        var remaining = entry.Tokens.Select(x => x.Normalised).ToList();
-        if (query.All(token => remaining.Remove(token.Normalised))) return (2000, "complete_title_tokens");
-
-        // Every query word must match a contiguous title window. Extra query words
-        // cannot disappear merely because one name has strong phonetic evidence.
-        var best = 0;
-        for (var start = 0; start <= entry.Tokens.Length - query.Length; start++)
-        {
-            var score = 1000;
-            for (var i = 0; i < query.Length; i++)
-            {
-                var left = query[i];
-                var right = entry.Tokens[start + i];
-                if (left.Normalised == right.Normalised) continue;
-                var limit = left.Normalised.Length < 5 ? 1 : 2;
-                if (left.Normalised.Length >= 3 && right.Normalised.Length >= 3
-                    && CatalogueSearchRanker.BoundedEditDistance(left.Normalised, right.Normalised, limit) <= limit)
-                {
-                    score -= 40;
-                    continue;
-                }
-                if (left.Normalised.Length >= 4 && right.Normalised.Length >= 4
-                    && left.DoubleMetaphoneCodes.Overlaps(right.DoubleMetaphoneCodes))
-                {
-                    score -= 80;
-                    continue;
-                }
-                score = 0;
-                break;
-            }
-            best = Math.Max(best, score);
-        }
-        return (best, "tolerant_title_span");
+        return best;
     }
 
-    private sealed record Entry(BbcShow Show, string Title, PhuzzyTextForms[] Tokens);
+    private static (int Score, string Signal) ScoreName(Entry entry, BbcProgrammeQuery query,
+        Dictionary<string, PhuzzyTextForms> titleForms, CancellationToken cancellationToken)
+    {
+        var tokens = entry.Forms.Tokens;
+        var queryTokens = query.Forms.Tokens;
+        (int Score, string Signal) best = (0, string.Empty);
+        if (entry.Forms.Normalised == query.Forms.Normalised) return (1300, "exact_normalised");
+        var remaining = tokens.ToList();
+        if (queryTokens.All(remaining.Remove)) best = (1120, "complete_title_tokens");
+
+        // Compare the complete name with equally sized title spans. Forms are
+        // cached only for this search, keeping the published index linear in titles.
+        for (var start = 0; queryTokens.Count < tokens.Count && start <= tokens.Count - queryTokens.Count; start++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var text = string.Join(' ', tokens.Skip(start).Take(queryTokens.Count));
+            if (!titleForms.TryGetValue(text, out var forms))
+            {
+                // A title fragment must not manufacture an equivalence that was
+                // ineligible in the original title's full context.
+                forms = PhuzzyTextForms.Create(text) with { IndexedEquivalenceForms = [] };
+                if (titleForms.Count < 4096) titleForms.Add(text, forms);
+            }
+            var span = TextMatchScorer.SpanScore(forms, query.Forms);
+            if (span is null || span.Value.Score - 160 <= best.Score) continue;
+            var signal = span.Value.Name == "exact_normalised" ? "complete_title_span" : $"title_span_{span.Value.Name}";
+            best = (span.Value.Score - 160, signal);
+        }
+        var fullTitle = TextMatchScorer.FieldScore("title", entry.Forms, query.Spans, queryTokens.Count, 0);
+        if (fullTitle is { } match && match.FinalScore > best.Score) best = (match.FinalScore, match.Signal);
+        return best;
+    }
+
+    private sealed record Entry(BbcShow Show, PhuzzyTextForms Forms);
     private sealed record Snapshot(bool Available, IReadOnlyList<BbcShow> Shows, Entry[] Entries);
 }
 

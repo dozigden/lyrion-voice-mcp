@@ -68,6 +68,7 @@ The first three-tool delivery slice was not a permanent limit. Add cohesive user
 ## Optional subscribed programmes
 
 - `search` includes required `bbcSoundsSubscribed`, a bounded list of programme titles and opaque `browseRef` values. It is empty when BBC is absent/unready or the search is name-free or music-filtered. The provider is discovered during catalogue refresh, not enabled by a user setting.
+- Programme search tolerates extra request words and transcription errors; callers should supply name-only text and resolve competing candidates before browsing. A latest/newest-episode phrase affects only name matching, never episode selection.
 - Programmes are navigation-only. `browse` includes generic `programme` and `episode` kinds; episode results expose `playRef` and use existing `play` and `manage_queue` inputs. BBC episode order is provider order, not necessarily newest-first; never infer latest or unplayed from position.
 - The available BBC subscription root lists shows alphabetically. Provider browse selects an available connected player internally without changing it. Missing player/provider/media state produces a useful tool error.
 - Shared opaque registry lifetime, capacity, correlation and metadata capture apply to provider references. Provider-owned typed targets are never encoded into public handles.

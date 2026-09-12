@@ -1589,13 +1589,39 @@ public sealed class SearchServiceTests
         Assert.Null(references.Resolver.Resolve(programme.Reference));
     }
 
+    [Fact]
+    public async Task ProgrammeInterpretationShouldKeepTheOriginalMusicQueryAndObservedSignal()
+    {
+        const string query = "The Mira Vale Show BBC Sounds";
+        var references = new ReferenceCodecTestContext();
+        var observations = new RecordingSearchObservationStore();
+        var catalogue = new StubCatalogueSearch([]);
+        var provider = new ProgrammeSource("programme_context_exact_normalised");
+        var service = CreateService(catalogue, new StubPlaylistSearch([]), references.Search, observations,
+            browseCodec: references.Browse, providers: [provider]);
+
+        var result = Assert.IsType<SearchSucceeded>(await service.SearchAsync(query, TestContext.Current.CancellationToken));
+
+        Assert.Equal(query, catalogue.Query);
+        Assert.Equal(query, provider.Query);
+        Assert.Equal(query, observations.Recorded!.OriginalQuery);
+        var candidate = Assert.Single(observations.Recorded.Candidates);
+        Assert.Equal("programme_context_exact_normalised", candidate.MatchSignal);
+        Assert.Equal(candidate.CorrelationId, references.Search.TryDecode(Assert.Single(result.Results).Reference)!.CorrelationId);
+    }
+
     private sealed record ProgrammeTarget() : LyrionVoiceMcp.Abstractions.Providers.ProviderBrowseTarget("fiction");
-    private sealed class ProgrammeSource : LyrionVoiceMcp.Abstractions.Providers.IProviderSearchSource
+    private sealed class ProgrammeSource(string signal = "complete_title_span") : LyrionVoiceMcp.Abstractions.Providers.IProviderSearchSource
     {
         public string ProviderId => "fiction";
-        public LyrionVoiceMcp.Abstractions.Providers.ProviderSearchResult Search(SearchCriteria criteria, CancellationToken token) => new(
-            [new(new MediaIdentity(MediaEntityKind.Programme, "show", ProviderId), "The Mira Vale Show", "complete_title_span", new ProgrammeTarget())],
+        public string? Query { get; private set; }
+        public LyrionVoiceMcp.Abstractions.Providers.ProviderSearchResult Search(SearchCriteria criteria, CancellationToken token)
+        {
+            Query = criteria.Query;
+            return new(
+            [new(new MediaIdentity(MediaEntityKind.Programme, "show", ProviderId), "The Mira Vale Show", signal, new ProgrammeTarget())],
             new LmsSearchRequestObservation(ProviderId, "subscription-index", LmsSearchRequestStatus.Completed, null, 0, 1));
+        }
     }
 
     private static SearchService CreateService(

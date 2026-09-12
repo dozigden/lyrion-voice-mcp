@@ -108,7 +108,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("properties");
         Assert.False(searchInputProperties.TryGetProperty("query", out _));
         Assert.Equal(
-            "Optional artist, album, track, playlist, or subscribed programme name text, up to 500 characters and 20 words. Omit it or leave it blank for rating-, genre-, or year-filtered discovery; omit every input for broad varied track discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.",
+            "Optional artist, album, track, playlist, or subscribed programme name text, up to 500 characters and 20 words. Supply the programme name without provider labels or episode-selection instructions. Omit it or leave it blank for rating-, genre-, or year-filtered discovery; omit every input for broad varied track discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.",
             searchInputProperties.GetProperty("name").GetProperty("description").GetString());
         Assert.False(searchInputProperties.TryGetProperty("kind", out _));
         Assert.True(searchInputProperties.TryGetProperty("genre", out _));
