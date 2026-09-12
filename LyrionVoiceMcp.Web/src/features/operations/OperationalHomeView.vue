@@ -2,129 +2,85 @@
   <main class="operations-page">
     <header class="page-heading"><h1 id="page-title">System overview</h1></header>
 
-    <section class="status-grid" aria-label="Service status">
-      <article class="status-card">
-        <div class="status-card__heading">
-          <div>
-            <p class="status-card__label">LMS connection</p>
-            <h2>{{ operations.lmsConnection?.serverId ?? 'Not configured' }}</h2>
-          </div>
-          <span
-            class="status-pill"
-            :class="lmsStatusPillClass"
-            role="status"
-          >
-            <span class="status-pill__dot" aria-hidden="true"></span>
-            {{ lmsStatusLabel }}
+    <section class="connections" aria-label="Connections">
+      <article class="connection" aria-labelledby="lms-title">
+        <div class="connection-heading">
+          <h2 id="lms-title">LMS connection</h2>
+          <span class="status-pill" :class="lmsStatusPillClass" role="status">
+            <span class="status-pill__dot" aria-hidden="true"></span>{{ lmsStatusLabel }}
           </span>
         </div>
-        <code v-if="operations.lmsConnection?.baseUrl" class="connection-url">
-          {{ operations.lmsConnection.baseUrl }}
-        </code>
-        <p class="status-card__copy">
+        <p class="connection-identity">
+          <strong>{{ operations.lmsConnection?.serverId ?? 'Not configured' }}</strong>
+          <span v-if="operations.lmsConnection?.serverVersion" class="muted">LMS {{ operations.lmsConnection.serverVersion }}</span>
+        </p>
+        <code v-if="operations.lmsConnection?.baseUrl">{{ operations.lmsConnection.baseUrl }}</code>
+        <p v-if="operations.errorMessage" class="error-message" role="alert">{{ operations.errorMessage }}</p>
+        <p v-else-if="operations.lmsConnection?.status !== 'online'" class="muted">
           {{ operations.lmsConnection?.message ?? 'LMS connection status is unavailable.' }}
         </p>
-        <p v-if="operations.errorMessage" class="error-message" role="alert">
-          {{ operations.errorMessage }}
-        </p>
-        <p v-if="operations.lmsConnection?.serverVersion" class="server-version">
-          LMS {{ operations.lmsConnection.serverVersion }}
-        </p>
       </article>
-
-      <article class="status-card status-card--endpoint" aria-labelledby="mcp-endpoint-title">
-        <p id="mcp-endpoint-title" class="status-card__label">MCP endpoint</p>
+      <article class="connection" aria-labelledby="mcp-endpoint-title">
+        <div class="connection-heading"><h2 id="mcp-endpoint-title">MCP endpoint</h2></div>
         <code>{{ mcpEndpoint }}</code>
-      </article>
-
-      <article class="status-card status-card--maintenance" aria-label="Catalogue maintenance">
-        <section class="operation-row">
-          <div class="operation-row__summary">
-            <div class="operation-row__title">
-              <h2>Catalogue sync</h2>
-              <span class="status-pill" :class="catalogueStatusPillClass" role="status">
-                <span class="status-pill__dot" aria-hidden="true"></span>
-                {{ catalogueStatusLabel }}
-              </span>
-            </div>
-            <p v-if="operations.catalogueErrorMessage" class="error-message" role="alert">
-              {{ operations.catalogueErrorMessage }}
-            </p>
-            <p v-else-if="operations.catalogue?.summary">
-              {{ formatCount(operations.catalogue.summary.trackCount) }} tracks ·
-              <time :datetime="operations.catalogue.summary.refreshedAt">
-                {{ formatDate(operations.catalogue.summary.refreshedAt) }}
-              </time>
-            </p>
-            <p v-else-if="!operations.catalogueLoading">Not built.</p>
-            <p v-if="operations.catalogue?.latestRefresh?.failureMessage" class="error-message">
-              {{ operations.catalogue.latestRefresh.failureMessage }}
-            </p>
-          </div>
-          <button
-            class="refresh-button catalogue-rebuild"
-            type="button"
-            :disabled="catalogueButtonDisabled"
-            @click="rebuildCatalogue"
-          >
-            Rebuild
-          </button>
-        </section>
-
-        <section class="operation-row">
-          <div class="operation-row__summary">
-            <div class="operation-row__title">
-              <h2>Search index</h2>
-              <span class="status-pill" :class="indexStatusPillClass" role="status">
-                <span class="status-pill__dot" aria-hidden="true"></span>
-                {{ indexStatusLabel }}
-              </span>
-            </div>
-            <p v-if="operations.searchIndexesErrorMessage" class="error-message" role="alert">
-              {{ operations.searchIndexesErrorMessage }}
-            </p>
-            <p v-else-if="operations.searchIndexesLoading && !operations.searchIndex">
-              Checking…
-            </p>
-            <p v-else-if="operations.searchIndex?.artifact">
-              {{ operations.searchIndex.resolver }} ·
-              {{ formatCount(operations.searchIndex.artifact.candidateCount) }} candidates ·
-              {{ formatBytes(operations.searchIndex.artifact.indexSizeBytes) }} ·
-              <time :datetime="operations.searchIndex.artifact.builtAt">
-                {{ formatDate(operations.searchIndex.artifact.builtAt) }}
-              </time>
-            </p>
-            <p v-else>Not built.</p>
-            <p v-if="operations.searchIndex?.latestJob?.errorMessage" class="error-message">
-              {{ operations.searchIndex.latestJob.errorMessage }}
-            </p>
-          </div>
-          <div class="operation-row__actions">
-            <a
-              v-if="operations.searchIndex?.latestJob"
-              class="job-link"
-              :href="`/system/jobs/${operations.searchIndex.latestJob.id}`"
-            >
-              Job {{ operations.searchIndex.latestJob.id }} · {{ operations.searchIndex.latestJob.status }}
-            </a>
-            <button
-              class="refresh-button index-rebuild"
-              type="button"
-              :disabled="indexButtonDisabled(operations.searchIndex?.latestJob?.status)"
-              @click="rebuildIndex()"
-            >
-              Rebuild
-            </button>
-          </div>
-        </section>
+        <p class="muted">Trusted LAN only</p>
       </article>
     </section>
 
-    <footer>
-      <span>Trusted LAN only</span>
-      <span aria-hidden="true">·</span>
-      <span>{{ operations.version?.version ?? 'Version unavailable' }}</span>
-    </footer>
+    <section class="maintenance" aria-label="Catalogue maintenance">
+      <section class="operation-row" aria-labelledby="catalogue-title">
+        <header class="operation-row__title">
+          <div class="operation-heading">
+            <h2 id="catalogue-title">Catalogue sync</h2>
+            <span class="status-pill" :class="catalogueStatusPillClass" role="status">
+              <span class="status-pill__dot" aria-hidden="true"></span>{{ catalogueStatusLabel }}
+            </span>
+          </div>
+          <button class="refresh-button catalogue-rebuild" type="button" aria-label="Rebuild catalogue"
+            :disabled="catalogueButtonDisabled" @click="rebuildCatalogue">Rebuild</button>
+        </header>
+        <div class="operation-row__summary">
+          <p v-if="operations.catalogueErrorMessage" class="error-message" role="alert">{{ operations.catalogueErrorMessage }}</p>
+          <p v-else-if="operations.catalogue?.summary" class="operation-facts">
+            <span>{{ formatCount(operations.catalogue.summary.trackCount) }} tracks</span>
+            <span>Updated <time :datetime="operations.catalogue.summary.refreshedAt">{{ formatDate(operations.catalogue.summary.refreshedAt) }}</time></span>
+          </p>
+          <p v-else-if="operations.catalogueLoading" class="muted">Checking…</p>
+          <p v-else class="muted">Not built.</p>
+          <p v-if="operations.catalogue?.latestRefresh?.failureMessage" class="error-message">{{ operations.catalogue.latestRefresh.failureMessage }}</p>
+        </div>
+      </section>
+
+      <section class="operation-row" aria-labelledby="index-title">
+        <header class="operation-row__title">
+          <div class="operation-heading">
+            <h2 id="index-title">Search index</h2>
+            <span class="status-pill" :class="indexStatusPillClass" role="status">
+              <span class="status-pill__dot" aria-hidden="true"></span>{{ indexStatusLabel }}
+            </span>
+          </div>
+          <button class="refresh-button index-rebuild" type="button" aria-label="Rebuild search index"
+            :disabled="indexButtonDisabled(operations.searchIndex?.latestJob?.status)" @click="rebuildIndex">Rebuild</button>
+        </header>
+        <div class="operation-row__summary">
+          <p v-if="operations.searchIndexesErrorMessage" class="error-message" role="alert">{{ operations.searchIndexesErrorMessage }}</p>
+          <p v-else-if="operations.searchIndexesLoading && !operations.searchIndex" class="muted">Checking…</p>
+          <p v-else-if="operations.searchIndex?.artifact" class="operation-facts">
+            <span>{{ operations.searchIndex.resolver }}</span>
+            <span>{{ formatCount(operations.searchIndex.artifact.candidateCount) }} candidates</span>
+            <span>{{ formatBytes(operations.searchIndex.artifact.indexSizeBytes) }}</span>
+            <span>Built <time :datetime="operations.searchIndex.artifact.builtAt">{{ formatDate(operations.searchIndex.artifact.builtAt) }}</time></span>
+          </p>
+          <p v-else class="muted">Not built.</p>
+          <p v-if="operations.searchIndex?.latestJob">
+            <a class="job-link" :href="`/system/jobs/${operations.searchIndex.latestJob.id}`">Job {{ operations.searchIndex.latestJob.id }} · {{ operations.searchIndex.latestJob.status }}</a>
+          </p>
+          <p v-if="operations.searchIndex?.latestJob?.errorMessage" class="error-message">{{ operations.searchIndex.latestJob.errorMessage }}</p>
+        </div>
+      </section>
+    </section>
+
+    <footer>{{ operations.version?.version ?? 'Version unavailable' }}</footer>
   </main>
 </template>
 
@@ -157,16 +113,15 @@ const lmsStatusLabel = computed(() => {
 });
 
 const lmsStatusPillClass = computed(() => ({
-  'status-pill--online': operations.lmsConnection?.status === 'online',
-  'status-pill--error': operations.lmsConnection?.status === 'unavailable'
+  'status-pill--online': lmsStatusLabel.value === 'Online',
+  'status-pill--error': lmsStatusLabel.value === 'Unavailable'
 }));
 
 const catalogueStatusLabel = computed(() => catalogueHeadline(operations.catalogue, operations.catalogueLoading, operations.catalogueErrorMessage));
 
 const catalogueStatusPillClass = computed(() => ({
-  'status-pill--online': operations.catalogue !== null
-    && operations.catalogue.summary !== null
-    && !operations.catalogueRebuilding,
+  'status-pill--online': catalogueStatusLabel.value === 'Ready',
+  'status-pill--attention': catalogueStatusLabel.value === 'Ready · attention',
   'status-pill--working': operations.catalogueRebuilding,
   'status-pill--error': operations.catalogueErrorMessage !== null
     || catalogueStatusLabel.value === 'Attention'
@@ -181,6 +136,7 @@ const indexStatusLabel = computed(() => indexHeadline(operations.searchIndex, op
 
 const indexStatusPillClass = computed(() => ({
   'status-pill--online': indexStatusLabel.value === 'Ready',
+  'status-pill--attention': indexStatusLabel.value === 'Ready · attention',
   'status-pill--working': operations.searchIndexesRebuilding,
   'status-pill--error': operations.searchIndexesErrorMessage !== null
     || indexStatusLabel.value === 'Attention'
@@ -269,18 +225,37 @@ function formatBytes(value: number): string {
 </script>
 
 <style scoped>
-.operations-page { width:min(1200px,100%); margin:0 auto; padding:28px 34px 40px; }
-.page-heading h1 { margin:0 0 24px; font-size:22px; }
-.status-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px 32px; }
-.status-card { min-width:0; }.status-card__heading { display:flex; justify-content:space-between; align-items:start; gap:20px; }
-.status-card__label { margin:0 0 8px; font-size:14px; color:var(--text-muted); }.status-card h2 { font-size:18px; margin:0 0 8px; }
-.status-card__copy,.server-version { color:var(--text-muted); font-size:14px; }
-.status-card--endpoint { padding:18px 24px; background:var(--heading-band); align-self:start; color:var(--selection); }.status-card--endpoint .status-card__label { color:inherit; }
-.status-card--maintenance { grid-column:1/-1; }
-.operation-row { padding:0 0 22px; margin:8px 0 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:24px; }
-.operation-row__summary { flex:1; min-width:0; }.operation-row__title { padding:10px 18px; background:var(--heading-band); color:var(--selection); display:flex; justify-content:space-between; align-items:center; gap:16px; }.operation-row__title h2 { margin:0; font-size:16px; }.operation-row__summary > p { font-size:14px; margin:14px 18px 0; }
-.operation-row__actions { display:flex; flex-direction:column; align-items:flex-end; gap:12px; }.job-link { font-size:14px; }.status-pill { font-size:14px; white-space:nowrap; }.status-pill--error { color:var(--danger-text); }
-.refresh-button { color:var(--selection); background:transparent; border-color:var(--selection); }.error-message { color:var(--danger-text); }
-footer { display:flex; gap:10px; color:var(--text-muted); font-size:14px; border-top:1px solid var(--border); padding-top:16px; }
-@media(max-width:720px) { .operations-page { padding:24px 18px; }.status-grid { grid-template-columns:1fr; }.operation-row { align-items:stretch; flex-direction:column; gap:16px; }.operation-row > button { align-self:flex-start; }.operation-row__actions { flex-direction:row; justify-content:space-between; align-items:center; } }
+.operations-page { width:min(1200px,100%); margin:0 auto; padding:22px 34px 32px; }
+.page-heading h1 { margin:0 0 20px; font-size:22px; }
+.connections { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px 32px; margin-bottom:24px; }
+.connection { min-width:0; }
+.connection-heading { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; margin-bottom:8px; }
+.connection-heading h2 { margin:0; font-size:16px; }
+.connection p { margin:8px 0 0; font-size:14px; }
+.connection .connection-identity { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 16px; margin:0 0 4px; }
+.connection-identity strong { font-size:16px; overflow-wrap:anywhere; }
+.connection code { display:block; overflow-wrap:anywhere; font-size:14px; }
+.maintenance { display:grid; gap:20px; }
+.operation-row { min-width:0; }
+.operation-row__title { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:16px; padding:8px 16px; background:var(--heading-band); color:var(--selection); }
+.operation-heading { display:flex; align-items:center; flex-wrap:wrap; gap:4px 16px; min-width:0; }
+.operation-heading h2 { margin:0; font-size:16px; }
+.operation-row__summary { padding:0 16px; overflow-wrap:anywhere; }
+.operation-row__summary p { margin:8px 0 0; font-size:14px; }
+.operation-facts { display:flex; flex-wrap:wrap; gap:4px 18px; }
+.status-pill { display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--text-muted); }
+.status-pill__dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+.status-pill--online { color:var(--success); }
+.status-pill--working,.status-pill--attention { color:#805500; }
+.status-pill--error,.error-message { color:var(--danger-text); }
+.refresh-button { color:var(--selection); background:transparent; border-color:var(--selection); padding:6px 12px; font-size:14px; }
+footer { margin-top:20px; padding-top:12px; border-top:1px solid var(--border); color:var(--text-muted); font-size:14px; }
+@media(max-width:720px) {
+  .operations-page { padding:18px 18px 24px; }
+  .page-heading h1 { margin-bottom:16px; }
+  .connections { grid-template-columns:minmax(0,1fr); gap:16px; margin-bottom:20px; }
+  .operation-row__title { padding:8px 12px; gap:12px; }
+  .operation-heading { flex-direction:column; align-items:flex-start; }
+  .operation-row__summary { padding:0 12px; }
+}
 </style>
