@@ -28,7 +28,7 @@ README files are for human-facing usage. Agent execution guidance belongs here o
 - Treat the repository, its complete Git history, commit messages, branches, tags, CI logs, and CI artifacts as public even while repository visibility is private. Do not rely on a later history rewrite to remove unsuitable material.
 - Never commit data from a household/live LMS or the private evaluation corpus, including real media names or queries, identifiers, library/player names, paths, host or network details, catalogue counts, timings, benchmark outcomes, or other derived observations. Keep such evidence in ignored local data or the permanently private evaluation repository.
 - Use clearly fictional metadata in tracked examples, fixtures, tests, logs, and documentation. Record private-environment conclusions qualitatively without identifying inputs or measurements; if provenance is uncertain, leave the material out of this repository.
-- This is unauthenticated trusted-LAN software. Do not imply that the service is safe to expose publicly.
+- This software has no authentication. Do not imply that the service is safe to expose publicly.
 - Treat the public MCP surface as evolvable user-facing product functionality. Add well-scoped media and player tools when justified, but do not expose diagnostics, raw LMS commands, or experimental internals as public tools.
 - Use the repository validation scripts for normal checks. Avoid ad hoc test commands unless changing those scripts or diagnosing a script failure.
 - For direct `dotnet` commands, prefer `-maxcpucount:1 -nodeReuse:false`. In a sandbox, set `NUGET_HTTP_CACHE_PATH` to a writable temporary path.

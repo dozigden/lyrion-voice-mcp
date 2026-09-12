@@ -43,7 +43,6 @@ describe('OperationalHomeView', () => {
     expect(wrapper.text()).toContain(new URL('/mcp', window.location.origin).href);
     expect(wrapper.text()).toContain('development');
     expect(wrapper.text()).toContain('LMS 9.0.1');
-    expect(wrapper.text()).toContain('Trusted LAN only');
     expect(wrapper.findAll('.operation-row button').map(button => button.text())).toEqual([
       'Rebuild',
       'Rebuild'

@@ -23,7 +23,6 @@
       <article class="connection" aria-labelledby="mcp-endpoint-title">
         <div class="connection-heading"><h2 id="mcp-endpoint-title">MCP endpoint</h2></div>
         <code>{{ mcpEndpoint }}</code>
-        <p class="muted">Trusted LAN only</p>
       </article>
     </section>
 

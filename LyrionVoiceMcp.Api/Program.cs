@@ -106,7 +106,7 @@ await app.Services.GetRequiredService<IToolCallHistoryService>()
     .MarkRunningInterruptedAsync(CancellationToken.None);
 
 app.Logger.LogWarning(
-    "Lyrion Voice MCP is unauthenticated trusted-LAN software. Do not expose this service to untrusted networks.");
+    "Lyrion Voice MCP has no authentication. Do not expose this service to untrusted networks.");
 
 app.UseMiddleware<LyrionVoiceMcp.Api.ApiExceptionLoggingMiddleware>();
 app.MapOperationalEndpoints();

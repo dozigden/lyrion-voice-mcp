@@ -26,7 +26,7 @@ Read this before changing background work, scheduling, error capture, retention,
 - Use `IErrorLogService` for unexpected failures only. Validation and normal business rejections are not exceptions and do not enter the error log.
 - API middleware, the job runner, scheduler and MCP filter must link the best available trace, request, job and structured context.
 - Error persistence is best effort: a failure to write the error log is reported through `ILogger` and must not replace the original outcome.
-- Bound stored fields, but otherwise retain diagnostic values as supplied so failures remain inspectable. Do not add credentials to error contexts. This remains trusted-LAN software and the error UI is not safe to expose publicly.
+- Bound stored fields, but otherwise retain diagnostic values as supplied so failures remain inspectable. Do not add credentials to error contexts. The error UI has no authentication and is not safe to expose publicly.
 
 ## MCP tool calls
 
