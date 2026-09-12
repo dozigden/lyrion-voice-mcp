@@ -5,15 +5,23 @@
     <div v-if="loading" class="empty">Loading schedules…</div>
     <section v-else class="grid">
       <article v-for="schedule in schedules" :key="schedule.name" class="card">
-        <div class="heading">
-          <div>
+        <header class="heading">
+          <div class="heading-identity">
             <h2>{{ schedule.displayName }}</h2>
-            <code>{{ schedule.cronExpression }}</code>
+            <span v-if="!schedule.enabled" class="tag" role="status">
+              <span class="tag__dot" aria-hidden="true"></span>{{ statusLabel(schedule) }}
+            </span>
           </div>
-          <span class="tag" :class="{ disabled: !schedule.enabled }">
-            {{ statusLabel(schedule) }}
-          </span>
-        </div>
+          <button
+            class="run"
+            type="button"
+            :aria-label="`Run ${schedule.displayName} now`"
+            :disabled="!!store.pending[schedule.name]"
+            @click="run(schedule.name)"
+          >
+            {{ store.pending[schedule.name] === 'running' ? 'Queuing…' : 'Run now' }}
+          </button>
+        </header>
 
         <form
           v-if="schedule.editableConfiguration && drafts[schedule.name]"
@@ -30,45 +38,43 @@
             Schedule enabled
           </label>
 
-          <label v-if="schedule.editableConfiguration.kind === 'interval'">
-            Check interval
-            <select
-              v-model="drafts[schedule.name].intervalMinutes"
-              :aria-label="`${schedule.displayName} interval`"
-            >
-              <option :value="null" disabled>Choose an interval</option>
-              <option v-for="minutes in intervals" :key="minutes" :value="minutes">
-                {{ intervalLabel(minutes) }}
-              </option>
-            </select>
-          </label>
+          <div class="configuration-controls">
+            <label v-if="schedule.editableConfiguration.kind === 'interval'" class="schedule-value">
+              <select
+                v-model="drafts[schedule.name].intervalMinutes"
+                :aria-label="`${schedule.displayName} interval`"
+              >
+                <option :value="null" disabled>Choose an interval</option>
+                <option v-for="minutes in intervals" :key="minutes" :value="minutes">
+                  {{ intervalLabel(minutes) }}
+                </option>
+              </select>
+            </label>
 
-          <label v-else>
-            Daily time
-            <input
-              v-model="drafts[schedule.name].dailyTime"
-              type="time"
-              step="60"
-              :aria-label="`${schedule.displayName} daily time`"
+            <label v-else class="schedule-value">
+              <input
+                v-model="drafts[schedule.name].dailyTime"
+                type="time"
+                step="60"
+                :aria-label="`${schedule.displayName} daily time`"
+              >
+            </label>
+            <button
+              class="save"
+              type="submit"
+              :aria-label="`Save ${schedule.displayName} schedule`"
+              :disabled="!!store.pending[schedule.name] || needsSimpleValue(schedule)"
             >
-          </label>
+              {{ store.pending[schedule.name] === 'saving' ? 'Saving…' : 'Save' }}
+            </button>
+          </div>
 
           <p v-if="needsSimpleValue(schedule)" class="hint">
             The deployment uses a custom cron expression. Choose a supported value to replace it.
           </p>
-          <button
-            class="save"
-            type="submit"
-            :aria-label="`Save ${schedule.displayName} schedule`"
-            :disabled="!!store.pending[schedule.name] || needsSimpleValue(schedule)"
-          >
-            {{ store.pending[schedule.name] === 'saving' ? 'Saving…' : 'Save' }}
-          </button>
         </form>
 
         <dl>
-          <div><dt>Time zone</dt><dd>{{ schedule.timeZoneId }}</dd></div>
-          <div><dt>Last evaluated</dt><dd>{{ formatOptional(schedule.lastEvaluatedAt) }}</dd></div>
           <div><dt>Next run</dt><dd>{{ formatOptional(schedule.nextOccurrenceAt) }}</dd></div>
           <div>
             <dt>Current job</dt>
@@ -82,8 +88,9 @@
               <span v-else>—</span>
             </dd>
           </div>
+          <div><dt>Cron expression</dt><dd><code>{{ schedule.cronExpression }}</code></dd></div>
           <div>
-            <dt>Last started</dt>
+            <dt>Last job</dt>
             <dd>
               <RouterLink
                 v-if="schedule.lastStartedJob"
@@ -95,15 +102,6 @@
             </dd>
           </div>
         </dl>
-        <button
-          class="run"
-          type="button"
-          :aria-label="`Run ${schedule.displayName} now`"
-          :disabled="!!store.pending[schedule.name]"
-          @click="run(schedule.name)"
-        >
-          {{ store.pending[schedule.name] === 'running' ? 'Queuing…' : 'Run now' }}
-        </button>
       </article>
     </section>
   </main>
@@ -160,7 +158,6 @@ function needsSimpleValue(schedule: ScheduledJob) {
 }
 
 function statusLabel(schedule: ScheduledJob) {
-  if (schedule.enabled) return 'Enabled';
   if (schedule.editableConfiguration?.configuredEnabled) return 'Unavailable';
   return 'Disabled';
 }
@@ -179,10 +176,39 @@ function formatOptional(value: string | null) {
 </script>
 
 <style scoped>
-.page { width:min(1200px,100%); margin:0 auto; padding:28px 34px 40px; }h1 { font-size:22px; margin:0; }
-.grid { display:grid; grid-template-columns:1fr 1fr; gap:28px 32px; margin-top:24px; }.card { min-width:0; padding-bottom:24px; border-bottom:1px solid var(--border); }
-.heading { display:flex; justify-content:space-between; align-items:start; gap:14px; padding:12px 18px; background:var(--heading-band); color:var(--selection); }h2 { margin:0 0 6px; font-size:16px; }code,.tag { font-size:14px; }.tag { white-space:nowrap; }
-.configuration { display:grid; gap:12px; margin:20px 0; }.configuration label { display:grid; gap:6px; color:var(--text-muted); font-size:14px; }.configuration .toggle { display:flex; align-items:center; gap:8px; color:var(--text); }input[type=checkbox] { accent-color:var(--selection); }.hint { font-size:14px; color:var(--text-muted); margin:0; }
-dl { display:grid; grid-template-columns:1fr 1fr; gap:16px 24px; margin:20px 0; }dt { font-size:14px; color:var(--text-muted); }dd { margin:4px 0 0; overflow-wrap:anywhere; font-size:14px; }.save { justify-self:start; background:var(--selection); border-color:var(--selection); color:#fff7ef; }.run { border-color:var(--selection); color:var(--selection); background:transparent; }.empty { color:var(--text-muted); }
-@media(max-width:760px) { .page { padding:24px 18px; }.grid { grid-template-columns:1fr; } }
+.page { width:min(1200px,100%); margin:0 auto; padding:22px 34px 32px; }
+h1 { font-size:22px; margin:0; }
+.grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; gap:24px 32px; margin-top:20px; }
+.card { min-width:0; }
+.heading { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:8px 16px; background:var(--heading-band); color:var(--selection); }
+.heading-identity { display:flex; align-items:center; flex-wrap:wrap; gap:4px 16px; min-width:0; }
+h2 { margin:0; font-size:16px; overflow-wrap:anywhere; }
+.tag { display:inline-flex; align-items:center; gap:6px; color:var(--text-muted); font-size:14px; }
+.tag__dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+.configuration { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 16px; margin:16px; }
+.configuration label { display:grid; gap:4px; color:var(--text-muted); font-size:14px; }
+.configuration .toggle { display:flex; align-items:center; gap:8px; min-height:35px; color:var(--text); }
+input[type=checkbox] { accent-color:var(--selection); margin:0; }
+.configuration-controls { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:12px; flex:1 1 220px; min-width:0; }
+.schedule-value { min-width:0; }
+.schedule-value input,.schedule-value select { width:100%; min-width:0; height:35px; padding:6px 8px; font-size:14px; }
+.hint { flex-basis:100%; font-size:14px; color:var(--text-muted); margin:0; }
+dl { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px 24px; margin:16px; }
+dt { font-size:14px; color:var(--text-muted); }
+dd { margin:2px 0 0; overflow-wrap:anywhere; font-size:14px; }
+code { font-size:14px; }
+.save,.run { padding:6px 12px; font-size:14px; }
+.save { background:var(--selection); border-color:var(--selection); color:#fff7ef; }
+.run { border-color:var(--selection); color:var(--selection); background:transparent; white-space:nowrap; }
+.empty { color:var(--text-muted); }
+@media(max-width:1000px) { .grid { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:720px) {
+  .page { padding:18px 18px 24px; }
+  .grid { margin-top:16px; gap:20px; }
+  .heading { padding:8px 12px; }
+  .heading-identity { flex-direction:column; align-items:flex-start; }
+  .configuration,dl { margin:12px; }
+  .configuration .toggle { flex-basis:100%; min-height:0; }
+  dl { gap:12px 16px; }
+}
 </style>

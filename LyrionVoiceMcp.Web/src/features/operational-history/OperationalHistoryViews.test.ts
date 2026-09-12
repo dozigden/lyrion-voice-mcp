@@ -72,7 +72,9 @@ describe('operational history views', () => {
     const wrapper = mount(ScheduledJobsView, { global: { plugins: [createPinia(), router] } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Last evaluated');
+    expect(wrapper.text()).toContain('Next run');
+    expect(wrapper.text()).not.toContain('Last evaluated');
+    expect(wrapper.text()).not.toContain('Time zone');
     expect(wrapper.text()).toContain('#42 · completed');
     expect(wrapper.text()).toContain('Unavailable');
     await wrapper.get('button.run').trigger('click');
@@ -103,7 +105,9 @@ describe('operational history views', () => {
     const wrapper = mount(ScheduledJobsView, { global: { plugins: [createPinia(), router] } });
     await flushPromises();
 
-    const initialNextRun = wrapper.findAll('dd')[2].text();
+    expect(wrapper.find('.heading [role="status"]').exists()).toBe(false);
+    const nextRun = () => wrapper.findAll('dl > div').find(field => field.get('dt').text() === 'Next run')!.get('dd').text();
+    const initialNextRun = nextRun();
     await wrapper.get('select').setValue('10');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
@@ -113,7 +117,7 @@ describe('operational history views', () => {
     }, expect.any(AbortSignal));
     expect(list).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('*/10 * * * *');
-    expect(wrapper.findAll('dd')[2].text()).not.toBe(initialNextRun);
+    expect(nextRun()).not.toBe(initialNextRun);
     expect(wrapper.get('select').attributes('aria-label'))
       .toBe('Check LMS catalogue changes interval');
     expect(wrapper.get('button.save').attributes('aria-label'))
