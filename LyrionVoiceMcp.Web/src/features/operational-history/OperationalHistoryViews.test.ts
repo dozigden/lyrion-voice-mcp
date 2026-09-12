@@ -9,6 +9,35 @@ import ScheduledJobsView from './ScheduledJobsView.vue';
 describe('operational history views', () => {
   beforeEach(() => vi.restoreAllMocks());
 
+  it.each(['jobs', 'errors'] as const)('applies and clears %s dropdown filters explicitly', async kind => {
+    const list = vi.spyOn(api, kind === 'jobs' ? 'listJobs' : 'listErrors')
+      .mockResolvedValue({ items: [], total: 0, offset: 0, limit: 50, retentionDays: 90 });
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: '/', component: { template: '<div />' } }
+    ] });
+    await router.push('/');
+    const wrapper = mount(OperationalRecordListView, {
+      props: { kind }, global: { plugins: [createPinia(), router] }
+    });
+    await flushPromises();
+    const selects = wrapper.findAll('.filters select');
+    expect(selects).toHaveLength(2);
+    await selects[0]!.setValue(kind === 'jobs' ? 'catalogue.refresh' : 'backend');
+    await selects[1]!.setValue(kind === 'jobs' ? 'failed' : 'job-runner');
+    expect(list).toHaveBeenCalledTimes(1);
+
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const filters = kind === 'jobs' ? 'type=catalogue.refresh&status=failed' : 'source=backend&area=job-runner';
+    expect(list).toHaveBeenLastCalledWith(`?offset=0&limit=50&${filters}`, expect.any(AbortSignal));
+    await selects[0]!.setValue('');
+    await selects[1]!.setValue('');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(list).toHaveBeenLastCalledWith('?offset=0&limit=50', expect.any(AbortSignal));
+    wrapper.unmount();
+  });
+
   it('pages through the complete durable job history', async () => {
     const list = vi.spyOn(api, 'listJobs')
       .mockResolvedValueOnce({

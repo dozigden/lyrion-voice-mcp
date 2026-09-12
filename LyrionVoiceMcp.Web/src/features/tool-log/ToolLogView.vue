@@ -11,6 +11,8 @@ const statuses = ['running', 'succeeded', 'tool_error', 'cancelled', 'failed', '
 const listElement = ref<HTMLElement | null>(null);
 const detailElement = ref<HTMLElement | null>(null);
 const tool = ref(''), status = ref('');
+const toolOptions = computed(() => [...new Set([...tools, tool.value])].filter(Boolean));
+const statusOptions = computed(() => [...new Set([...statuses, status.value])].filter(Boolean));
 const selectedId = computed(() => typeof route.params.id === 'string' ? route.params.id : '');
 const mobileDetail = computed(() => !!selectedId.value && route.query.view !== 'list');
 const offset = computed(() => {
@@ -89,8 +91,8 @@ function retryDetail() { if (selectedId.value) void log.loadDetail(selectedId.va
     <aside class="log-pane" aria-label="MCP calls">
       <header class="log-header"><div class="log-title"><h1>Tool log</h1><span class="muted">Newest first</span></div>
         <form class="filters" @submit.prevent>
-          <label>Tool<input v-model="tool" list="tool-names" placeholder="All tools" type="search"><datalist id="tool-names"><option v-for="name in tools" :key="name" :value="name" /></datalist></label>
-          <label>Outcome<select v-model="status"><option value="">All outcomes</option><option v-for="value in statuses" :key="value" :value="value">{{ label(value) }}</option></select></label>
+          <label>Tool<select v-model="tool" aria-label="Tool"><option value="">All tools</option><option v-for="name in toolOptions" :key="name" :value="name">{{ name }}</option></select></label>
+          <label>Outcome<select v-model="status" aria-label="Outcome"><option value="">All outcomes</option><option v-for="value in statusOptions" :key="value" :value="value">{{ label(value) }}</option></select></label>
         </form>
       </header>
       <div ref="listElement" class="log-list" :aria-busy="log.listLoading" @scroll="rememberScroll">

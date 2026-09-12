@@ -6,10 +6,16 @@
     </header>
     <form class="filters" :aria-label="`${heading} filters`" @submit.prevent="applyFilters">
       <label>{{ primaryLabel }}
-        <input v-model="primaryFilter" type="search" placeholder="All">
+        <select v-model="primaryFilter">
+          <option value="">All</option>
+          <option v-for="value in primaryOptions" :key="value" :value="value">{{ value }}</option>
+        </select>
       </label>
       <label>{{ kind === 'errors' ? 'Area' : 'Status' }}
-        <input v-model="secondaryFilter" type="search" placeholder="All">
+        <select v-model="secondaryFilter">
+          <option value="">All</option>
+          <option v-for="value in secondaryOptions" :key="value" :value="value">{{ value }}</option>
+        </select>
       </label>
       <button type="submit" :disabled="loading">Apply filters</button>
     </form>
@@ -39,6 +45,7 @@ import { storeToRefs } from 'pinia';
 import { useHistoryStore, type HistoryKind } from './historyStore';
 import type { ErrorLogSummary, JobSummary } from './operationalHistoryApi';
 import { formatDate } from '../../shared/format';
+import { errorAreas, errorSources, jobStatuses, jobTypes } from './historyFilterOptions';
 const props = defineProps<{ kind: HistoryKind }>();
 type OperationalSummary = JobSummary | ErrorLogSummary;
 const history = useHistoryStore();
@@ -50,6 +57,19 @@ const offset = ref(0), limit = ref(50);
 const primaryFilter = ref(''), secondaryFilter = ref('');
 const heading = computed(() => props.kind === 'jobs' ? 'Jobs' : 'Error log');
 const primaryLabel = computed(() => props.kind === 'jobs' ? 'Job type' : 'Source');
+const primaryOptions = computed(() => [...new Set([
+  ...(props.kind === 'jobs' ? jobTypes : errorSources),
+  ...items.value.map(item => isJob(item) ? item.type : item.source),
+  primaryFilter.value
+])].filter(Boolean));
+const secondaryOptions = computed(() => {
+  if (props.kind === 'jobs') return jobStatuses;
+  return [...new Set([
+    ...errorAreas,
+    ...items.value.flatMap(item => isJob(item) ? [] : [item.area]),
+    secondaryFilter.value
+  ])].filter(Boolean);
+});
 const firstRecord = computed(() => items.value.length ? offset.value + 1 : 0);
 const lastRecord = computed(() => Math.min(offset.value + items.value.length, total.value));
 watch(() => props.kind, () => { primaryFilter.value = ''; secondaryFilter.value = ''; offset.value = 0; void load(); }, { immediate: true });
@@ -79,8 +99,8 @@ h1 { margin:0; font-size:22px; }
 .retention { font-size:14px; color:var(--text-muted); margin:0; }
 .filters { display:grid; flex-shrink:0; grid-template-columns:minmax(0,1fr) minmax(140px,220px) auto; align-items:end; gap:12px 16px; padding:12px 16px; margin-bottom:16px; background:var(--heading-band); color:var(--selection); }
 .filters label { display:grid; gap:4px; min-width:0; font-size:14px; }
-.filters input { width:100%; min-width:0; color:var(--text); }
-.filters input,.filters button { padding:6px 12px; font-size:14px; }
+.filters select { width:100%; min-width:0; color:var(--text); }
+.filters select,.filters button { padding:6px 12px; font-size:14px; }
 .filters button { background:transparent; border-color:var(--selection); }
 .list { border-top:1px solid var(--border); }.row { display:flex; justify-content:space-between; gap:24px; padding:16px 18px; border-bottom:1px solid var(--border); color:var(--text); text-decoration:none; }.row:nth-child(even) { background:var(--stripe); }.row:hover { background:var(--selection-hover); }.row strong,.row span { display:block; }.row div>span { margin-top:5px; font-size:14px; color:var(--text-muted); }.row div { min-width:0; overflow-wrap:anywhere; }.signals { flex-shrink:0; text-align:right; }.signals .danger { color:var(--danger-text); }.signals .success { color:var(--success); }
 .pagination { display:flex; align-items:center; justify-content:flex-end; gap:16px; margin-top:20px; font-size:14px; }.empty { padding:40px 0; color:var(--text-muted); }

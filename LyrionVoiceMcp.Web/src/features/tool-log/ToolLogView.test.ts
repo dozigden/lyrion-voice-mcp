@@ -24,6 +24,13 @@ describe('tool log navigation', () => {
     vi.spyOn(api, 'getToolCall').mockImplementation(async id => call('search', id));
   });
   afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()); });
+  it('keeps historical tool selections from direct links visible in the dropdown', async () => {
+    const { wrapper } = await open('/tool-calls?toolName=retired_tool');
+    const select = wrapper.get('select[aria-label="Tool"]');
+    expect((select.element as HTMLSelectElement).value).toBe('retired_tool');
+    expect(select.text()).toContain('retired_tool');
+    expect(api.listToolCalls).toHaveBeenCalledWith('?offset=0&limit=50&toolName=retired_tool', expect.any(AbortSignal));
+  });
   it('selects the newest call without fetching details for every list row or hiding the mobile list', async () => {
     const { wrapper, router } = await open();
     expect(router.currentRoute.value.params.id).toBe('first');
@@ -68,7 +75,7 @@ describe('tool log navigation', () => {
     expect(router.currentRoute.value.params.id).toBe('older');
     expect(api.listToolCalls).toHaveBeenLastCalledWith('?offset=50&limit=50', expect.any(AbortSignal));
     vi.mocked(api.listToolCalls).mockResolvedValueOnce({ items: [], total: 0, offset: 0, limit: 50, retentionDays: 30 });
-    await wrapper.get('input').setValue('play'); await flushPromises();
+    await wrapper.get('select[aria-label="Tool"]').setValue('play'); await flushPromises();
     expect(router.currentRoute.value.params.id).toBeUndefined();
     expect(wrapper.text()).toContain('No calls match these filters.');
     expect(wrapper.find('.call-heading').exists()).toBe(false);
@@ -80,10 +87,10 @@ describe('tool log navigation', () => {
     ], total: 2, offset: 0, limit: 50, retentionDays: 30 });
     const { wrapper, router } = await open();
 
-    await wrapper.get('input').setValue('play'); await flushPromises();
+    await wrapper.get('select[aria-label="Tool"]').setValue('play'); await flushPromises();
     expect(router.currentRoute.value.query.toolName).toBe('play');
     expect(api.listToolCalls).toHaveBeenLastCalledWith('?offset=0&limit=50&toolName=play', expect.any(AbortSignal));
-    await wrapper.get('select').setValue('failed'); await flushPromises();
+    await wrapper.get('select[aria-label="Outcome"]').setValue('failed'); await flushPromises();
     expect(router.currentRoute.value.query.status).toBe('failed');
     expect(api.listToolCalls).toHaveBeenLastCalledWith('?offset=0&limit=50&toolName=play&status=failed', expect.any(AbortSignal));
 
