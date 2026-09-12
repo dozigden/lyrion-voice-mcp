@@ -10,8 +10,11 @@ public sealed class QueueManagementService(
     IPlayableReferenceResolver referenceResolver,
     ISearchObservationStore observationStore,
     TimeProvider timeProvider,
-    ILogger<QueueManagementService> logger) : IQueueManagementService
+    ILogger<QueueManagementService> logger,
+    IEnumerable<LyrionVoiceMcp.Abstractions.Providers.IProviderPlaybackSource>? providers = null) : IQueueManagementService
 {
+    private readonly ILmsPlaybackClient playback = new Providers.MediaPlaybackRouter(lmsPlaybackClient, providers ?? []);
+
     public async Task<QueueManagementOutcome> ManageAsync(
         string playerSelector,
         QueueManagementCommand command,
@@ -35,8 +38,8 @@ public sealed class QueueManagementService(
 
             var player = ((PlayerSelectorResolved)playerOutcome).Player;
 
-            await lmsPlaybackClient.ClearAsync(player.Id, cancellationToken);
-            var clearedQueueCount = await lmsPlaybackClient.GetQueueCountAsync(
+            await playback.ClearAsync(player.Id, cancellationToken);
+            var clearedQueueCount = await playback.GetQueueCountAsync(
                 player.Id,
                 cancellationToken);
             if (clearedQueueCount != 0)
@@ -62,7 +65,7 @@ public sealed class QueueManagementService(
 
         var playersTask = lmsPlayerClient.GetPlayersAsync(cancellationToken);
         var itemCountsTask = Task.WhenAll(preparedReferences.Items.Select(item =>
-            lmsPlaybackClient.GetPlayableItemCountAsync(
+            playback.GetPlayableItemCountAsync(
                 item.Value.Media,
                 cancellationToken)));
         await Task.WhenAll(playersTask, itemCountsTask);
@@ -103,7 +106,7 @@ public sealed class QueueManagementService(
             return NoUsableItems(references!.Count, skippedItems);
         }
 
-        var queueCount = await lmsPlaybackClient.GetQueueCountAsync(
+        var queueCount = await playback.GetQueueCountAsync(
             resolvedPlayer.Id,
             cancellationToken);
         if (queueCount > QueueLimits.MaximumItems)
@@ -146,14 +149,14 @@ public sealed class QueueManagementService(
             {
                 if (command == QueueManagementCommand.Append)
                 {
-                    await lmsPlaybackClient.AddAsync(
+                    await playback.AddAsync(
                         resolvedPlayer.Id,
                         item.Value.Media,
                         cancellationToken);
                 }
                 else
                 {
-                    await lmsPlaybackClient.InsertAsync(
+                    await playback.InsertAsync(
                         resolvedPlayer.Id,
                         item.Value.Media,
                         cancellationToken);
@@ -314,7 +317,7 @@ public sealed class QueueManagementService(
     {
         try
         {
-            var queueLength = await lmsPlaybackClient.GetQueueCountAsync(
+            var queueLength = await playback.GetQueueCountAsync(
                 playerId,
                 cancellationToken);
             return new QueueRefresh(queueLength, null);

@@ -31,7 +31,9 @@ public sealed record PlaybackFailed(
     string? StateRefreshError,
     string Message) : PlaybackOutcome;
 
-public sealed record PlayableMedia(MediaIdentity Identity);
+public sealed record PlayableMedia(
+    MediaIdentity Identity,
+    Providers.ProviderMediaTarget? ProviderTarget = null);
 
 public interface ILmsPlaybackClient
 {

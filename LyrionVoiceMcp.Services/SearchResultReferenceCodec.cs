@@ -31,6 +31,9 @@ public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
                 nameof(value));
         }
 
+        if (value.Identity.ProviderId != value.ProviderTarget?.ProviderId)
+            throw new ArgumentException("The search provider target does not match its identity.", nameof(value));
+
         return registry.Issue(
             ReferencePrefixes.ForMedia(value.Identity.Kind),
             value,

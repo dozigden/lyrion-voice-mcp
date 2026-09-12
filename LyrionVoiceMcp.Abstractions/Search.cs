@@ -7,7 +7,9 @@ public enum MediaEntityKind
     Artist,
     Album,
     Track,
-    Playlist
+    Playlist,
+    Programme,
+    Episode
 }
 
 public sealed record SearchResolverDescriptor(
@@ -16,7 +18,8 @@ public sealed record SearchResolverDescriptor(
 
 public sealed record MediaIdentity(
     MediaEntityKind Kind,
-    string Id);
+    string Id,
+    string? ProviderId = null);
 
 public sealed record LmsSearchCandidate(
     MediaIdentity Identity,
@@ -365,7 +368,8 @@ public sealed record SearchCandidateResult(
     string Title,
     string? Artist,
     string? Album,
-    int NativeRating = 0);
+    int NativeRating = 0,
+    string? ProviderId = null);
 
 public sealed record ExactArtistMatchResult(
     string Name,
@@ -414,7 +418,8 @@ public interface ISearchService
 public sealed record SearchResultReferenceValue(
     string CorrelationId,
     MediaIdentity Identity,
-    ReferenceDisplayMetadata? DisplayMetadata = null);
+    ReferenceDisplayMetadata? DisplayMetadata = null,
+    Providers.ProviderBrowseTarget? ProviderTarget = null);
 
 public interface ISearchResultReferenceCodec
 {

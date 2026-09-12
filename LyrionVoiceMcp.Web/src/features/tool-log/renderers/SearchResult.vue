@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { providerSearchGroups } from '../providers/bbcSounds';
 import type { ToolResults } from '../toolResults';
 import ResultSection from '../components/ResultSection.vue';
 import MediaList from '../components/MediaList.vue';
@@ -13,6 +14,9 @@ defineProps<{ result: ToolResults['search'] }>();
   <ResultSection title="Top tracks" :count="result.topTracks.length"><MediaList :items="result.topTracks" /></ResultSection>
   <ResultSection title="Tracks" :count="result.tracks.length"><MediaList :items="result.tracks" vertical /></ResultSection>
   <ResultSection v-if="result.playlists.length" title="Playlists" :count="result.playlists.length"><MediaList :items="result.playlists" /></ResultSection>
+  <template v-for="group in providerSearchGroups(result)" :key="group.title">
+    <ResultSection v-if="group.items.length" :title="group.title" :count="group.items.length"><MediaList :items="group.items" /></ResultSection>
+  </template>
   <div v-if="!result.artists.length || !result.playlists.length" class="empty-groups"><span v-if="!result.artists.length">Artists <span class="muted">0 returned</span></span><span v-if="!result.playlists.length">Playlists <span class="muted">0 returned</span></span></div>
 </template>
 <style scoped>

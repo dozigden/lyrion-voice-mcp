@@ -61,3 +61,8 @@ Catalogue data, search observations, and operational jobs, schedules, errors, an
 
 - Runtime configuration has one application-database path. Do not reintroduce separate observation, catalogue, or operations database paths.
 - Old `search-observations.db`, `catalogue.db`, and `operations.db` files are neither read nor deleted automatically. Existing operators may remove them manually after confirming the EF application database and catalogue rebuild are healthy.
+
+## BBC subscription persistence
+
+- Feature-owned `BbcSubscribedShows` rows are staged in batches of at most 500. `BbcSubscriptionState` atomically selects the active snapshot, availability and expected show count. Incomplete snapshots never replace the active one; cleanup removes inactive rows in bounded batches after publication.
+- Search observation candidates retain an optional `ProviderId`; null continues to identify local-library candidates. Programme and episode are generic media kinds.

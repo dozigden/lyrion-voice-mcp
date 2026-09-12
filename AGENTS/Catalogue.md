@@ -47,3 +47,9 @@ The import contracts, bounded LMS reader/writer pipeline, durable reconciliation
 - A successful deployed refresh queues one `search-index.rebuild` durable job. The job records the catalogue refresh ID and refuses to build after readiness moves to another refresh; the published artifact records the same ID.
 - Production and diagnostic searches share the last compatible published artifact. Building occurs only in durable jobs; a missing artifact makes search explicitly unavailable. While the initial catalogue refresh or search-index build is active, public search and rating-track browse report the current preparation phase rather than an empty result or the generic missing-index message.
 - Do not expose SQLite or FTS5 through the catalogue boundary. Storage and search-engine selection remain separate decisions even while both adapters use SQLite.
+
+## Optional subscription refresh
+
+- Full catalogue-refresh attempts enqueue correlated optional-provider work after local processing; successful local index enqueue happens first. Cancelled attempts do not enqueue new provider work. Lightweight scan-token checks remain unchanged.
+- BBC Sounds discovery reads LMS app/radio listings and the plugin's subscribed-show menu without an enable switch. Complete paged snapshots retain stable BBC programme identities and original display metadata, with a 10,000-show bound. Menu positions are transient locators.
+- Stage subscription rows under a new snapshot ID and atomically activate the completed snapshot. Confirmed absence and successful empty subscriptions clear active results; authentication, transport and incomplete-read failures retain the previous snapshot. Provider failures have their own durable job outcome and cannot fail local catalogue readiness.

@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using LyrionVoiceMcp.Abstractions.Providers;
 using System.Text.Json;
 using LyrionVoiceMcp.Abstractions;
 
@@ -9,7 +12,9 @@ public sealed class CatalogueRefreshJobHandler(
     ICatalogueImportWriter writer,
     ISearchIndexService searchIndexes,
     IJobLogWriter logs,
-    TimeProvider timeProvider) : JobHandlerBase<CatalogueRefreshJobHandler.Payload>
+    TimeProvider timeProvider,
+    IEnumerable<IProviderCatalogueContributor>? providers = null,
+    ILogger<CatalogueRefreshJobHandler>? logger = null) : JobHandlerBase<CatalogueRefreshJobHandler.Payload>
 {
     public override string Type => JobTypes.CatalogueRefresh;
 
@@ -17,6 +22,22 @@ public sealed class CatalogueRefreshJobHandler(
         JobContext context,
         Payload payload,
         CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await RefreshLocalAsync(context, cancellationToken);
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                await Providers.ProviderCatalogueWork.EnqueueAsync(providers ?? [], $"job-{context.JobId}",
+                    logger ?? NullLogger<CatalogueRefreshJobHandler>.Instance, cancellationToken);
+            }
+        }
+    }
+
+    private async Task<JobHandlerResult> RefreshLocalAsync(JobContext context, CancellationToken cancellationToken)
     {
         var refreshId = $"job-{context.JobId}";
         var sink = new CatalogueJobLogSink(context.JobId, logs);

@@ -14,7 +14,7 @@ namespace LyrionVoiceMcp.Api.Tools;
 public sealed class BrowseTools(IBrowseService browseService)
 {
     private const string ReferenceGuidance =
-        "Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating.";
+        "Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating. Provider episode pages preserve provider order; the first episode is not necessarily the latest or unplayed.";
 
     [McpServerTool(
         Name = "browse",
@@ -22,10 +22,10 @@ public sealed class BrowseTools(IBrowseService browseService)
         ReadOnly = true,
         Destructive = false,
         Idempotent = true,
-        OpenWorld = false,
+        OpenWorld = true,
         UseStructuredContent = true,
         OutputSchemaType = typeof(BrowseResponse))]
-    [Description("Browse the configured Lyrion Music Server's local-library tree. Omit browseRef to list its roots, including Ratings, or pass a browseRef returned by search or browse to descend.")]
+    [Description("Browse the configured Lyrion Music Server's library and available provider subscriptions. Omit browseRef to list its roots, including Ratings, or pass a browseRef returned by search or browse to descend.")]
     public async Task<CallToolResult> BrowseAsync(
         [Description("An opaque browseRef returned by search or browse. Omit it to list the browse roots; pass returned browseRefs back to browse to continue through the tree.")] string? browseRef = null,
         CancellationToken cancellationToken = default)
@@ -80,6 +80,8 @@ public sealed class BrowseTools(IBrowseService browseService)
                 BrowseItemKind.Playlist => ContractBrowseEntityKind.Playlist,
                 BrowseItemKind.Track => ContractBrowseEntityKind.Track,
                 BrowseItemKind.Year => ContractBrowseEntityKind.Year,
+                BrowseItemKind.Programme => ContractBrowseEntityKind.Programme,
+                BrowseItemKind.Episode => ContractBrowseEntityKind.Episode,
                 _ => throw new InvalidOperationException(
                     $"Unsupported browse item kind {item.Kind}.")
             },

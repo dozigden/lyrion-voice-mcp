@@ -242,4 +242,5 @@ internal sealed record SearchCandidateOccurrence(
     string? Album,
     int NativeRating = 0,
     bool IsExactArtistMatch = false,
-    string? MatchSignal = null);
+    string? MatchSignal = null,
+    LyrionVoiceMcp.Abstractions.Providers.ProviderBrowseTarget? ProviderTarget = null);

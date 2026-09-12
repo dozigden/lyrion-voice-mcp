@@ -10,6 +10,8 @@ internal static class ReferencePrefixes
         MediaEntityKind.Album => "album_",
         MediaEntityKind.Track => "track_",
         MediaEntityKind.Playlist => "playlist_",
+        MediaEntityKind.Programme => "programme_",
+        MediaEntityKind.Episode => "episode_",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 
@@ -18,6 +20,11 @@ internal static class ReferencePrefixes
         if (value.Media is { } media)
         {
             return ForMedia(media.Identity.Kind);
+        }
+
+        if (value.ProviderTarget is not null)
+        {
+            return "programmes_";
         }
 
         var target = value.Target

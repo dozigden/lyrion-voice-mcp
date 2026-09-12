@@ -8,10 +8,12 @@ public sealed class StartupReadinessService(
     ICatalogueRefreshService catalogueRefresh,
     ISearchIndexService searchIndexes,
     CatalogueInitialisationPolicy initialisation,
-    ILogger<StartupReadinessService> logger)
+    ILogger<StartupReadinessService> logger,
+    IEnumerable<LyrionVoiceMcp.Abstractions.Providers.IProviderCatalogueContributor>? providers = null)
 {
     public async Task CheckAsync(CancellationToken cancellationToken)
     {
+        await Providers.ProviderCatalogueWork.EnqueueAsync(providers ?? [], null, logger, cancellationToken);
         var state = await catalogue.GetStateAsync(cancellationToken);
         if (state is null
             || state.Status != CatalogueStateStatus.Succeeded

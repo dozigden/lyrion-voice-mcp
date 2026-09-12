@@ -28,3 +28,8 @@
 - Use isolated temporary directories and unconditional cleanup for process/container tests.
 - Use fictional artist, album, track, playlist, and player names in committed tests and logs.
 - Tests must not require the household live LMS unless they are explicitly invoked integration tests.
+
+## Provider coverage
+
+- Use fictional-provider tests to prove shared dispatch and failure isolation without coupling core tests to BBC classes. Provider feature tests cover canonical snapshot activation, refresh failure retention, matching, opaque targets and LMS menu/action boundaries.
+- The LMS test suite includes an explicitly labelled, read-only BBC integration check. It is skipped unless `LVM_BBC_READONLY_INTEGRATION_URL` is set for that invocation. It only discovers subscriptions and episode audio; never include environment values or returned media in tracked fixtures or results. Playback tests use fake LMS responses; live playback still requires explicit player approval.

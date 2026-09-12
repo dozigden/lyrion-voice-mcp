@@ -880,6 +880,10 @@ namespace LyrionVoiceMcp.Ef.Migrations
                     b.Property<int>("Position")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ProviderId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal?>("Rating")
                         .HasColumnType("TEXT");
 
@@ -1093,6 +1097,58 @@ namespace LyrionVoiceMcp.Ef.Migrations
                     b.HasIndex("ToolName", "Status", "StartedAtUtc");
 
                     b.ToTable("ToolCalls", (string)null);
+                });
+
+            modelBuilder.Entity("LyrionVoiceMcp.Ef.Abstractions.Providers.BbcSounds.EntityBbcSubscribedShow", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProgrammeId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SnapshotId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SnapshotId", "Id");
+
+                    b.HasIndex("SnapshotId", "ProgrammeId")
+                        .IsUnique();
+
+                    b.ToTable("BbcSubscribedShows", (string)null);
+                });
+
+            modelBuilder.Entity("LyrionVoiceMcp.Ef.Abstractions.Providers.BbcSounds.EntityBbcSubscriptionState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Available")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ShowCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SnapshotId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("BbcSubscriptionState", (string)null);
                 });
 
             modelBuilder.Entity("LyrionVoiceMcp.Ef.Abstractions.Entities.EntityCatalogueTrackArtist", b =>

@@ -34,7 +34,7 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
 
     private static bool IsValid(BrowseReferenceValue value)
     {
-        if (value.Target is null && value.Media is null)
+        if (value.Target is null && value.Media is null && value.ProviderTarget is null)
         {
             return false;
         }
@@ -66,7 +66,9 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             return false;
         }
 
-        return media.Identity.Kind != MediaEntityKind.Artist;
+        if (media.Identity.ProviderId != media.ProviderTarget?.ProviderId) return false;
+
+        return media.Identity.Kind is not (MediaEntityKind.Artist or MediaEntityKind.Programme);
     }
 
     private static bool HasValidFilter(BrowseTarget target)

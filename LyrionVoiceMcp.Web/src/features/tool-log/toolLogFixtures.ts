@@ -8,7 +8,7 @@ export const results: ToolResults = {
   search: { guidance: 'Use recorded references to continue.', exactArtistMatch: { name: 'The Lantern Hours', discographyAlbumCount: 8, discographyBrowseRef: 'browse-discography' }, artists: [],
     albums: Array.from({ length: 5 }, (_, i) => ({ title: ['Northern Windows', 'A Map of Quiet Places', 'The Last Harbour', 'Signals in the Rain', 'Small Hours'][i]!, artist: 'The Lantern Hours', browseRef: `browse-album-${i}`, playRef: `play-album-${i}` })),
     topTracks: Array.from({ length: 5 }, (_, i) => ({ ...track, title: ['Paper Satellites', 'Open Water', 'The Long Way Home', 'Signals', 'Before the Morning'][i]! })),
-    tracks: Array.from({ length: 18 }, (_, i) => ({ ...track, title: `Northern Sketch ${i + 1}`, playRef: `play-track-${i}` })), playlists: [] },
+    tracks: Array.from({ length: 18 }, (_, i) => ({ ...track, title: `Northern Sketch ${i + 1}`, playRef: `play-track-${i}` })), playlists: [], bbcSoundsSubscribed: [] },
   browse: { guidance: 'Browse these recorded items.', nextBrowseRef: 'next-fiction', items: [{ rating: undefined, kind: 'album', title: 'Northern Windows', artist: 'The Lantern Hours', album: null, browseRef: 'browse-fiction', playRef: 'play-fiction' }] },
   get_player_status: { players: [player] }, control_player: { player },
   get_queue: { player: 'player-fiction', currentIndex: 0, items: [{ index: 0, title: 'Paper Satellites', artist: 'The Lantern Hours', album: 'Northern Windows', durationSeconds: 230 }] },

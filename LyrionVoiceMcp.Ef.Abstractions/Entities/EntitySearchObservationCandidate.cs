@@ -14,6 +14,8 @@ public sealed class EntitySearchObservationCandidate
 
     public EntityMediaKind Kind { get; set; }
 
+    public string? ProviderId { get; set; }
+
     public string MediaId { get; set; } = string.Empty;
 
     public string Title { get; set; } = string.Empty;

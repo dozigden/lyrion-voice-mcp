@@ -10,8 +10,11 @@ public sealed class PlaybackService(
     IPlayableReferenceResolver referenceResolver,
     ISearchObservationStore observationStore,
     TimeProvider timeProvider,
-    ILogger<PlaybackService> logger) : IPlaybackService
+    ILogger<PlaybackService> logger,
+    IEnumerable<LyrionVoiceMcp.Abstractions.Providers.IProviderPlaybackSource>? providers = null) : IPlaybackService
 {
+    private readonly ILmsPlaybackClient playback = new Providers.MediaPlaybackRouter(lmsPlaybackClient, providers ?? []);
+
     public async Task<PlaybackOutcome> PlayAsync(
         string playerSelector,
         IReadOnlyList<string> references,
@@ -55,7 +58,7 @@ public sealed class PlaybackService(
 
         var playersTask = lmsPlayerClient.GetPlayersAsync(cancellationToken);
         var playableItemsTask = Task.WhenAll(preparedItems.Select(item =>
-            lmsPlaybackClient.GetPlayableItemCountAsync(
+            playback.GetPlayableItemCountAsync(
                 item.Value.Media,
                 cancellationToken)));
         await Task.WhenAll(playersTask, playableItemsTask);
@@ -98,7 +101,7 @@ public sealed class PlaybackService(
         {
             try
             {
-                await lmsPlaybackClient.PowerOnAsync(player.Id, cancellationToken);
+                await playback.PowerOnAsync(player.Id, cancellationToken);
             }
             catch (LmsRequestException exception)
             {
@@ -127,14 +130,14 @@ public sealed class PlaybackService(
             {
                 if (index == 0)
                 {
-                    await lmsPlaybackClient.LoadAsync(
+                    await playback.LoadAsync(
                         player.Id,
                         item.Value.Media,
                         cancellationToken);
                 }
                 else
                 {
-                    await lmsPlaybackClient.AddAsync(
+                    await playback.AddAsync(
                         player.Id,
                         item.Value.Media,
                         cancellationToken);

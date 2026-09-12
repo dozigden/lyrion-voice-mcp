@@ -1,3 +1,4 @@
+using LyrionVoiceMcp.Lms.Providers.BbcSounds;
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -29,6 +30,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ILmsPlayerClient, LmsPlayerClient>();
         services.AddTransient<ILmsQueueClient, LmsQueueClient>();
         services.AddTransient<ILmsPlaylistSearchClient, LmsSearchClient>();
+        services.AddBbcSoundsLms();
         return services;
     }
 }

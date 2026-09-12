@@ -1565,6 +1565,39 @@ public sealed class SearchServiceTests
             });
     }
 
+    [Fact]
+    public async Task ProviderProgrammeShouldCoexistWithAnExactArtistAndKeepItsCorrelation()
+    {
+        var references = new ReferenceCodecTestContext();
+        var observations = new RecordingSearchObservationStore();
+        var catalogue = new StubCatalogueSearch([
+            new CatalogueSearchCandidate(new MediaIdentity(MediaEntityKind.Artist, "artist"),
+                "Mira Vale", null, null, 1300, IsExactTitleMatch: true)
+        ]);
+        var service = CreateService(catalogue, new StubPlaylistSearch([]), references.Search, observations,
+            browseCodec: references.Browse, providers: [new ProgrammeSource()]);
+
+        var result = Assert.IsType<SearchSucceeded>(await service.SearchAsync("Mira Vale", TestContext.Current.CancellationToken));
+
+        Assert.NotNull(result.ExactArtistMatch);
+        var programme = Assert.Single(result.Results);
+        Assert.Equal(MediaEntityKind.Programme, programme.Kind);
+        Assert.Equal("fiction", programme.ProviderId);
+        var decoded = references.Search.TryDecode(programme.Reference)!;
+        Assert.NotNull(decoded.ProviderTarget);
+        Assert.Contains(observations.Recorded!.Candidates, candidate => candidate.CorrelationId == decoded.CorrelationId);
+        Assert.Null(references.Resolver.Resolve(programme.Reference));
+    }
+
+    private sealed record ProgrammeTarget() : LyrionVoiceMcp.Abstractions.Providers.ProviderBrowseTarget("fiction");
+    private sealed class ProgrammeSource : LyrionVoiceMcp.Abstractions.Providers.IProviderSearchSource
+    {
+        public string ProviderId => "fiction";
+        public LyrionVoiceMcp.Abstractions.Providers.ProviderSearchResult Search(SearchCriteria criteria, CancellationToken token) => new(
+            [new(new MediaIdentity(MediaEntityKind.Programme, "show", ProviderId), "The Mira Vale Show", "complete_title_span", new ProgrammeTarget())],
+            new LmsSearchRequestObservation(ProviderId, "subscription-index", LmsSearchRequestStatus.Completed, null, 0, 1));
+    }
+
     private static SearchService CreateService(
         ICatalogueSearchResolver catalogue,
         ILmsPlaylistSearchClient playlists,
@@ -1575,7 +1608,8 @@ public sealed class SearchServiceTests
         ICatalogueArtistAlbumResolver? artistAlbums = null,
         ICatalogueTrackResolver? tracks = null,
         ICatalogueAlbumResolver? albums = null,
-        ICatalogueSearchAvailabilityService? searchAvailability = null) => new(
+        ICatalogueSearchAvailabilityService? searchAvailability = null,
+        IEnumerable<LyrionVoiceMcp.Abstractions.Providers.IProviderSearchSource>? providers = null) => new(
             catalogue,
             artistTracks ?? new EmptyArtistTrackResolver(),
             tracks ?? new EmptyTrackResolver(),
@@ -1591,7 +1625,7 @@ public sealed class SearchServiceTests
                 NullLogger<SearchObservationRecorder>.Instance),
             TimeProvider.System,
             searchAvailability ?? PassthroughCatalogueSearchAvailabilityService.Instance,
-            NullLogger<SearchService>.Instance);
+            NullLogger<SearchService>.Instance, providers);
 
     private sealed class StubCatalogueSearch(
         IReadOnlyList<CatalogueSearchCandidate> results) : ICatalogueSearchResolver

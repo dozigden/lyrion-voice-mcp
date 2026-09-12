@@ -19,7 +19,9 @@ public enum ReferenceDisplayKind
     Genre,
     Playlist,
     Year,
-    Track
+    Track,
+    Programme,
+    Episode
 }
 
 public sealed record ReferenceDisplayMetadata(

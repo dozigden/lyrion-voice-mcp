@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Text.RegularExpressions;
 using LyrionVoiceMcp.Abstractions;
+using LyrionVoiceMcp.Abstractions.Providers;
 using Microsoft.Extensions.Logging;
 
 namespace LyrionVoiceMcp.Services;
@@ -19,7 +20,8 @@ internal sealed partial class SearchService(
     SearchObservationRecorder observationRecorder,
     TimeProvider timeProvider,
     ICatalogueSearchAvailabilityService searchAvailability,
-    ILogger<SearchService> logger) : ISearchService
+    ILogger<SearchService> logger,
+    IEnumerable<IProviderSearchSource>? providers = null) : ISearchService
 {
     public Task<SearchOutcome> SearchAsync(
         string query,
@@ -328,6 +330,11 @@ internal sealed partial class SearchService(
                 candidate.Artist,
                 candidate.Album))
             .ToArray();
+        var providerResults = (providers ?? []).Select(source => Providers.ProviderSearchWork.Read(source, criteria, logger, cancellationToken)).ToArray();
+        catalogueRequests.AddRange(providerResults.Select(result => result.Observation));
+        var providerCandidates = providerResults.SelectMany(result => result.Candidates)
+            .Select(candidate => new Candidate(candidate.Identity, candidate.Title, null, null,
+                MatchSignal: candidate.MatchSignal, ProviderTarget: candidate.BrowseTarget));
         var topCandidates = selectedTopTracks
             .Select(candidate => ToCandidate(candidate, CandidateGroup.TopTrack))
             .ToArray();
@@ -336,6 +343,7 @@ internal sealed partial class SearchService(
             .Concat(topCandidates)
             .Concat(selectedTracks.Select(candidate => ToCandidate(candidate, CandidateGroup.Standard)))
             .Concat(playlistCandidates)
+            .Concat(providerCandidates)
             .Select((candidate, index) => new SelectedCandidate(
                 candidate.Group,
                 new SearchCandidateOccurrence(
@@ -347,7 +355,8 @@ internal sealed partial class SearchService(
                     candidate.Album,
                     candidate.NativeRating,
                     candidate.Group == CandidateGroup.ExactArtist,
-                    candidate.MatchSignal)))
+                    candidate.MatchSignal,
+                    candidate.ProviderTarget)))
             .ToArray();
         var observedCandidates = candidates
             .Select(candidate => candidate.Occurrence)
@@ -832,12 +841,14 @@ internal sealed partial class SearchService(
             referenceCodec.Encode(new SearchResultReferenceValue(
                 candidate.CorrelationId,
                 candidate.Identity,
-                DisplayMetadata(candidate))),
+                DisplayMetadata(candidate),
+                candidate.ProviderTarget)),
             candidate.Identity.Kind,
             candidate.Title,
             candidate.Artist,
             candidate.Album,
-            candidate.NativeRating);
+            candidate.NativeRating,
+            candidate.Identity.ProviderId);
 
     private ExactArtistMatchResult ToExactArtistMatch(
         SearchCandidateOccurrence candidate,
@@ -861,6 +872,8 @@ internal sealed partial class SearchService(
             MediaEntityKind.Album => ReferenceDisplayKind.Album,
             MediaEntityKind.Playlist => ReferenceDisplayKind.Playlist,
             MediaEntityKind.Track => ReferenceDisplayKind.Track,
+            MediaEntityKind.Programme => ReferenceDisplayKind.Programme,
+            MediaEntityKind.Episode => ReferenceDisplayKind.Episode,
             _ => throw new InvalidOperationException(
                 $"Unsupported search media kind {candidate.Identity.Kind}.")
         },
@@ -881,7 +894,8 @@ internal sealed partial class SearchService(
         string? Album,
         int NativeRating = 0,
         CandidateGroup Group = CandidateGroup.Standard,
-        string? MatchSignal = null);
+        string? MatchSignal = null,
+        ProviderBrowseTarget? ProviderTarget = null);
 
     private sealed record SelectedCandidate(
         CandidateGroup Group,

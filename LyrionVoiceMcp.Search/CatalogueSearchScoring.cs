@@ -287,7 +287,7 @@ internal static class CatalogueSearchRanker
         _ => 4
     };
 
-    private static int BoundedEditDistance(string left, string right, int limit)
+    internal static int BoundedEditDistance(string left, string right, int limit)
     {
         var previous = Enumerable.Range(0, right.Length + 1).ToArray();
         var current = new int[right.Length + 1];

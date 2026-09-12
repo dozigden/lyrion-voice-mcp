@@ -7,9 +7,11 @@ public sealed class BrowseService(
     IRatingBrowseResolver ratingBrowseResolver,
     IBrowseReferenceCodec browseReferenceCodec,
     ISearchResultReferenceCodec searchReferenceCodec,
-    ICatalogueSearchAvailabilityService searchAvailability) : IBrowseService
+    ICatalogueSearchAvailabilityService searchAvailability,
+    IEnumerable<LyrionVoiceMcp.Abstractions.Providers.IProviderBrowseSource>? providers = null) : IBrowseService
 {
     private const int PageSize = 50;
+    private readonly IReadOnlyList<LyrionVoiceMcp.Abstractions.Providers.IProviderBrowseSource> providerSources = (providers ?? []).ToArray();
 
     public async Task<BrowseOutcome> BrowseAsync(
         string? reference,
@@ -19,7 +21,7 @@ public sealed class BrowseService(
 
         if (reference is null)
         {
-            return new BrowseSucceeded(RootItems(), null);
+            return new BrowseSucceeded(RootItems().Concat(providerSources.SelectMany(source => source.GetRoots())).ToArray(), null);
         }
 
         var decoded = DecodeReference(reference);
@@ -28,6 +30,14 @@ public sealed class BrowseService(
             return new BrowseRejected(
                 BrowseRejectionReason.InvalidReference,
                 "The browse reference is invalid.");
+        }
+
+        if (decoded.ProviderTarget is { } providerTarget)
+        {
+            var source = providerSources.SingleOrDefault(source => source.ProviderId == providerTarget.ProviderId);
+            return source is null
+                ? new BrowseRejected(BrowseRejectionReason.BrowseUnavailable, "The media provider is unavailable.")
+                : await source.BrowseAsync(providerTarget, decoded.SearchCorrelationId, cancellationToken);
         }
 
         if (decoded.Target is null)
@@ -216,10 +226,11 @@ public sealed class BrowseService(
         return searchReference is null
             ? null
             : new BrowseReferenceValue(
-                TargetForSearchIdentity(searchReference.Identity),
-                PlayableMedia(searchReference.Identity),
+                searchReference.ProviderTarget is null ? TargetForSearchIdentity(searchReference.Identity) : null,
+                searchReference.ProviderTarget is null ? PlayableMedia(searchReference.Identity) : null,
                 searchReference.CorrelationId,
-                searchReference.DisplayMetadata);
+                searchReference.DisplayMetadata,
+                searchReference.ProviderTarget);
     }
 
     private static BrowseTarget? TargetForSearchIdentity(MediaIdentity identity) =>

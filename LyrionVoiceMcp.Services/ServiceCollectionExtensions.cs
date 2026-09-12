@@ -1,3 +1,4 @@
+using LyrionVoiceMcp.Services.Providers.BbcSounds;
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -63,6 +64,7 @@ public static class ServiceCollectionExtensions
             new SearchResultReferenceCodec(
                 provider.GetRequiredService<ReferenceHandleRegistry>()));
         services.AddSingleton(TimeProvider.System);
+        services.AddBbcSoundsServices();
         return services;
     }
 }

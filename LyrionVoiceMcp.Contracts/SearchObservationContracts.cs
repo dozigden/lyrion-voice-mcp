@@ -67,7 +67,8 @@ public sealed record SearchCandidateObservationResponse(
     decimal? Rating,
     DateTimeOffset? SelectedAt,
     bool IsExactArtistMatch,
-    string? MatchSignal);
+    string? MatchSignal,
+    string? ProviderId = null);
 
 public sealed record SearchObservationReviewResponse(
     string Classification,

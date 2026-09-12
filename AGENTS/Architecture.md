@@ -46,4 +46,10 @@ Read this before adding projects, dependencies, storage, or new integration boun
 
 ## Planned boundaries
 
-Canonical ID reconciliation, provider/plugin catalogues, managed corrections, broader compound filtering, last-played capability work, and virtual-library-aware search remain planned. Basic exact/minimum rating search, floor-bucket rating browse, and bounded application-owned acronym and Roman-cardinal equivalences are implemented. Keep future dimensions independent of operational history and the selected index adapter.
+Canonical ID reconciliation, additional provider/plugin catalogues, managed corrections, broader compound filtering, last-played capability work, and virtual-library-aware search remain planned. Basic exact/minimum rating search, floor-bucket rating browse, and bounded application-owned acronym and Roman-cardinal equivalences are implemented. Keep future dimensions independent of operational history and the selected index adapter.
+
+## Optional media providers
+
+- Provider implementation lives in matching `Providers/BbcSounds` feature folders across the existing layers; preserve their existing dependency direction. Registration is feature-owned. Shared catalogue orchestration, search, browse, reference handling and playback batching depend on the narrow provider interfaces in Abstractions, never BBC menu names, audio schemes or account details.
+- BBC-specific public search naming is confined to Contracts and its dedicated API mapper. Tool-log provider schema and labelled result mapping live in a feature-owned provider module; shared renderers consume those groups.
+- BBC subscription persistence is canonical EF data; its immutable in-memory search index is a separately published, disposable snapshot. Provider availability never gates local catalogue or index readiness. No runtime plugin loader or new projects are required.

@@ -1,3 +1,4 @@
+import { providerSearchFields } from './providers/bbcSounds';
 import { array, boolean, nullable, number, object, optional, string, isRecord } from '../../shared/api/decoder';
 import type { ToolCall } from '../operational-history/operationalHistoryApi';
 const ns = nullable(string), nn = nullable(number);
@@ -11,7 +12,7 @@ const outcomeFields = { requestedItemCount: number, completedItemCount: number,
   skippedItems: array(object({ index: number, reason: string, message: string })), stateRefreshError: ns };
 export const resultDecoders = {
   search: object({ guidance: string, exactArtistMatch: nullable(object({ name: string, discographyAlbumCount: nn, discographyBrowseRef: string })),
-    artists: array(artist), albums: array(album), topTracks: array(track), tracks: array(track), playlists: array(playlist) }),
+    artists: array(artist), albums: array(album), topTracks: array(track), tracks: array(track), playlists: array(playlist), ...providerSearchFields }),
   browse: object({ guidance: string, nextBrowseRef: ns, items: array(object({ kind: string, title: string, artist: ns, album: ns,
     browseRef: optional(string), playRef: optional(string), rating: optional(number) })) }),
   get_player_status: object({ players: array(player) }),

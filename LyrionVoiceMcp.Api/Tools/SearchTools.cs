@@ -12,7 +12,7 @@ namespace LyrionVoiceMcp.Api.Tools;
 public sealed class SearchTools(ISearchService searchService)
 {
     private const string ReferenceGuidance =
-        "When exactArtistMatch is present, the query resolved to that artist and artists is empty. discographyAlbumCount counts the distinct canonical catalogue album identities considered for this search's album preview: the complete album-artist relationship without a year constraint, or the matching part with one. It is null when rating or genre makes the search track-only. Separate catalogue identities count separately even when their display metadata is identical. Albums when present form only a varied preview. discographyBrowseRef opens the LMS-backed album-artist listing, whose items may differ from the catalogue-derived count. Otherwise artists and albums contain ordinary search candidates. topTracks are relevant or discovered tracks rated 4 or higher; tracks are varied matches or discoveries and exclude tracks already shown in topTracks. A year range applies to canonical album year and effective track year, so it may return both albums and tracks. Rating and genre apply only to tracks; when either is supplied, albums are not returned. Pass a browseRef to browse to continue navigating.";
+        "When exactArtistMatch is present, the local-library interpretation is that artist and artists is empty. Also consider provider programme results before resolving ambiguity. Additional provider groups contain subscribed programme name matches only for searches without music filters. Browse a programme to choose an episode; the programme itself is not playable. discographyAlbumCount counts the distinct canonical catalogue album identities considered for this search's album preview: the complete album-artist relationship without a year constraint, or the matching part with one. It is null when rating or genre makes the search track-only. Separate catalogue identities count separately even when their display metadata is identical. Albums when present form only a varied preview. discographyBrowseRef opens the LMS-backed album-artist listing, whose items may differ from the catalogue-derived count. Otherwise artists and albums contain ordinary search candidates. topTracks are relevant or discovered tracks rated 4 or higher; tracks are varied matches or discoveries and exclude tracks already shown in topTracks. A year range applies to canonical album year and effective track year, so it may return both albums and tracks. Rating and genre apply only to tracks; when either is supplied, albums are not returned. Pass a browseRef to browse to continue navigating.";
 
     [McpServerTool(
         Name = "search",
@@ -25,7 +25,7 @@ public sealed class SearchTools(ISearchService searchService)
         OutputSchemaType = typeof(SearchResponse))]
     [Description("Search the music library by optional name, exact genre, inclusive year range, rating, or a combination. Omit every input for broad varied track discovery. Reports a unique exact artist separately, returns 4+ top tracks separately, and varies selections. A year range can return albums and tracks; genre or rating makes the request track-only. * is not a wildcard.")]
     public async Task<CallToolResult> SearchAsync(
-        [Description("Optional artist, album, track, or playlist name text, up to 500 characters and 20 words. Omit it or leave it blank for rating-, genre-, or year-filtered discovery; omit every input for broad varied track discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.")] string? name = null,
+        [Description("Optional artist, album, track, playlist, or subscribed programme name text, up to 500 characters and 20 words. Omit it or leave it blank for rating-, genre-, or year-filtered discovery; omit every input for broad varied track discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.")] string? name = null,
         [Description("Optional single canonical genre name. Matching is case-insensitive but otherwise exact. Do not supply a list or put the genre in name.")] string? genre = null,
         [Description("Optional inclusive start year, supplied together with toYear. It applies to canonical album year and effective track year. Four-digit years from 1000 through next year are accepted. Two digits use the most recent applicable century; for a decade use its first and last years, for example 90 and 99.")] int? fromYear = null,
         [Description("Optional inclusive end year, supplied together with fromYear. It applies to canonical album year and effective track year. Reversed bounds are accepted and normalised. Four-digit years from 1000 through next year or two-digit years are accepted.")] int? toYear = null,
@@ -120,7 +120,8 @@ public sealed class SearchTools(ISearchService searchService)
                     candidate.Title,
                     candidate.Reference,
                     candidate.Reference))
-                .ToArray());
+                .ToArray(),
+            Providers.BbcSounds.BbcSoundsSearchMapper.Map(candidates));
 
     private static SearchTrack MapTrack(SearchCandidateResult candidate) =>
         new(

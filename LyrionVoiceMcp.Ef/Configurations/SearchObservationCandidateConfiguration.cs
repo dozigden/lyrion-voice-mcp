@@ -14,6 +14,7 @@ public sealed class SearchObservationCandidateConfiguration
         builder.Property(item => item.Position).IsRequired();
         builder.Property(item => item.CorrelationId).HasMaxLength(128).IsRequired();
         builder.Property(item => item.Kind).IsRequired();
+        builder.Property(item => item.ProviderId).HasMaxLength(64);
         builder.Property(item => item.MediaId).HasMaxLength(2048).IsRequired();
         builder.Property(item => item.Title).HasMaxLength(1024).IsRequired();
         builder.Property(item => item.Artist).HasMaxLength(1024);

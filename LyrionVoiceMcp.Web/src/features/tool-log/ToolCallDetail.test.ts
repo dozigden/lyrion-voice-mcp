@@ -14,6 +14,15 @@ describe('recorded MCP tool presentation', () => {
     expect(headings[0]!.text()).not.toBe('Other');
     expect(headings.at(-1)!.text()).toBe('Other');
   });
+  it('renders subscribed programme results alongside music without live lookups', () => {
+    const result = { ...results.search, bbcSoundsSubscribed: [{ title: 'The Mira Vale Show', browseRef: 'programme-fiction' }] };
+    const wrapper = mount(ToolCallDetail, { props: { call: call('search', 'provider-search', result) } });
+    expect(wrapper.text()).toContain('BBC Sounds subscriptions');
+    expect(wrapper.text()).toContain('The Mira Vale Show');
+    expect(wrapper.text()).toContain('programme-fiction');
+    expect(wrapper.text()).toContain('Exact artist');
+    expect(wrapper.find('pre').exists()).toBe(false);
+  });
   it('lays out short groups horizontally and main tracks vertically, retaining ratings and references', () => {
     const wrapper = mount(ToolCallDetail, { props: { call: call() } });
     expect(wrapper.findAll('.media-list.horizontal')).toHaveLength(2);

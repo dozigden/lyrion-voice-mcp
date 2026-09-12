@@ -172,6 +172,7 @@ public sealed class EfSearchObservationStore(
             CorrelationId = candidate.CorrelationId,
             Kind = ToEntity(candidate.Identity.Kind),
             MediaId = candidate.Identity.Id,
+            ProviderId = candidate.Identity.ProviderId,
             Title = candidate.Title,
             Artist = candidate.Artist,
             Album = candidate.Album,
@@ -243,7 +244,7 @@ public sealed class EfSearchObservationStore(
             .Select(item => new SearchObservationCandidate(
                 item.Position,
                 item.CorrelationId,
-                new MediaIdentity(ToModel(item.Kind), item.MediaId),
+                new MediaIdentity(ToModel(item.Kind), item.MediaId, item.ProviderId),
                 item.Title,
                 item.Artist,
                 item.Album,
@@ -427,6 +428,8 @@ public sealed class EfSearchObservationStore(
         MediaEntityKind.Album => EntityMediaKind.Album,
         MediaEntityKind.Track => EntityMediaKind.Track,
         MediaEntityKind.Playlist => EntityMediaKind.Playlist,
+        MediaEntityKind.Episode => EntityMediaKind.Episode,
+        MediaEntityKind.Programme => EntityMediaKind.Programme,
         _ => throw new InvalidOperationException("Unknown media kind.")
     };
 
@@ -436,6 +439,8 @@ public sealed class EfSearchObservationStore(
         EntityMediaKind.Album => MediaEntityKind.Album,
         EntityMediaKind.Track => MediaEntityKind.Track,
         EntityMediaKind.Playlist => MediaEntityKind.Playlist,
+        EntityMediaKind.Episode => MediaEntityKind.Episode,
+        EntityMediaKind.Programme => MediaEntityKind.Programme,
         _ => throw new InvalidOperationException("Unknown stored media kind.")
     };
 

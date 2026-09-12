@@ -1,3 +1,4 @@
+using LyrionVoiceMcp.Ef.Providers.BbcSounds;
 using System.Data.Common;
 using LyrionVoiceMcp.Ef.Abstractions.DataAccess;
 using LyrionVoiceMcp.Ef.Abstractions.Catalogue;
@@ -42,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ICatalogueValidationRepository,
             CatalogueValidationRepository>();
         services.AddTransient<ICatalogueProjectionRepository, CatalogueProjectionRepository>();
+        services.AddBbcSoundsPersistence();
         return services;
     }
 

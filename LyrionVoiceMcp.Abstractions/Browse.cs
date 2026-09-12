@@ -9,7 +9,9 @@ public enum BrowseItemKind
     Genre,
     Playlist,
     Track,
-    Year
+    Year,
+    Programme,
+    Episode
 }
 
 public enum LmsBrowseQueryKind
@@ -101,7 +103,8 @@ public sealed record BrowseReferenceValue(
     BrowseTarget? Target,
     PlayableMedia? Media,
     string? SearchCorrelationId = null,
-    ReferenceDisplayMetadata? DisplayMetadata = null);
+    ReferenceDisplayMetadata? DisplayMetadata = null,
+    Providers.ProviderBrowseTarget? ProviderTarget = null);
 
 public interface IBrowseReferenceCodec
 {

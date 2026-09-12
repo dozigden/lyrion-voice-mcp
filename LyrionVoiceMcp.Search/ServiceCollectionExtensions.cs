@@ -1,3 +1,4 @@
+using LyrionVoiceMcp.Search.Providers.BbcSounds;
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -27,6 +28,7 @@ public static class ServiceCollectionExtensions
             provider.GetRequiredService<ProductionCatalogueSearchService>());
         services.AddSingleton<IRatingBrowseResolver>(provider =>
             provider.GetRequiredService<ProductionCatalogueSearchService>());
+        services.AddBbcSoundsSearch();
         return services;
     }
 }

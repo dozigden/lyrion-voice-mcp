@@ -10,7 +10,8 @@ public sealed class PlayableReferenceResolver(
     {
         var searchReference = searchReferenceCodec.TryDecode(reference);
         if (searchReference is not null
-            && searchReference.Identity.Kind != MediaEntityKind.Artist)
+            && searchReference.ProviderTarget is null
+            && searchReference.Identity.Kind is not (MediaEntityKind.Artist or MediaEntityKind.Programme))
         {
             return new PlayableReferenceValue(
                 new PlayableMedia(searchReference.Identity),
@@ -18,7 +19,7 @@ public sealed class PlayableReferenceResolver(
         }
 
         var browseReference = browseReferenceCodec.TryDecode(reference);
-        return browseReference?.Media is { Identity.Kind: not MediaEntityKind.Artist } media
+        return browseReference?.Media is { Identity.Kind: not (MediaEntityKind.Artist or MediaEntityKind.Programme) } media
             ? new PlayableReferenceValue(
                 media,
                 browseReference.SearchCorrelationId)

@@ -50,3 +50,12 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Page commands rather than assuming a library fits in one response.
 - Use fictional music metadata in committed fixtures and diagnostics.
 - Unit and service tests use fake HTTP responses. Tests requiring a real LMS must be explicitly labelled integration tests.
+
+## BBC Sounds adapter
+
+- Keep all BBC protocol handling in `Lms/Providers/BbcSounds`. Discover `bbcsounds` through `apps` and `radios`; read paged `bbcsounds items` menus using a connected player selected deterministically by ID. Never mutate a player merely to browse.
+- Navigate returned menu paths and explicit provider continuation links. Copy only the browse locator into navigation requests, never `touchToPlay` or arbitrary action parameters. Identify shows through plugin-issued container references and episodes through plugin-issued audio references; re-resolve stable identities before playback.
+- Validate each provider continuation's promised offsets, page size and stable collection total. An empty first page can confirm empty subscriptions; an empty or short continuation, missing continuation or changed total must fail the read and retain the previous subscription snapshot.
+- Episode lists preserve BBC order and labels. Inspect their audio leaves without traversing account-changing action links. Bookmarking, subscribing, general BBC search and live stations are not part of the public integration.
+- Episode playback uses individual plugin-issued audio locators with native `playlist play`, `add` and `insert`. Confirm the new occurrence and expected queue size after mutation; an existing copy alone cannot confirm an addition. Do not retry an uncertain mutation. Shared services retain power, batching and queue-capacity policy.
+- LMS may reshuffle appended episodes. Require an increased episode-occurrence count and expected queue size with unchanged shuffle mode; enforce the requested position for unshuffled appends and all insertions, but do not require a shuffled append to appear last.
