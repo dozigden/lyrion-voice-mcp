@@ -1,9 +1,9 @@
 <template>
   <main class="page">
-    <header><h1>Scheduled jobs</h1></header>
+    <header class="page-heading"><h1>Scheduled jobs</h1></header>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <div v-if="loading" class="empty">Loading schedules…</div>
-    <section v-else class="grid">
+    <section v-else class="grid" aria-label="Scheduled jobs" tabindex="0">
       <article v-for="schedule in schedules" :key="schedule.name" class="card">
         <header class="heading">
           <div class="heading-identity">
@@ -176,9 +176,10 @@ function formatOptional(value: string | null) {
 </script>
 
 <style scoped>
-.page { width:min(1200px,100%); margin:0 auto; padding:22px 34px 32px; }
+.page { width:min(1200px,100%); margin:0 auto; padding:22px 34px 32px; display:flex; flex-direction:column; flex:1; min-height:0; }
+.page-heading { flex-shrink:0; }
 h1 { font-size:22px; margin:0; }
-.grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; gap:24px 32px; margin-top:20px; }
+.grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; align-content:start; gap:24px 32px; margin:20px -5px -5px; padding:5px; flex:1; min-height:0; overflow:auto; }
 .card { min-width:0; }
 .heading { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:8px 16px; background:var(--heading-band); color:var(--selection); }
 .heading-identity { display:flex; align-items:center; flex-wrap:wrap; gap:4px 16px; min-width:0; }
@@ -211,4 +212,5 @@ code { font-size:14px; }
   .configuration .toggle { flex-basis:100%; min-height:0; }
   dl { gap:12px 16px; }
 }
+@media(max-height:520px) { .page { flex:none; }.grid { flex:none; overflow:visible; } }
 </style>
