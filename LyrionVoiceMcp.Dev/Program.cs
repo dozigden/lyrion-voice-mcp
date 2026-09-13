@@ -4,6 +4,8 @@ internal static class Program
 {
     private static async Task<int> Main()
     {
+        Console.Title = "LyrionVoiceMcp.Dev";
+
         try
         {
             var repoRoot = RepoRootLocator.Find();
@@ -36,4 +38,3 @@ internal static class RepoRootLocator
         throw new InvalidOperationException("Could not find LyrionVoiceMcp.slnx.");
     }
 }
-
