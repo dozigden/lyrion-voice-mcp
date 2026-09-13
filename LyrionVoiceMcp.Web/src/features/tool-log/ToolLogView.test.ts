@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ToolLogView from './ToolLogView.vue';
 import * as api from '../operational-history/operationalHistoryApi';
+import { formatDate } from '../../shared/format';
 import { call, summary } from './toolLogFixtures';
 const wrappers: ReturnType<typeof mount>[] = [];
 async function open(path = '/tool-calls') {
@@ -55,6 +56,18 @@ describe('tool log navigation', () => {
     expect(rows[0]!.get('.row-summary').attributes('title')).toBe(text);
     expect(rows[1]!.find('.row-summary').exists()).toBe(false);
     expect(api.getToolCall).toHaveBeenCalledTimes(1);
+  });
+  it('shows reusable relative ages with exact timestamps in the call list', async () => {
+    const startedAt = new Date(Date.now() - 150_000).toISOString();
+    vi.mocked(api.listToolCalls).mockResolvedValue({ items: [
+      { ...summary('first'), startedAt }
+    ], total: 1, offset: 0, limit: 50, retentionDays: 30 });
+
+    const { wrapper } = await open();
+
+    const time = wrapper.get('.call-row time');
+    expect(time.text()).toBe('2 min ago');
+    expect(time.attributes()).toMatchObject({ datetime: startedAt, title: formatDate(startedAt) });
   });
   it('honours direct links outside the current page, reuses the pane, preserves scroll and supports Back', async () => {
     const { wrapper, router } = await open('/tool-calls/direct');

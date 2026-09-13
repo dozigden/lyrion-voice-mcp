@@ -4,6 +4,23 @@ export function formatDate(value: string | null | undefined): string {
   if (!Number.isFinite(date.getTime())) return value;
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }).format(date);
 }
+
+export function formatAge(value: string, now = Date.now()): string | null {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+
+  const elapsedMilliseconds = Math.max(0, now - timestamp);
+  const minutes = Math.floor(elapsedMilliseconds / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+}
+
 export function duration(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(2)} s`;
@@ -21,14 +38,6 @@ export function pretty(value: string | null): string {
   try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
 }
 
-export function callTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(new Date(value));
-}
-export function callDay(value: string): string {
-  const date = new Date(value);
-  if (date.toDateString() === new Date().toDateString()) return '';
-  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(date);
-}
 export function outcomeSymbol(status: string): string {
   if (status === 'succeeded') return '✓';
   if (['failed', 'tool_error', 'interrupted'].includes(status)) return '!';

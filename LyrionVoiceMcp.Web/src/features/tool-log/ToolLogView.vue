@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToolLogStore } from './toolLogStore';
 import ToolCallDetail from './ToolCallDetail.vue';
 import ToolIcon from './components/ToolIcon.vue';
-import { formatDate, callTime, callDay, label, outcomeSymbol } from '../../shared/format';
+import { formatAge, formatDate, label, outcomeSymbol } from '../../shared/format';
 const route = useRoute(), router = useRouter(), log = useToolLogStore();
 const tools = ['search', 'browse', 'get_player_status', 'control_player', 'get_queue', 'manage_queue', 'play'];
 const statuses = ['running', 'succeeded', 'tool_error', 'cancelled', 'failed', 'interrupted'];
 const listElement = ref<HTMLElement | null>(null);
 const detailElement = ref<HTMLElement | null>(null);
+const now = ref(Date.now());
 const tool = ref(''), status = ref('');
 const toolOptions = computed(() => [...new Set([...tools, tool.value])].filter(Boolean));
 const statusOptions = computed(() => [...new Set([...statuses, status.value])].filter(Boolean));
@@ -29,6 +30,7 @@ const first = computed(() => log.page?.items.length ? log.page.offset + 1 : 0);
 const last = computed(() => log.page ? log.page.offset + log.page.items.length : 0);
 let alive = true;
 let loadedQuery = '';
+let clock: number | undefined;
 async function loadPage() {
   const requestedQuery = query.value;
   const page = await log.loadList(requestedQuery);
@@ -65,7 +67,12 @@ watch(selectedId, async id => {
   }
   if (alive && detailElement.value) detailElement.value.scrollTop = 0;
 }, { immediate: true });
-onBeforeUnmount(() => { alive = false; log.cancel(); });
+onMounted(() => { clock = window.setInterval(() => { now.value = Date.now(); }, 60_000); });
+onBeforeUnmount(() => {
+  alive = false;
+  log.cancel();
+  if (clock !== undefined) window.clearInterval(clock);
+});
 function rememberScroll() { log.scrollTop = listElement.value?.scrollTop ?? 0; }
 function selectCall(id: string) {
   rememberScroll();
@@ -100,7 +107,7 @@ function retryDetail() { if (selectedId.value) void log.loadDetail(selectedId.va
         <p v-else-if="log.listLoading" class="list-message muted" role="status">Loading calls…</p>
         <p v-else-if="!log.page?.items.length" class="list-message muted">No calls match these filters.</p>
         <button v-for="call in log.page?.items ?? []" :key="call.id" class="call-row" :class="{ selected: call.id === selectedId }" :aria-current="call.id === selectedId" @click="selectCall(call.id)">
-          <span class="row-top"><strong><ToolIcon :tool="call.toolName" />{{ call.toolName }}</strong><time :datetime="call.startedAt" :title="formatDate(call.startedAt)"><span v-if="callDay(call.startedAt)">{{ callDay(call.startedAt) }} · </span>{{ callTime(call.startedAt) }}</time></span>
+          <span class="row-top"><strong><ToolIcon :tool="call.toolName" />{{ call.toolName }}</strong><time :datetime="call.startedAt" :title="formatDate(call.startedAt)">{{ formatAge(call.startedAt, now) ?? formatDate(call.startedAt) }}</time></span>
           <span v-if="call.requestSummary" class="row-summary" :title="call.requestSummary">{{ call.requestSummary }}</span>
           <span v-if="call.status !== 'succeeded'" class="row-outcome" :class="{ danger: ['failed', 'tool_error', 'interrupted'].includes(call.status) }"><span aria-hidden="true" class="outcome-symbol">{{ outcomeSymbol(call.status) }}</span> {{ label(call.status) }}</span>
         </button>
@@ -128,6 +135,6 @@ function retryDetail() { if (selectedId.value) void log.loadDetail(selectedId.va
 .pagination { display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid var(--border); font-size:14px; }.pagination div { display:flex; gap:14px; }.pagination button { border:0; background:transparent; padding:3px; font-size:20px; }
 .detail-pane { --detail-inset:34px; display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--surface); }.detail-message { padding:24px var(--detail-inset); }.back-to-list { display:none; }
 @media(min-width:1600px) { .workspace { grid-template-columns:390px minmax(0,1fr); }.detail-pane { --detail-inset:42px; } }
-@media(max-width:1050px) { .row-top time > span { display:none; }.workspace { grid-template-columns:295px minmax(0,1fr); }.detail-pane { --detail-inset:24px; } }
-@media(max-width:720px) { .row-top time > span { display:inline; }.workspace { display:flex; }.log-pane,.detail-pane { width:100%; }.detail-pane { display:none; --detail-inset:18px; }.mobile-detail .log-pane { display:none; }.mobile-detail .detail-pane { display:flex; }.back-to-list { display:block; border:0; border-radius:0; background:var(--heading-main); color:var(--selection); text-align:left; font-size:14px; padding:10px 18px 0; } }
+@media(max-width:1050px) { .workspace { grid-template-columns:295px minmax(0,1fr); }.detail-pane { --detail-inset:24px; } }
+@media(max-width:720px) { .workspace { display:flex; }.log-pane,.detail-pane { width:100%; }.detail-pane { display:none; --detail-inset:18px; }.mobile-detail .log-pane { display:none; }.mobile-detail .detail-pane { display:flex; }.back-to-list { display:block; border:0; border-radius:0; background:var(--heading-main); color:var(--selection); text-align:left; font-size:14px; padding:10px 18px 0; } }
 </style>
