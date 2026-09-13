@@ -177,6 +177,82 @@ public sealed class BbcSoundsClientTests
         Assert.Empty(result.Shows);
     }
 
+    [Fact]
+    public async Task StationsShouldUseLiveAudioForStableIdentityAndPreservePluginOrder()
+    {
+        using var fixture = new Fixture();
+
+        var stations = await fixture.Client.ReadStationsAsync(TestContext.Current.CancellationToken);
+        var menu = await fixture.Client.BrowseStationAsync("stationa", TestContext.Current.CancellationToken);
+
+        Assert.Equal(new BbcStation("stationa", "Fictional Radio", "sounds://_LIVE_stationa"),
+            Assert.Single(stations.Stations));
+        Assert.Equal(["Listen Live", "Recent programmes", "Full 30 Day Schedule"],
+            menu.Select(item => item.Title));
+        Assert.Equal(BbcAudioKind.Station, menu[0].MediaTarget!.Kind);
+        Assert.Equal(BbcStationMenuLevel.Programmes, menu[1].BrowseTarget!.Level);
+        Assert.Equal(BbcStationMenuLevel.ScheduleDays, menu[2].BrowseTarget!.Level);
+    }
+
+    [Fact]
+    public async Task MissingStationMenuShouldBeAConfirmedUnavailableSnapshot()
+    {
+        using var fixture = new Fixture { StationsAvailable = false };
+
+        var stations = await fixture.Client.ReadStationsAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(stations.Available);
+        Assert.Empty(stations.Stations);
+    }
+
+    [Fact]
+    public async Task LiveOnlyStationDiscoveryShouldNotRequireAnAudioBrowsePath()
+    {
+        using var fixture = new Fixture { StationsAvailable = false, LiveOnlyStations = true };
+
+        var stations = await fixture.Client.ReadStationsAsync(TestContext.Current.CancellationToken);
+        var menu = await fixture.Client.BrowseStationAsync("stationa", TestContext.Current.CancellationToken);
+
+        Assert.True(stations.Available);
+        Assert.Equal("stationa", Assert.Single(stations.Stations).Id);
+        Assert.Equal(BbcAudioKind.Station, Assert.Single(menu).MediaTarget!.Kind);
+    }
+
+    [Fact]
+    public async Task FallbackProbeFailureShouldNotBecomeConfirmedStationAbsence()
+    {
+        using var fixture = new Fixture { StationsAvailable = false, StationFallbackFailure = true };
+
+        await Assert.ThrowsAsync<LmsRequestException>(() =>
+            fixture.Client.ReadStationsAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task StationActionMenuShouldExposeAudioAndSafeNavigationOnly()
+    {
+        using var fixture = new Fixture();
+        var programme = new BbcStationMenuTarget("stationa", "programme-action", BbcStationMenuLevel.PlayableActions);
+
+        var menu = await fixture.Client.BrowseStationMenuAsync(programme, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Play programme", "All Episodes", "Tracklist"], menu.Select(item => item.Title));
+        Assert.DoesNotContain(menu, item => item.Title is "Bookmark" or "Subscribe" or "Remove Continue Listening" or "Synopsis");
+        Assert.DoesNotContain(fixture.Commands, command => command.Contains("account-action"));
+    }
+
+    [Fact]
+    public async Task LiveStationPlaybackShouldRevalidateAndConfirmTheQueueMutation()
+    {
+        using var fixture = new Fixture();
+        var target = new BbcAudioTarget(BbcAudioKind.Station, "stationa", "sounds://_LIVE_stationa");
+
+        await fixture.Client.SubmitAsync(
+            "fiction-player", target, ProviderPlaybackCommand.Load, TestContext.Current.CancellationToken);
+
+        Assert.Equal("sounds://_LIVE_stationa", Assert.Single(fixture.Queue));
+        Assert.Single(fixture.Commands, command => command[0] == "playlist");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData(-2)]
@@ -204,6 +280,9 @@ public sealed class BbcSoundsClientTests
         public string? SecondContinuationTitle { get; init; }
         public bool EmptyContinuation { get; init; }
         public bool EmptySubscriptions { get; init; }
+        public bool StationsAvailable { get; init; } = true;
+        public bool LiveOnlyStations { get; init; }
+        public bool StationFallbackFailure { get; init; }
         public bool IgnoreMutation { get; init; }
         public int ShuffleMode { get; init; }
         public string? SubmittedAudioUrl { get; init; }
@@ -250,9 +329,15 @@ public sealed class BbcSoundsClientTests
             else if (cmd[0] == "bbcsounds")
             {
                 var path = cmd.FirstOrDefault(x => x.StartsWith("item_id:", StringComparison.Ordinal))?[8..];
+                if (StationFallbackFailure && path == "8")
+                    return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
                 object show = new { text = "The Mira Vale Show\nA fictional description", type = "link", presetParams = new { favorites_url = "soundslist://_CONTAINER_showa" }, @params = new { item_id = "8.5.3", touchToPlay = 1 } };
                 object[] items = path switch
                 {
+                    null when StationsAvailable => [new { text = "My Sounds", type = "link", presetParams = new { favorites_url = "soundslist://_MYSOUNDS" }, @params = new { item_id = "8" } },
+                        Link("Stations & Schedules", "stations")],
+                    null when LiveOnlyStations => [new { text = "My Sounds", type = "link", presetParams = new { favorites_url = "soundslist://_MYSOUNDS" }, @params = new { item_id = "8" } },
+                        Link("Listen live", "live-only")],
                     null => [new { text = "My Sounds", type = "link", presetParams = new { favorites_url = "soundslist://_MYSOUNDS" }, @params = new { item_id = "8" } }],
                     "8" => [Link("Subscribed", "8.5")],
                     "8.5" when DuplicateShow => [show, show],
@@ -263,6 +348,19 @@ public sealed class BbcSoundsClientTests
                     "next-page" when SecondContinuationTitle is not null => [Show("showb", "The Orchard Hour"), Link(SecondContinuationTitle, "last-page")],
                     "next-page" => [Show("showb", "The Orchard Hour")],
                     "last-page" => [Show("showc", "The Lantern Programme")],
+                    "stations" => [Link("Fictional Radio", "stationa")],
+                    "live-only" => [Audio("Fictional Radio", "sounds://_LIVE_stationa")],
+                    "stationa" => [Audio("Listen Live", "sounds://_LIVE_stationa"),
+                        Link("Recent programmes", "recent"), Link("Full 30 Day Schedule", "schedule")],
+                    "recent" => [Link("The Paper Harbour", "programme-action")],
+                    "schedule" => [Link("Fictional Monday", "schedule-day")],
+                    "schedule-day" => [Link("The Paper Harbour", "programme-action")],
+                    "programme-action" => [Audio("Play programme", "sounds://_versionb_episodeb"),
+                        Link("All Episodes", "all-episodes"), Link("Tracklist", "tracklist"),
+                        Link("Synopsis", "synopsis"), Link("Bookmark", "account-action"),
+                        Link("Subscribe", "account-action"), Link("Remove Continue Listening", "account-action")],
+                    "all-episodes" => [Audio("Earlier programme", "sounds://_versionc_episodec")],
+                    "tracklist" => [Audio("Earlier segment", "sounds://_REWIND_123_LIVE_stationa")],
                     "8.5.3" => [Link("Fictional episode", "8.5.3.0")],
                     "8.5.3.0" => [new { text = "Play", type = "audio", presetParams = new { favorites_url = "sounds://_versiona_episodea" } }, Link("Bookmark", "account-action")],
                     _ => throw new InvalidOperationException("Unexpected menu navigation")
@@ -273,6 +371,7 @@ public sealed class BbcSoundsClientTests
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new { result }), Encoding.UTF8, "application/json") };
         }
         private static object Link(string title, string path) => new { text = title, type = "link", actions = new { go = new { cmd = new[] { "bbcsounds", "items" }, @params = new { item_id = path } } } };
+        private static object Audio(string title, string url) => new { text = title, type = "audio", presetParams = new { favorites_url = url } };
         private static object Show(string id, string title) => new { text = title, type = "link",
             presetParams = new { favorites_url = $"soundslist://_CONTAINER_{id}" }, @params = new { item_id = $"fictional-{id}" } };
         protected override void Dispose(bool disposing) { if (disposing) http.Dispose(); base.Dispose(disposing); }

@@ -14,7 +14,7 @@ namespace LyrionVoiceMcp.Api.Tools;
 public sealed class BrowseTools(IBrowseService browseService)
 {
     private const string ReferenceGuidance =
-        "Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating. Provider episode pages preserve provider order; the first episode is not necessarily the latest or unplayed.";
+        "Pass a browseRef to the browse tool to open that location in the library tree. Browse results can contain further browseRefs; pass those back to browse to continue navigating. Provider episode and station menus preserve provider order and hierarchy; the first episode is not necessarily the latest or unplayed. A BBC Sounds station item can provide both browseRef for schedules and programmes and playRef for live playback.";
 
     [McpServerTool(
         Name = "browse",
@@ -82,6 +82,7 @@ public sealed class BrowseTools(IBrowseService browseService)
                 BrowseItemKind.Year => ContractBrowseEntityKind.Year,
                 BrowseItemKind.Programme => ContractBrowseEntityKind.Programme,
                 BrowseItemKind.Episode => ContractBrowseEntityKind.Episode,
+                BrowseItemKind.Station => ContractBrowseEntityKind.Station,
                 _ => throw new InvalidOperationException(
                     $"Unsupported browse item kind {item.Kind}.")
             },

@@ -41,7 +41,8 @@ public sealed record SearchResponse(
     IReadOnlyList<SearchTrack> TopTracks,
     IReadOnlyList<SearchTrack> Tracks,
     IReadOnlyList<SearchPlaylist> Playlists,
-    IReadOnlyList<SearchSubscribedProgramme> BbcSoundsSubscribed);
+    IReadOnlyList<SearchSubscribedProgramme> BbcSoundsSubscribed,
+    IReadOnlyList<SearchBbcSoundsStation> BbcSoundsStations);
 
 [JsonConverter(typeof(JsonStringEnumConverter<BrowseEntityKind>))]
 public enum BrowseEntityKind
@@ -58,7 +59,8 @@ public enum BrowseEntityKind
     Track,
     Year,
     Programme,
-    Episode
+    Episode,
+    Station
 }
 
 public sealed record BrowseResponse(

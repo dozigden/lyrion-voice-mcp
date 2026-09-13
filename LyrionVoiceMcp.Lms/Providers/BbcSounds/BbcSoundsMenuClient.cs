@@ -150,6 +150,7 @@ internal sealed partial class BbcSoundsMenuClient(LmsJsonRpcClient rpc)
 
     public static string? FavouriteUrl(JsonElement item) =>
         item.TryGetProperty("presetParams", out var preset) ? Text(preset, "favorites_url") : null;
+    public static bool IsContinuation(string title) => NextPage().IsMatch(title);
     public static string Title(JsonElement item) => (Text(item, "text") ?? Text(item, "name") ?? string.Empty).Trim();
     public static string? Text(JsonElement item, string key) =>
         item.ValueKind == JsonValueKind.Object && item.TryGetProperty(key, out var value)

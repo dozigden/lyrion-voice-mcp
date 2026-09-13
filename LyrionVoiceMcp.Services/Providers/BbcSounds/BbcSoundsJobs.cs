@@ -17,7 +17,12 @@ internal sealed class BbcSoundsCatalogueContributor(IJobService jobs, TimeProvid
 }
 
 internal sealed class BbcSoundsRefreshJob(
-    IBbcSoundsClient client, BbcSubscriptionStore store, IBbcSubscriptionIndex index, IJobLogWriter logs)
+    IBbcSoundsClient client,
+    BbcSubscriptionStore subscriptionStore,
+    BbcStationStore stationStore,
+    IBbcSubscriptionIndex subscriptionIndex,
+    IBbcStationIndex stationIndex,
+    IJobLogWriter logs)
     : JobHandlerBase<BbcSoundsRefreshJob.Payload>
 {
     public override string Type => BbcSoundsProvider.RefreshJob;
@@ -26,29 +31,45 @@ internal sealed class BbcSoundsRefreshJob(
         try
         {
             var subscriptions = await client.ReadSubscriptionsAsync(cancellationToken);
-            await store.ReplaceAsync(subscriptions, cancellationToken);
-            index.Publish(subscriptions);
-            await store.CleanAsync(cancellationToken);
-            return JobHandlerResult.Succeeded(JsonSerializer.Serialize(new { subscriptions.Available, ShowCount = subscriptions.Shows.Count }));
+            var stations = await client.ReadStationsAsync(cancellationToken);
+            await subscriptionStore.ReplaceAsync(subscriptions, cancellationToken);
+            await stationStore.ReplaceAsync(stations, cancellationToken);
+            subscriptionIndex.Publish(subscriptions);
+            stationIndex.Publish(stations);
+            await subscriptionStore.CleanAsync(cancellationToken);
+            await stationStore.CleanAsync(cancellationToken);
+            return JobHandlerResult.Succeeded(JsonSerializer.Serialize(new
+            {
+                subscriptions.Available,
+                ShowCount = subscriptions.Shows.Count,
+                StationAvailable = stations.Available,
+                StationCount = stations.Stations.Count
+            }));
         }
         catch (LmsRequestException exception)
         {
             await logs.WriteAsync(context.JobId, JobLogLevel.Warning,
-                "BBC Sounds refresh failed; the previous subscription snapshot was retained.", null, cancellationToken);
+                "BBC Sounds refresh failed; the previous provider snapshot was retained.", null, cancellationToken);
             return JobHandlerResult.Failed(exception.Message);
         }
     }
     public sealed record Payload;
 }
 
-internal sealed class BbcSoundsRestoreJob(BbcSubscriptionStore store, IBbcSubscriptionIndex index)
+internal sealed class BbcSoundsRestoreJob(
+    BbcSubscriptionStore subscriptionStore,
+    BbcStationStore stationStore,
+    IBbcSubscriptionIndex subscriptionIndex,
+    IBbcStationIndex stationIndex)
     : JobHandlerBase<BbcSoundsRestoreJob.Payload>
 {
     public override string Type => BbcSoundsProvider.RestoreJob;
     protected override async Task<JobHandlerResult> HandleAsync(JobContext context, Payload payload, CancellationToken cancellationToken)
     {
-        var subscriptions = await store.ReadAsync(cancellationToken);
-        if (subscriptions is not null) index.Publish(subscriptions);
+        var subscriptions = await subscriptionStore.ReadAsync(cancellationToken);
+        var stations = await stationStore.ReadAsync(cancellationToken);
+        if (subscriptions is not null) subscriptionIndex.Publish(subscriptions);
+        if (stations is not null) stationIndex.Publish(stations);
         return JobHandlerResult.Succeeded("{}");
     }
     public sealed record Payload;
@@ -59,6 +80,7 @@ internal static class BbcSoundsServiceRegistration
     public static IServiceCollection AddBbcSoundsServices(this IServiceCollection services)
     {
         services.AddTransient<BbcSubscriptionStore>();
+        services.AddTransient<BbcStationStore>();
         services.AddTransient<IProviderCatalogueContributor, BbcSoundsCatalogueContributor>();
         services.AddTransient<IProviderSearchSource, BbcSoundsSearchSource>();
         services.AddTransient<IProviderBrowseSource, BbcSoundsBrowseSource>();

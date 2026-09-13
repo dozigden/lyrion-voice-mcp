@@ -430,6 +430,7 @@ public sealed class EfSearchObservationStore(
         MediaEntityKind.Playlist => EntityMediaKind.Playlist,
         MediaEntityKind.Episode => EntityMediaKind.Episode,
         MediaEntityKind.Programme => EntityMediaKind.Programme,
+        MediaEntityKind.Station => EntityMediaKind.Station,
         _ => throw new InvalidOperationException("Unknown media kind.")
     };
 
@@ -441,6 +442,7 @@ public sealed class EfSearchObservationStore(
         EntityMediaKind.Playlist => MediaEntityKind.Playlist,
         EntityMediaKind.Episode => MediaEntityKind.Episode,
         EntityMediaKind.Programme => MediaEntityKind.Programme,
+        EntityMediaKind.Station => MediaEntityKind.Station,
         _ => throw new InvalidOperationException("Unknown stored media kind.")
     };
 

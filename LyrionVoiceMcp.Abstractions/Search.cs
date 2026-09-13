@@ -9,7 +9,8 @@ public enum MediaEntityKind
     Track,
     Playlist,
     Programme,
-    Episode
+    Episode,
+    Station
 }
 
 public sealed record SearchResolverDescriptor(
@@ -419,7 +420,8 @@ public sealed record SearchResultReferenceValue(
     string CorrelationId,
     MediaIdentity Identity,
     ReferenceDisplayMetadata? DisplayMetadata = null,
-    Providers.ProviderBrowseTarget? ProviderTarget = null);
+    Providers.ProviderBrowseTarget? ProviderTarget = null,
+    Providers.ProviderMediaTarget? ProviderMediaTarget = null);
 
 public interface ISearchResultReferenceCodec
 {

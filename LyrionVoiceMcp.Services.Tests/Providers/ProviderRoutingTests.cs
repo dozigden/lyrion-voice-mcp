@@ -45,6 +45,27 @@ public sealed class ProviderRoutingTests
         Assert.DoesNotContain("fiction", reference, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ProviderMediaSearchReferencesShouldResolveForBrowsingAndPlayback()
+    {
+        var references = new ReferenceCodecTestContext();
+        var browseTarget = new FictionalBrowseTarget();
+        var mediaTarget = new FictionalTarget();
+        var reference = references.Search.Encode(new SearchResultReferenceValue(
+            Guid.NewGuid().ToString("N"),
+            new MediaIdentity(MediaEntityKind.Station, "station", "fiction"),
+            new ReferenceDisplayMetadata(ReferenceDisplayKind.Station, "Fictional Radio"),
+            browseTarget,
+            mediaTarget));
+
+        var decoded = references.Search.TryDecode(reference)!;
+        var playable = references.Resolver.Resolve(reference)!;
+
+        Assert.Same(browseTarget, decoded.ProviderTarget);
+        Assert.Same(mediaTarget, playable.Media.ProviderTarget);
+        Assert.StartsWith("station_", reference, StringComparison.Ordinal);
+    }
+
     private sealed record FictionalTarget() : ProviderMediaTarget("fiction");
     private sealed record FictionalBrowseTarget() : ProviderBrowseTarget("fiction");
     private sealed class FailingSearch : IProviderSearchSource

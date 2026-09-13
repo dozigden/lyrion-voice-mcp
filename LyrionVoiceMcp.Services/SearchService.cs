@@ -334,7 +334,9 @@ internal sealed partial class SearchService(
         catalogueRequests.AddRange(providerResults.Select(result => result.Observation));
         var providerCandidates = providerResults.SelectMany(result => result.Candidates)
             .Select(candidate => new Candidate(candidate.Identity, candidate.Title, null, null,
-                MatchSignal: candidate.MatchSignal, ProviderTarget: candidate.BrowseTarget));
+                MatchSignal: candidate.MatchSignal,
+                ProviderBrowseTarget: candidate.BrowseTarget,
+                ProviderMediaTarget: candidate.MediaTarget));
         var topCandidates = selectedTopTracks
             .Select(candidate => ToCandidate(candidate, CandidateGroup.TopTrack))
             .ToArray();
@@ -356,7 +358,8 @@ internal sealed partial class SearchService(
                     candidate.NativeRating,
                     candidate.Group == CandidateGroup.ExactArtist,
                     candidate.MatchSignal,
-                    candidate.ProviderTarget)))
+                    candidate.ProviderBrowseTarget,
+                    candidate.ProviderMediaTarget)))
             .ToArray();
         var observedCandidates = candidates
             .Select(candidate => candidate.Occurrence)
@@ -842,7 +845,8 @@ internal sealed partial class SearchService(
                 candidate.CorrelationId,
                 candidate.Identity,
                 DisplayMetadata(candidate),
-                candidate.ProviderTarget)),
+                candidate.ProviderBrowseTarget,
+                candidate.ProviderMediaTarget)),
             candidate.Identity.Kind,
             candidate.Title,
             candidate.Artist,
@@ -874,6 +878,7 @@ internal sealed partial class SearchService(
             MediaEntityKind.Track => ReferenceDisplayKind.Track,
             MediaEntityKind.Programme => ReferenceDisplayKind.Programme,
             MediaEntityKind.Episode => ReferenceDisplayKind.Episode,
+            MediaEntityKind.Station => ReferenceDisplayKind.Station,
             _ => throw new InvalidOperationException(
                 $"Unsupported search media kind {candidate.Identity.Kind}.")
         },
@@ -895,7 +900,8 @@ internal sealed partial class SearchService(
         int NativeRating = 0,
         CandidateGroup Group = CandidateGroup.Standard,
         string? MatchSignal = null,
-        ProviderBrowseTarget? ProviderTarget = null);
+        ProviderBrowseTarget? ProviderBrowseTarget = null,
+        ProviderMediaTarget? ProviderMediaTarget = null);
 
     private sealed record SelectedCandidate(
         CandidateGroup Group,

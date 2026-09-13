@@ -28,4 +28,4 @@
 - Feature stores own remote state and mutations. Pair AbortController cancellation with identity guards so superseded or unmounted requests cannot publish stale data. Keep local filters and schedule drafts in components; run-now must preserve unsaved drafts.
 - Keep `/licences` backed by the committed static `/third-party-licenses` mirror so disclosure remains available without the API or an external network request.
 
-- Additional search groups are decoded and labelled in the tool-log provider module and rendered through the shared media-list component. BBC subscribed programmes display as a separate group; their recorded browse references remain available without live resolution.
+- Additional search groups are decoded and labelled in the tool-log provider module and rendered through the shared media-list component. BBC subscribed programmes and stations display as separate groups; recorded station browse and play references remain available without live resolution.

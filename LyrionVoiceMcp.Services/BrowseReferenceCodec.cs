@@ -66,7 +66,9 @@ public sealed class BrowseReferenceCodec : IBrowseReferenceCodec
             return false;
         }
 
-        if (media.Identity.ProviderId != media.ProviderTarget?.ProviderId) return false;
+        if (media.Identity.ProviderId != media.ProviderTarget?.ProviderId
+            || (value.ProviderTarget is not null
+                && media.Identity.ProviderId != value.ProviderTarget.ProviderId)) return false;
 
         return media.Identity.Kind is not (MediaEntityKind.Artist or MediaEntityKind.Programme);
     }

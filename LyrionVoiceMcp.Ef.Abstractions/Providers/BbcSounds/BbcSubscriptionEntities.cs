@@ -24,3 +24,30 @@ public interface IBbcSubscriptionRepository
     Task<IReadOnlyList<EntityBbcSubscribedShow>> ReadPageAsync(string snapshotId, int afterId, CancellationToken cancellationToken);
     Task<int> DeleteInactivePageAsync(string snapshotId, CancellationToken cancellationToken);
 }
+
+public sealed class EntityBbcStationState
+{
+    public int Id { get; set; } = 1;
+    public string SnapshotId { get; set; } = string.Empty;
+    public bool Available { get; set; }
+    public int StationCount { get; set; }
+}
+
+public sealed class EntityBbcStation
+{
+    public int Id { get; set; }
+    public string SnapshotId { get; set; } = string.Empty;
+    public string StationId { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string LiveAudioUrl { get; set; } = string.Empty;
+}
+
+public interface IBbcStationRepository
+{
+    Task<EntityBbcStationState?> GetStateAsync(CancellationToken cancellationToken);
+    void AddState(EntityBbcStationState state);
+    void AddStations(IEnumerable<EntityBbcStation> stations);
+    Task<IReadOnlyList<EntityBbcStation>> ReadPageAsync(
+        string snapshotId, int afterId, CancellationToken cancellationToken);
+    Task<int> DeleteInactivePageAsync(string snapshotId, CancellationToken cancellationToken);
+}

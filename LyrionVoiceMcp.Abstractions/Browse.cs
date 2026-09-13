@@ -11,7 +11,8 @@ public enum BrowseItemKind
     Track,
     Year,
     Programme,
-    Episode
+    Episode,
+    Station
 }
 
 public enum LmsBrowseQueryKind

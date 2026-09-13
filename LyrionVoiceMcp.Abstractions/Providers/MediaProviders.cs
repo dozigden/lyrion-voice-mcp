@@ -8,7 +8,8 @@ public sealed record ProviderSearchCandidate(
     MediaIdentity Identity,
     string Title,
     string MatchSignal,
-    ProviderBrowseTarget BrowseTarget);
+    ProviderBrowseTarget? BrowseTarget,
+    ProviderMediaTarget? MediaTarget = null);
 
 public sealed record ProviderSearchResult(
     IReadOnlyList<ProviderSearchCandidate> Candidates,

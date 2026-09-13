@@ -54,8 +54,60 @@ internal sealed class BbcSubscriptionRepository(IAmbientDbContextLocator locator
     }
 }
 
+public sealed class BbcStationStateConfiguration : IEntityTypeConfiguration<EntityBbcStationState>
+{
+    public void Configure(EntityTypeBuilder<EntityBbcStationState> builder)
+    {
+        builder.ToTable("BbcStationState");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).ValueGeneratedNever();
+        builder.Property(x => x.SnapshotId).HasMaxLength(32).IsRequired();
+        builder.Property(x => x.Available).IsRequired();
+        builder.Property(x => x.StationCount).IsRequired();
+    }
+}
+
+public sealed class BbcStationConfiguration : IEntityTypeConfiguration<EntityBbcStation>
+{
+    public void Configure(EntityTypeBuilder<EntityBbcStation> builder)
+    {
+        builder.ToTable("BbcStations");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.SnapshotId).HasMaxLength(32).IsRequired();
+        builder.Property(x => x.StationId).HasMaxLength(256).IsRequired();
+        builder.Property(x => x.Name).HasMaxLength(1024).IsRequired();
+        builder.Property(x => x.LiveAudioUrl).HasMaxLength(1024).IsRequired();
+        builder.HasIndex(x => new { x.SnapshotId, x.StationId }).IsUnique();
+        builder.HasIndex(x => new { x.SnapshotId, x.Id });
+    }
+}
+
+internal sealed class BbcStationRepository(IAmbientDbContextLocator locator)
+    : RepositoryBase<EntityBbcStation>(locator), IBbcStationRepository
+{
+    public Task<EntityBbcStationState?> GetStateAsync(CancellationToken cancellationToken) =>
+        DbContext.Set<EntityBbcStationState>().SingleOrDefaultAsync(x => x.Id == 1, cancellationToken);
+    public void AddState(EntityBbcStationState state) => DbContext.Add(state);
+    public void AddStations(IEnumerable<EntityBbcStation> stations) => AddRange(stations);
+    public async Task<IReadOnlyList<EntityBbcStation>> ReadPageAsync(
+        string snapshotId, int afterId, CancellationToken cancellationToken) =>
+        await Query().Where(x => x.SnapshotId == snapshotId && x.Id > afterId)
+            .OrderBy(x => x.Id).Take(500).ToArrayAsync(cancellationToken);
+    public async Task<int> DeleteInactivePageAsync(string snapshotId, CancellationToken cancellationToken)
+    {
+        var rows = await Query().Where(x => x.SnapshotId != snapshotId).OrderBy(x => x.Id)
+            .Take(500).ToArrayAsync(cancellationToken);
+        RemoveRange(rows);
+        return rows.Length;
+    }
+}
+
 internal static class BbcSoundsPersistenceRegistration
 {
-    public static IServiceCollection AddBbcSoundsPersistence(this IServiceCollection services) =>
+    public static IServiceCollection AddBbcSoundsPersistence(this IServiceCollection services)
+    {
         services.AddTransient<IBbcSubscriptionRepository, BbcSubscriptionRepository>();
+        services.AddTransient<IBbcStationRepository, BbcStationRepository>();
+        return services;
+    }
 }

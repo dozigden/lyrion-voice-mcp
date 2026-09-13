@@ -75,7 +75,8 @@ public enum EntityMediaKind
     Track,
     Playlist,
     Programme,
-    Episode
+    Episode,
+    Station
 }
 
 public enum EntityRatingMatchMode

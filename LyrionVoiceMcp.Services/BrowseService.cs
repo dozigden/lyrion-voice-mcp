@@ -227,7 +227,9 @@ public sealed class BrowseService(
             ? null
             : new BrowseReferenceValue(
                 searchReference.ProviderTarget is null ? TargetForSearchIdentity(searchReference.Identity) : null,
-                searchReference.ProviderTarget is null ? PlayableMedia(searchReference.Identity) : null,
+                searchReference.ProviderMediaTarget is not null
+                    ? new PlayableMedia(searchReference.Identity, searchReference.ProviderMediaTarget)
+                    : searchReference.ProviderTarget is null ? PlayableMedia(searchReference.Identity) : null,
                 searchReference.CorrelationId,
                 searchReference.DisplayMetadata,
                 searchReference.ProviderTarget);
@@ -268,6 +270,7 @@ public sealed class BrowseService(
             BrowseItemKind.Playlist => ReferenceDisplayKind.Playlist,
             BrowseItemKind.Year => ReferenceDisplayKind.Year,
             BrowseItemKind.Track => ReferenceDisplayKind.Track,
+            BrowseItemKind.Station => ReferenceDisplayKind.Station,
             _ => throw new InvalidOperationException($"Unsupported browse item kind {kind}.")
         },
         title,

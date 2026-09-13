@@ -15,11 +15,16 @@ describe('recorded MCP tool presentation', () => {
     expect(headings.at(-1)!.text()).toBe('Other');
   });
   it('renders subscribed programme results alongside music without live lookups', () => {
-    const result = { ...results.search, bbcSoundsSubscribed: [{ title: 'The Mira Vale Show', browseRef: 'programme-fiction' }] };
+    const result = { ...results.search,
+      bbcSoundsSubscribed: [{ title: 'The Mira Vale Show', browseRef: 'programme-fiction' }],
+      bbcSoundsStations: [{ name: 'Fictional Radio', browseRef: 'station-fiction', playRef: 'station-fiction' }] };
     const wrapper = mount(ToolCallDetail, { props: { call: call('search', 'provider-search', result) } });
     expect(wrapper.text()).toContain('BBC Sounds subscriptions');
     expect(wrapper.text()).toContain('The Mira Vale Show');
     expect(wrapper.text()).toContain('programme-fiction');
+    expect(wrapper.text()).toContain('BBC Sounds stations');
+    expect(wrapper.text()).toContain('Fictional Radio');
+    expect(wrapper.text()).toContain('station-fiction');
     expect(wrapper.text()).toContain('Exact artist');
     expect(wrapper.find('pre').exists()).toBe(false);
   });

@@ -8,7 +8,7 @@ public sealed class BbcSoundsReadOnlyIntegrationTests
 
     [Fact(Skip = "Requires an explicitly configured read-only LMS.", SkipUnless = nameof(IsConfigured))]
     [Trait("Category", "Integration")]
-    public async Task ConfiguredPluginShouldExposeSubscriptionsAndEpisodeAudio()
+    public async Task ConfiguredPluginShouldExposeSubscriptionsEpisodesAndStations()
     {
         var settings = LmsConnectionSettings.FromValues("readonly-integration",
             Environment.GetEnvironmentVariable("LVM_BBC_READONLY_INTEGRATION_URL"), "30");
@@ -24,6 +24,14 @@ public sealed class BbcSoundsReadOnlyIntegrationTests
             Assert.True(page.Episodes.All(episode => !string.IsNullOrWhiteSpace(episode.Id)
                 && !string.IsNullOrWhiteSpace(episode.Title) && episode.AudioUrl.StartsWith("sounds://", StringComparison.Ordinal)),
                 "Episode entries must expose provider-owned audio references.");
+        }
+        var stations = await client.ReadStationsAsync(TestContext.Current.CancellationToken);
+        Assert.True(stations.Available, "The integration environment must expose BBC Sounds station discovery.");
+        if (stations.Stations.Count > 0)
+        {
+            var menu = await client.BrowseStationAsync(stations.Stations[0].Id, TestContext.Current.CancellationToken);
+            Assert.True(menu.All(item => !string.IsNullOrWhiteSpace(item.Title)),
+                "Station menus must expose titled provider items.");
         }
     }
 }

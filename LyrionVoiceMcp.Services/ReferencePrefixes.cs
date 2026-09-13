@@ -12,6 +12,7 @@ internal static class ReferencePrefixes
         MediaEntityKind.Playlist => "playlist_",
         MediaEntityKind.Programme => "programme_",
         MediaEntityKind.Episode => "episode_",
+        MediaEntityKind.Station => "station_",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 
@@ -24,7 +25,12 @@ internal static class ReferencePrefixes
 
         if (value.ProviderTarget is not null)
         {
-            return "programmes_";
+            return value.DisplayMetadata?.Kind switch
+            {
+                ReferenceDisplayKind.Station => "station_",
+                ReferenceDisplayKind.Category => "provider_",
+                _ => "programmes_"
+            };
         }
 
         var target = value.Target

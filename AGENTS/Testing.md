@@ -31,5 +31,5 @@
 
 ## Provider coverage
 
-- Use fictional-provider tests to prove shared dispatch and failure isolation without coupling core tests to BBC classes. Provider feature tests cover canonical snapshot activation, refresh failure retention, matching, opaque targets and LMS menu/action boundaries.
-- The LMS test suite includes an explicitly labelled, read-only BBC integration check. It is skipped unless `LVM_BBC_READONLY_INTEGRATION_URL` is set for that invocation. It only discovers subscriptions and episode audio; never include environment values or returned media in tracked fixtures or results. Playback tests use fake LMS responses; live playback still requires explicit player approval.
+- Use fictional-provider tests to prove shared dispatch and failure isolation without coupling core tests to BBC classes. Provider feature tests cover subscription and station snapshot activation, refresh failure retention, independent matching and caps, opaque browse/play targets, and LMS menu/action boundaries.
+- The LMS test suite includes an explicitly labelled, read-only BBC integration check. It is skipped unless `LVM_BBC_READONLY_INTEGRATION_URL` is set for that invocation. It discovers subscriptions, episode audio, stations and station-menu structure only; never include environment values or returned media in tracked fixtures or results. Playback tests use fake LMS responses; live playback still requires explicit player approval.

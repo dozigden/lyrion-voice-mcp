@@ -31,8 +31,14 @@ public sealed class SearchResultReferenceCodec : ISearchResultReferenceCodec
                 nameof(value));
         }
 
-        if (value.Identity.ProviderId != value.ProviderTarget?.ProviderId)
-            throw new ArgumentException("The search provider target does not match its identity.", nameof(value));
+        var providerId = value.Identity.ProviderId;
+        if ((value.ProviderTarget is not null && providerId != value.ProviderTarget.ProviderId)
+            || (value.ProviderMediaTarget is not null && providerId != value.ProviderMediaTarget.ProviderId)
+            || (providerId is null && (value.ProviderTarget is not null || value.ProviderMediaTarget is not null))
+            || (providerId is not null && value.ProviderTarget is null && value.ProviderMediaTarget is null))
+        {
+            throw new ArgumentException("The search provider targets do not match their identity.", nameof(value));
+        }
 
         return registry.Issue(
             ReferencePrefixes.ForMedia(value.Identity.Kind),

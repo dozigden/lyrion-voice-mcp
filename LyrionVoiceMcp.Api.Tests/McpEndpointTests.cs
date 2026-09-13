@@ -108,7 +108,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("properties");
         Assert.False(searchInputProperties.TryGetProperty("query", out _));
         Assert.Equal(
-            "Optional artist, album, track, playlist, or subscribed programme name text, up to 500 characters and 20 words. Supply the programme name without provider labels or episode-selection instructions. Omit it or leave it blank for rating-, genre-, or year-filtered discovery; omit every input for broad varied track discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.",
+            "Optional artist, album, track, playlist, subscribed programme, or live station name text, up to 500 characters and 20 words. Supply provider names without provider labels or episode-selection instructions. Omit it or leave it blank for rating-, genre-, or year-filtered discovery; omit every input for broad varied track discovery. Do not include constraints or search syntax in the name. Wildcards are not supported.",
             searchInputProperties.GetProperty("name").GetProperty("description").GetString());
         Assert.False(searchInputProperties.TryGetProperty("kind", out _));
         Assert.True(searchInputProperties.TryGetProperty("genre", out _));
@@ -138,6 +138,10 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
         var programmeSchema = searchOutput.GetProperty("properties").GetProperty("bbcSoundsSubscribed").GetProperty("items");
         Assert.True(programmeSchema.GetProperty("properties").TryGetProperty("browseRef", out _));
         Assert.False(programmeSchema.GetProperty("properties").TryGetProperty("playRef", out _));
+        Assert.Contains(searchOutput.GetProperty("required").EnumerateArray(), property => property.GetString() == "bbcSoundsStations");
+        var stationSchema = searchOutput.GetProperty("properties").GetProperty("bbcSoundsStations").GetProperty("items");
+        Assert.True(stationSchema.GetProperty("properties").TryGetProperty("browseRef", out _));
+        Assert.True(stationSchema.GetProperty("properties").TryGetProperty("playRef", out _));
         var exactArtistSchema = searchOutput
             .GetProperty("properties")
             .GetProperty("exactArtistMatch");
@@ -372,6 +376,10 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("structuredContent");
         Assert.Equal(JsonValueKind.Null, structuredContent.GetProperty("exactArtistMatch").ValueKind);
         Assert.Empty(structuredContent.GetProperty("bbcSoundsSubscribed").EnumerateArray());
+        var station = Assert.Single(structuredContent.GetProperty("bbcSoundsStations").EnumerateArray());
+        Assert.Equal("Fictional Radio", station.GetProperty("name").GetString());
+        Assert.Equal("station-reference", station.GetProperty("browseRef").GetString());
+        Assert.Equal("station-reference", station.GetProperty("playRef").GetString());
         var artist = Assert.Single(structuredContent.GetProperty("artists").EnumerateArray());
         Assert.Equal("The Copper Lines", artist.GetProperty("name").GetString());
         Assert.Equal("opaque-reference", artist.GetProperty("browseRef").GetString());
@@ -1340,7 +1348,14 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
                     MediaEntityKind.Playlist,
                     "Copper Evenings",
                     null,
-                    null)
+                    null),
+                new(
+                    "station-reference",
+                    MediaEntityKind.Station,
+                    "Fictional Radio",
+                    null,
+                    null,
+                    ProviderId: "bbc-sounds")
             ],
             [
                 new(

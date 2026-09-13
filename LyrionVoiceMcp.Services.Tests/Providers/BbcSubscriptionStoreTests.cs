@@ -14,6 +14,7 @@ public sealed class BbcSubscriptionStoreTests : IDisposable
     private readonly string directory = Path.Combine(Path.GetTempPath(), $"lyrion-subscriptions-{Guid.NewGuid():N}");
     private readonly ServiceProvider services;
     private readonly BbcSubscriptionStore store;
+    private readonly BbcStationStore stationStore;
     private readonly IDbContextScopeFactory scopes;
     private readonly IBbcSubscriptionRepository repository;
     public BbcSubscriptionStoreTests()
@@ -23,6 +24,7 @@ public sealed class BbcSubscriptionStoreTests : IDisposable
         scopes = services.GetRequiredService<IDbContextScopeFactory>();
         repository = services.GetRequiredService<IBbcSubscriptionRepository>();
         store = new BbcSubscriptionStore(scopes, repository);
+        stationStore = new BbcStationStore(scopes, services.GetRequiredService<IBbcStationRepository>());
     }
 
     [Fact]
@@ -64,13 +66,37 @@ public sealed class BbcSubscriptionStoreTests : IDisposable
         var snapshot = new BbcSubscriptions(true, [new("first", "The Mira Vale Show")]);
         await store.ReplaceAsync(snapshot, TestContext.Current.CancellationToken);
         var index = new StubIndex(snapshot);
-        var job = new BbcSoundsRefreshJob(new FailingClient(), store, index, new Log());
+        var job = new BbcSoundsRefreshJob(
+            new FailingClient(), store, stationStore, index, new StubStationIndex(), new Log());
 
         var result = await job.HandleAsync(new JobContext(7, BbcSoundsProvider.RefreshJob, "{}"), TestContext.Current.CancellationToken);
 
         Assert.False(result.Success);
         Assert.Equal("first", Assert.Single(index.Shows).Id);
         Assert.Equal("first", Assert.Single((await store.ReadAsync(TestContext.Current.CancellationToken))!.Shows).Id);
+    }
+
+    [Fact]
+    public async Task StationDiscoveryFailureMustRetainBothProviderSnapshots()
+    {
+        var subscriptions = new BbcSubscriptions(true, [new("first", "The Mira Vale Show")]);
+        var stations = new BbcStations(true,
+            [new("stationa", "Fictional Radio", "sounds://_LIVE_stationa")]);
+        await store.ReplaceAsync(subscriptions, TestContext.Current.CancellationToken);
+        await stationStore.ReplaceAsync(stations, TestContext.Current.CancellationToken);
+        var subscriptionIndex = new StubIndex(subscriptions);
+        var stationIndex = new StubStationIndex(stations);
+        var job = new BbcSoundsRefreshJob(new StationFailingClient(), store, stationStore,
+            subscriptionIndex, stationIndex, new Log());
+
+        var result = await job.HandleAsync(
+            new JobContext(8, BbcSoundsProvider.RefreshJob, "{}"), TestContext.Current.CancellationToken);
+
+        Assert.False(result.Success);
+        Assert.Equal("first", Assert.Single(subscriptionIndex.Shows).Id);
+        Assert.Equal("stationa", Assert.Single(stationIndex.Stations).Id);
+        Assert.Equal("first", Assert.Single((await store.ReadAsync(TestContext.Current.CancellationToken))!.Shows).Id);
+        Assert.Equal("stationa", Assert.Single((await stationStore.ReadAsync(TestContext.Current.CancellationToken))!.Stations).Id);
     }
 
     public void Dispose()
@@ -90,9 +116,36 @@ public sealed class BbcSubscriptionStoreTests : IDisposable
     private sealed class FailingClient : IBbcSoundsClient
     {
         public Task<BbcSubscriptions> ReadSubscriptionsAsync(CancellationToken token) => throw new LmsRequestException("Fictional upstream failure.");
+        public Task<BbcStations> ReadStationsAsync(CancellationToken token) => throw new NotSupportedException();
         public Task<BbcEpisodePage> BrowseEpisodesAsync(string id, int offset, CancellationToken token) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BbcStationMenuItem>> BrowseStationAsync(string id, CancellationToken token) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BbcStationMenuItem>> BrowseStationMenuAsync(BbcStationMenuTarget target, CancellationToken token) => throw new NotSupportedException();
         public Task<bool> IsAvailableAsync(BbcEpisodeTarget target, CancellationToken token) => throw new NotSupportedException();
+        public Task<bool> IsAvailableAsync(BbcAudioTarget target, CancellationToken token) => throw new NotSupportedException();
         public Task SubmitAsync(string player, BbcEpisodeTarget target, LyrionVoiceMcp.Abstractions.Providers.ProviderPlaybackCommand command, CancellationToken token) => throw new NotSupportedException();
+        public Task SubmitAsync(string player, BbcAudioTarget target, LyrionVoiceMcp.Abstractions.Providers.ProviderPlaybackCommand command, CancellationToken token) => throw new NotSupportedException();
+    }
+    private sealed class StubStationIndex(BbcStations? snapshot = null) : IBbcStationIndex
+    {
+        private BbcStations current = snapshot ?? new BbcStations(false, []);
+        public bool Available => current.Available;
+        public IReadOnlyList<BbcStation> Stations => current.Stations;
+        public void Publish(BbcStations stations) => current = stations;
+        public IReadOnlyList<BbcStationMatch> Search(string name, CancellationToken token) => [];
+    }
+    private sealed class StationFailingClient : IBbcSoundsClient
+    {
+        public Task<BbcSubscriptions> ReadSubscriptionsAsync(CancellationToken token) =>
+            Task.FromResult(new BbcSubscriptions(true, [new("second", "The Orchard Hour")]));
+        public Task<BbcStations> ReadStationsAsync(CancellationToken token) =>
+            throw new LmsRequestException("Fictional station discovery failure.");
+        public Task<BbcEpisodePage> BrowseEpisodesAsync(string id, int offset, CancellationToken token) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BbcStationMenuItem>> BrowseStationAsync(string id, CancellationToken token) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BbcStationMenuItem>> BrowseStationMenuAsync(BbcStationMenuTarget target, CancellationToken token) => throw new NotSupportedException();
+        public Task<bool> IsAvailableAsync(BbcEpisodeTarget target, CancellationToken token) => throw new NotSupportedException();
+        public Task<bool> IsAvailableAsync(BbcAudioTarget target, CancellationToken token) => throw new NotSupportedException();
+        public Task SubmitAsync(string player, BbcEpisodeTarget target, LyrionVoiceMcp.Abstractions.Providers.ProviderPlaybackCommand command, CancellationToken token) => throw new NotSupportedException();
+        public Task SubmitAsync(string player, BbcAudioTarget target, LyrionVoiceMcp.Abstractions.Providers.ProviderPlaybackCommand command, CancellationToken token) => throw new NotSupportedException();
     }
     private sealed class Log : IJobLogWriter
     {

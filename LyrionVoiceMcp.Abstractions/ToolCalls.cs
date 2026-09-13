@@ -21,7 +21,8 @@ public enum ReferenceDisplayKind
     Year,
     Track,
     Programme,
-    Episode
+    Episode,
+    Station
 }
 
 public sealed record ReferenceDisplayMetadata(

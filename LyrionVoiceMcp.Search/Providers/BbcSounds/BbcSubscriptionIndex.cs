@@ -94,6 +94,10 @@ internal sealed class BbcSubscriptionIndex : IBbcSubscriptionIndex
 
 internal static class BbcSoundsSearchRegistration
 {
-    public static IServiceCollection AddBbcSoundsSearch(this IServiceCollection services) =>
+    public static IServiceCollection AddBbcSoundsSearch(this IServiceCollection services)
+    {
         services.AddSingleton<IBbcSubscriptionIndex, BbcSubscriptionIndex>();
+        services.AddSingleton<IBbcStationIndex, BbcStationIndex>();
+        return services;
+    }
 }
