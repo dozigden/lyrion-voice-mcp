@@ -22,20 +22,7 @@ describe('AppLayout maintenance status', () => {
 
   it('renders successful build ages as exact semantic times and keeps them current', async () => {
     // Arrange
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [
-        { path: '/tool-calls', name: 'tool-calls', component: defineComponent({ template: '<main />' }) },
-        { path: '/system', name: 'home', component: defineComponent({ template: '<main />' }) },
-        { path: '/licences', name: 'licences', component: defineComponent({ template: '<main />' }) }
-      ]
-    });
-    await router.push('/tool-calls');
-    await router.isReady();
-
-    // Act
-    const wrapper = mount(AppLayout, { global: { plugins: [createPinia(), router] } });
-    await flushPromises();
+    const wrapper = await mountLayout();
 
     // Assert
     const times = wrapper.findAll('.health time');
@@ -53,9 +40,65 @@ describe('AppLayout maintenance status', () => {
     wrapper.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('turns the active catalogue section into the pipeline arrow', async () => {
+    // Arrange
+    vi.mocked(api.getCatalogue).mockResolvedValue(catalogueStatus('running'));
+
+    // Act
+    const wrapper = await mountLayout();
+
+    // Assert
+    const segments = wrapper.findAll('.pipeline-segment');
+    expect(segments).toHaveLength(2);
+    expect(segments[0].classes()).toContain('pipeline-segment--active');
+    expect(segments[0].text()).toContain('Catalogue');
+    expect(segments[0].text()).toContain('Rebuilding');
+    expect(segments[1].classes()).toContain('pipeline-segment--after-active');
+    expect(segments[1].text()).toContain('Index');
+    expect(wrapper.findAll('.pipeline-segment--active')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('expands an index rebuild into a third stage while retaining the current index age', async () => {
+    // Arrange
+    vi.mocked(api.getSearchIndex).mockResolvedValue(indexStatus('running'));
+
+    // Act
+    const wrapper = await mountLayout();
+
+    // Assert
+    const segments = wrapper.findAll('.pipeline-segment');
+    expect(segments).toHaveLength(3);
+    expect(segments.map(segment => segment.get('.pipeline-name').text())).toEqual([
+      'Catalogue', 'Index build', 'Index'
+    ]);
+    expect(segments[1].classes()).toContain('pipeline-segment--active');
+    expect(segments[1].text()).toContain('Rebuilding');
+    expect(segments[2].classes()).toContain('pipeline-segment--after-active');
+    expect(segments[2].get('time').text()).toBe('1 hr ago');
+    expect(wrapper.findAll('.pipeline-segment--active')).toHaveLength(1);
+    wrapper.unmount();
+  });
 });
 
-function catalogueStatus(): api.CatalogueStatusResponse {
+async function mountLayout() {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/tool-calls', name: 'tool-calls', component: defineComponent({ template: '<main />' }) },
+      { path: '/system', name: 'home', component: defineComponent({ template: '<main />' }) },
+      { path: '/licences', name: 'licences', component: defineComponent({ template: '<main />' }) }
+    ]
+  });
+  await router.push('/tool-calls');
+  await router.isReady();
+  const wrapper = mount(AppLayout, { global: { plugins: [createPinia(), router] } });
+  await flushPromises();
+  return wrapper;
+}
+
+function catalogueStatus(status: 'running' | 'succeeded' = 'succeeded'): api.CatalogueStatusResponse {
   return {
     summary: {
       sourceId: 'fictional', provider: 'test', sourceRevision: null, sourceVersion: null,
@@ -63,13 +106,14 @@ function catalogueStatus(): api.CatalogueStatusResponse {
       artistCount: 1, albumCount: 1, genreCount: 1, trackCount: 1, virtualLibraryCount: 0, warningCount: 0
     },
     latestRefresh: {
-      id: 'refresh-1', status: 'succeeded', startedAt: '2026-01-02T12:47:00Z',
-      completedAt: '2026-01-02T12:48:00Z', durationMilliseconds: 60_000, failureMessage: null, logs: []
+      id: 'refresh-1', status, startedAt: '2026-01-02T12:47:00Z',
+      completedAt: status === 'running' ? null : '2026-01-02T12:48:00Z',
+      durationMilliseconds: status === 'running' ? null : 60_000, failureMessage: null, logs: []
     }
   };
 }
 
-function indexStatus(): api.SearchIndexStatusResponse {
+function indexStatus(status: 'running' | 'succeeded' = 'succeeded'): api.SearchIndexStatusResponse {
   return {
     resolver: 'fictional',
     artifact: {
@@ -77,8 +121,8 @@ function indexStatus(): api.SearchIndexStatusResponse {
       candidateCount: 1, preparationDurationMilliseconds: 1, indexSizeBytes: 1
     },
     latestJob: {
-      id: 1, status: 'succeeded', startedAt: '2026-01-02T11:59:00Z',
-      completedAt: '2026-01-02T12:00:00Z', errorMessage: null
+      id: 1, status, startedAt: '2026-01-02T11:59:00Z',
+      completedAt: status === 'running' ? null : '2026-01-02T12:00:00Z', errorMessage: null
     }
   };
 }

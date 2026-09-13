@@ -5,6 +5,7 @@ export interface HeaderMaintenanceStatus {
   label: string;
   timestamp: string | null;
   ready: boolean;
+  working: boolean;
 }
 
 export function catalogueHeadline(value: CatalogueStatusResponse | null, loading: boolean, error: string | null): string {
@@ -40,10 +41,18 @@ export function indexHeaderStatus(
   return headerStatus(indexHeadline(value, loading, error), value?.artifact?.builtAt ?? null, now);
 }
 
+export function currentIndexHeaderStatus(
+  value: SearchIndexStatusResponse | null,
+  now = Date.now()
+): HeaderMaintenanceStatus {
+  return headerStatus(value?.artifact ? 'Ready' : 'Not built', value?.artifact?.builtAt ?? null, now);
+}
+
 function headerStatus(headline: string, timestamp: string | null, now: number): HeaderMaintenanceStatus {
   const ready = headline === 'Ready';
   const attention = headline === 'Ready · attention';
+  const working = headline === 'Rebuilding';
   const age = timestamp && (ready || attention) ? formatAge(timestamp, now) : null;
-  if (!age) return { label: headline, timestamp: null, ready };
-  return { label: attention ? `${age} · attention` : age, timestamp, ready };
+  if (!age) return { label: headline, timestamp: null, ready, working };
+  return { label: attention ? `${age} · attention` : age, timestamp, ready, working };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { catalogueHeaderStatus, catalogueHeadline, indexHeaderStatus, indexHeadline } from './headlineStatus';
+import { catalogueHeaderStatus, catalogueHeadline, currentIndexHeaderStatus, indexHeaderStatus, indexHeadline } from './headlineStatus';
 import type { CatalogueStatusResponse, SearchIndexStatusResponse } from './operationsApi';
 describe('compact maintenance status', () => {
   it('distinguishes an available artifact with a failed rebuild from absence', () => {
@@ -26,8 +26,8 @@ describe('compact maintenance status', () => {
     const searchIndexStatus = indexHeaderStatus(index, false, null, now);
 
     // Assert
-    expect(catalogueHeader).toEqual({ label: '12 min ago', timestamp: '2026-01-02T12:48:00Z', ready: true });
-    expect(searchIndexStatus).toEqual({ label: '2 hr ago', timestamp: '2026-01-02T11:00:00Z', ready: true });
+    expect(catalogueHeader).toEqual({ label: '12 min ago', timestamp: '2026-01-02T12:48:00Z', ready: true, working: false });
+    expect(searchIndexStatus).toEqual({ label: '2 hr ago', timestamp: '2026-01-02T11:00:00Z', ready: true, working: false });
   });
 
   it('keeps the successful artifact age visible when a later rebuild needs attention', () => {
@@ -39,15 +39,27 @@ describe('compact maintenance status', () => {
     const status = indexHeaderStatus(index, false, null, now);
 
     // Assert
-    expect(status).toEqual({ label: '1 day ago · attention', timestamp: '2026-01-02T11:00:00Z', ready: false });
+    expect(status).toEqual({ label: '1 day ago · attention', timestamp: '2026-01-02T11:00:00Z', ready: false, working: false });
   });
 
   it('preserves non-ready states without presenting an artifact timestamp', () => {
     const catalogue = catalogueStatus('2026-01-02T12:48:00Z');
     catalogue.latestRefresh = { ...catalogue.latestRefresh!, status: 'running' };
 
-    expect(catalogueHeaderStatus(catalogue, false, null)).toEqual({ label: 'Rebuilding', timestamp: null, ready: false });
-    expect(catalogueHeaderStatus(catalogue, false, 'Unavailable')).toEqual({ label: 'Unavailable', timestamp: null, ready: false });
+    expect(catalogueHeaderStatus(catalogue, false, null)).toEqual({ label: 'Rebuilding', timestamp: null, ready: false, working: true });
+    expect(catalogueHeaderStatus(catalogue, false, 'Unavailable')).toEqual({ label: 'Unavailable', timestamp: null, ready: false, working: false });
+  });
+
+  it('keeps the current index artifact visible independently of a rebuild', () => {
+    const now = new Date('2026-01-02T13:00:00Z').getTime();
+    const index = indexStatus('2026-01-02T11:00:00Z', 'succeeded');
+
+    expect(currentIndexHeaderStatus(index, now)).toEqual({
+      label: '2 hr ago', timestamp: '2026-01-02T11:00:00Z', ready: true, working: false
+    });
+    expect(currentIndexHeaderStatus({ ...index, artifact: null }, now)).toEqual({
+      label: 'Not built', timestamp: null, ready: false, working: false
+    });
   });
 
 });
