@@ -175,7 +175,7 @@
       "lyrionvoicemcp.ef": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Ef.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Ef.Abstractions": "[0.2.0, )",
           "Microsoft.EntityFrameworkCore": "[10.0.11, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.11, )"
         }
@@ -189,14 +189,14 @@
       "lyrionvoicemcp.lms": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )"
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )"
         }
       },
       "lyrionvoicemcp.search": {
         "type": "Project",
         "dependencies": {
           "Lucene.Net.Analysis.Phonetic": "[4.8.0-beta00018, )",
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },
@@ -204,8 +204,8 @@
         "type": "Project",
         "dependencies": {
           "Cronos": "[0.13.0, )",
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "LyrionVoiceMcp.Ef.Abstractions": "[0.1.0, )"
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
+          "LyrionVoiceMcp.Ef.Abstractions": "[0.2.0, )"
         }
       }
     }

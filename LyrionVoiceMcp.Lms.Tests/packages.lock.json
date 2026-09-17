@@ -278,7 +278,7 @@
       "lyrionvoicemcp.lms": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
           "Microsoft.Extensions.Http": "[10.0.11, )"
         }
       }

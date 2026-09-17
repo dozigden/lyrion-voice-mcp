@@ -602,7 +602,7 @@
       "ecosystem": "product",
       "entryType": "licence",
       "packageName": "Lyrion Voice MCP",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "declaredLicence": "MIT",
       "sourceType": "product",
       "sourceFile": "../LICENSE",

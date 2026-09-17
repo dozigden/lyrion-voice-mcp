@@ -1,4 +1,4 @@
-ARG LVM_VERSION=0.1.0-dev
+ARG LVM_VERSION=0.2.0-dev
 ARG LVM_CHANNEL=development
 ARG LVM_BUILD=local
 ARG LVM_COMMIT=unknown

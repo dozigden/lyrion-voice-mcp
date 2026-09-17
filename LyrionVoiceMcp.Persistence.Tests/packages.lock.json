@@ -370,7 +370,7 @@
       "lyrionvoicemcp.ef": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Ef.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Ef.Abstractions": "[0.2.0, )",
           "Microsoft.EntityFrameworkCore": "[10.0.11, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )"
@@ -386,8 +386,8 @@
         "type": "Project",
         "dependencies": {
           "Cronos": "[0.13.0, )",
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "LyrionVoiceMcp.Ef.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
+          "LyrionVoiceMcp.Ef.Abstractions": "[0.2.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )"

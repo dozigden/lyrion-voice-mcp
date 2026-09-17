@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        LVM_VERSION: 0.1.0-dev
+        LVM_VERSION: 0.2.0-dev
         LVM_CHANNEL: development
         LVM_BUILD: compose
         LVM_COMMIT: local

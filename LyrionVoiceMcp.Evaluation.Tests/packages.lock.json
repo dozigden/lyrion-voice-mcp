@@ -354,15 +354,15 @@
       "lyrionvoicemcp.evaluation": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "LyrionVoiceMcp.Lms": "[0.1.0, )",
-          "LyrionVoiceMcp.Search": "[0.1.0, )"
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
+          "LyrionVoiceMcp.Lms": "[0.2.0, )",
+          "LyrionVoiceMcp.Search": "[0.2.0, )"
         }
       },
       "lyrionvoicemcp.lms": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
           "Microsoft.Extensions.Http": "[10.0.11, )"
         }
       },
@@ -370,7 +370,7 @@
         "type": "Project",
         "dependencies": {
           "Lucene.Net.Analysis.Phonetic": "[4.8.0-beta00018, )",
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )"
         }

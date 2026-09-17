@@ -674,12 +674,12 @@
       "lyrionvoicemcp.api": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "LyrionVoiceMcp.Contracts": "[0.1.0, )",
-          "LyrionVoiceMcp.Ef": "[0.1.0, )",
-          "LyrionVoiceMcp.Lms": "[0.1.0, )",
-          "LyrionVoiceMcp.Search": "[0.1.0, )",
-          "LyrionVoiceMcp.Services": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
+          "LyrionVoiceMcp.Contracts": "[0.2.0, )",
+          "LyrionVoiceMcp.Ef": "[0.2.0, )",
+          "LyrionVoiceMcp.Lms": "[0.2.0, )",
+          "LyrionVoiceMcp.Search": "[0.2.0, )",
+          "LyrionVoiceMcp.Services": "[0.2.0, )",
           "ModelContextProtocol.AspNetCore": "[2.1.0, )"
         }
       },
@@ -689,7 +689,7 @@
       "lyrionvoicemcp.ef": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Ef.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Ef.Abstractions": "[0.2.0, )",
           "Microsoft.EntityFrameworkCore": "[10.0.11, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )"
@@ -704,7 +704,7 @@
       "lyrionvoicemcp.lms": {
         "type": "Project",
         "dependencies": {
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
           "Microsoft.Extensions.Http": "[10.0.11, )"
         }
       },
@@ -712,7 +712,7 @@
         "type": "Project",
         "dependencies": {
           "Lucene.Net.Analysis.Phonetic": "[4.8.0-beta00018, )",
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )"
         }
@@ -721,8 +721,8 @@
         "type": "Project",
         "dependencies": {
           "Cronos": "[0.13.0, )",
-          "LyrionVoiceMcp.Abstractions": "[0.1.0, )",
-          "LyrionVoiceMcp.Ef.Abstractions": "[0.1.0, )",
+          "LyrionVoiceMcp.Abstractions": "[0.2.0, )",
+          "LyrionVoiceMcp.Ef.Abstractions": "[0.2.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )"

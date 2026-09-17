@@ -18,7 +18,7 @@ public sealed record LyrionVoiceMcpBuildInfo(
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion
             ?? assembly.GetName().Version?.ToString()
-            ?? "0.1.0";
+            ?? "0.2.0";
 
         return new LyrionVoiceMcpBuildInfo(
             Read(section, "Version", assemblyVersion),
@@ -33,4 +33,3 @@ public sealed record LyrionVoiceMcpBuildInfo(
         return string.IsNullOrWhiteSpace(configured) ? fallback : configured;
     }
 }
-

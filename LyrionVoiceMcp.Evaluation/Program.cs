@@ -50,7 +50,7 @@ if (configuration is EvaluationConfigurationRejected rejectedConfiguration)
 
 var settings = ((EvaluationConfigurationLoaded)configuration).Settings;
 using var httpClient = new HttpClient { Timeout = settings.RequestTimeout };
-httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("LyrionVoiceMcp.Evaluation/0.1.0");
+httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("LyrionVoiceMcp.Evaluation/0.2.0");
 var searchClient = new LmsSearchClient(new LmsJsonRpcClient(settings, httpClient));
 var resolver = new LmsEvaluationSearchResolver(searchClient);
 var runner = new EvaluationRunner(resolver, TimeProvider.System);
