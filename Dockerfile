@@ -3,7 +3,7 @@ ARG LVM_CHANNEL=development
 ARG LVM_BUILD=local
 ARG LVM_COMMIT=unknown
 
-FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS frontend-build
+FROM node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS frontend-build
 ARG LVM_VERSION
 WORKDIR /src/LyrionVoiceMcp.Web
 COPY LyrionVoiceMcp.Web/package.json LyrionVoiceMcp.Web/package-lock.json LyrionVoiceMcp.Web/.npmrc ./
