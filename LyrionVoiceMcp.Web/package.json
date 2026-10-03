@@ -27,7 +27,7 @@
     "eslint": "^10.2.1",
     "eslint-plugin-vue": "^10.10.0",
     "jsdom": "^29.1.1",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.4",
     "vue-eslint-parser": "^10.2.0",
