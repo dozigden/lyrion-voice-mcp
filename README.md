@@ -4,7 +4,7 @@ Lyrion Voice MCP is an MCP server for Lyrion Music Server (LMS). It maintains a 
 
 It provides more structured search results than LMS itself to help an agent reach the result you want with fewer calls and tokens.
 
-![Lyrion Voice MCP administration status page](lvm-screenshot.png)
+![Lyrion Voice MCP tool log showing player control details](lvm-screenshot.png)
 
 Example requests it aims to let an agent action quickly:
 
