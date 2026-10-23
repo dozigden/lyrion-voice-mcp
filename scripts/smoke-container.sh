@@ -69,6 +69,19 @@ if [[ -z "$health_json" ]]; then
 fi
 
 assert_json "Health endpoint" '.status == "ok"' "$health_json"
+
+# Inspect the effective bundle, including roots retained through cross-signing.
+trusted_certificates="$(docker exec "$container_name" sh -c \
+  'openssl crl2pkcs7 -nocrl -certfile /etc/ssl/certs/ca-certificates.crt | openssl pkcs7 -print_certs -noout')"
+if [[ -z "$trusted_certificates" ]]; then
+  echo "Container trust store is empty or unreadable." >&2
+  exit 1
+fi
+if grep --extended-regexp --quiet 'emSign ECC Root CA - G3|AAA Certificate Services' <<< "$trusted_certificates"; then
+  echo "Container still trusts a root affected by the eMudhra intermediate CA compromise." >&2
+  exit 1
+fi
+
 version_json="$(curl --fail --silent --show-error "$base_url/api/version")"
 if [[ -n "${EXPECTED_VERSION:-}${EXPECTED_CHANNEL:-}${EXPECTED_BUILD:-}${EXPECTED_COMMIT:-}" ]]; then
   if [[ -z "${EXPECTED_VERSION:-}" || -z "${EXPECTED_CHANNEL:-}" \
