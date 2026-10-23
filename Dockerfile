@@ -12,7 +12,7 @@ COPY LyrionVoiceMcp.Web/ ./
 ENV VITE_LVM_VERSION=$LVM_VERSION
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c AS backend-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d AS backend-build
 WORKDIR /src
 COPY Directory.Build.props global.json LyrionVoiceMcp.slnx ./
 COPY LyrionVoiceMcp.Abstractions/ LyrionVoiceMcp.Abstractions/
