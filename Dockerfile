@@ -33,7 +33,7 @@ COPY LyrionVoiceMcp.Services.Tests/ LyrionVoiceMcp.Services.Tests/
 RUN dotnet restore LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj --locked-mode -maxcpucount:1 -nodeReuse:false
 RUN dotnet publish LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj --configuration Release --no-restore --output /app/publish -maxcpucount:1 -nodeReuse:false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:a4556ed033fa96f984bb7a8d348851cb2d36b1281dd2420070045f664fbb5f94 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:6a94333d37514e385650a3c81a55e5350b67253dbe136e9cf17e499c35606a8c AS runtime
 ARG LVM_VERSION
 ARG LVM_CHANNEL
 ARG LVM_BUILD
