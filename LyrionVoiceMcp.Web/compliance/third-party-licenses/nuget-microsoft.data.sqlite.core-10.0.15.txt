@@ -1,5 +1,5 @@
-NuGet Package: Microsoft.EntityFrameworkCore.Relational
-Version: 10.0.11
+NuGet Package: Microsoft.Data.Sqlite.Core
+Version: 10.0.15
 Declared Licence Expression: MIT
 Copyright: © Microsoft Corporation. All rights reserved.
 

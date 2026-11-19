@@ -4,7 +4,7 @@ Read this before changing MCP registration, tool schemas, results, or error hand
 
 ## Implemented transport
 
-- Use the official C# SDK package `ModelContextProtocol.AspNetCore` 2.1.x.
+- Use the official C# SDK package `ModelContextProtocol.AspNetCore` 2.4.x.
 - Serve stateless Streamable HTTP at `/mcp`.
 - Do not enable legacy SSE, sessions, OAuth, or application authentication without a new architectural decision.
 - MCP transport registration belongs in Api; public input/output records belong in Contracts.

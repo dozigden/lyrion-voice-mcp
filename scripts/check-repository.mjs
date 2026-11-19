@@ -51,8 +51,8 @@ for (const link of agentLinks) {
 }
 
 const apiProject = readFileSync('LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj', 'utf8');
-if (!apiProject.includes('ModelContextProtocol.AspNetCore') || !apiProject.includes('Version="2.1.0"')) {
-  fail('The API project must pin ModelContextProtocol.AspNetCore 2.1.0.');
+if (!apiProject.includes('Include="ModelContextProtocol.AspNetCore" Version="2.4.0"')) {
+  fail('The API project must pin ModelContextProtocol.AspNetCore 2.4.0.');
 }
 
 const npmConfiguration = readFileSync('LyrionVoiceMcp.Web/.npmrc', 'utf8');

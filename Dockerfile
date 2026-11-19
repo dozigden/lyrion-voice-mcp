@@ -12,7 +12,7 @@ COPY LyrionVoiceMcp.Web/ ./
 ENV VITE_LVM_VERSION=$LVM_VERSION
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:747cbade5bfd918a175ac32f8f1d931edec2c7d0d5397a3de72eaef1ac1f66d2 AS backend-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.404@sha256:bef136a371963aaa46ec97882845ef6f54dec15728bb4b128b1c2a400ffbc9b4 AS backend-build
 WORKDIR /src
 COPY Directory.Build.props global.json LyrionVoiceMcp.slnx ./
 COPY LyrionVoiceMcp.Abstractions/ LyrionVoiceMcp.Abstractions/
@@ -33,7 +33,7 @@ COPY LyrionVoiceMcp.Services.Tests/ LyrionVoiceMcp.Services.Tests/
 RUN dotnet restore LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj --locked-mode -maxcpucount:1 -nodeReuse:false
 RUN dotnet publish LyrionVoiceMcp.Api/LyrionVoiceMcp.Api.csproj --configuration Release --no-restore --output /app/publish -maxcpucount:1 -nodeReuse:false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.15@sha256:12b1135f5f8b3c0a214f2a680ff2033dff4f684f445d6c697d9524ceeb303586 AS runtime
 ARG LVM_VERSION
 ARG LVM_CHANNEL
 ARG LVM_BUILD

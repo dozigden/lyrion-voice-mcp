@@ -6,7 +6,7 @@
     <InternalsVisibleTo Include="LyrionVoiceMcp.Lms.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.15" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LyrionVoiceMcp.Abstractions\LyrionVoiceMcp.Abstractions.csproj" />

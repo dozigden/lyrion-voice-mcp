@@ -1,5 +1,5 @@
-NuGet Package: Microsoft.Extensions.AI.Abstractions
-Version: 10.8.3
+NuGet Package: Microsoft.Extensions.DependencyModel
+Version: 10.0.15
 Declared Licence Expression: MIT
 Copyright: © Microsoft Corporation. All rights reserved.
 
