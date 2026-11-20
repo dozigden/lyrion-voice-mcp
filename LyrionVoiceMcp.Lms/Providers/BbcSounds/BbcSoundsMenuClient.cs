@@ -11,51 +11,14 @@ internal sealed partial class BbcSoundsMenuClient(LmsJsonRpcClient rpc)
     private const int PageSize = 50;
     private const int MaximumItems = 10_001;
 
-    public async Task<bool> IsInstalledAsync(CancellationToken cancellationToken)
-    {
-        foreach (var command in new[] { "apps", "radios" })
-        {
-            var offset = 0;
-            int? expected = null;
-            do
-            {
-                var response = await rpc.SendAsync([command, offset, PageSize], cancellationToken);
-                var count = ReadCount(response);
-                if (expected is not null && expected != count) throw InvalidMenu();
-                expected = count;
-                var items = Items(response, command + "s_loop", count);
-                if (offset + items.Count > count) throw InvalidMenu();
-                if (items.Any(x => Text(x, "cmd") == "bbcsounds")) return true;
-                if (items.Count == 0 && offset < count) throw InvalidMenu();
-                offset += items.Count;
-            } while (offset < expected);
-        }
-        return false;
-    }
+    private readonly LmsPluginDiscovery discovery = new(rpc, InvalidMenu);
 
-    public async Task<string> SelectPlayerAsync(CancellationToken cancellationToken)
-    {
-        var players = new List<string>();
-        var offset = 0;
-        int? expected = null;
-        do
-        {
-            var response = await rpc.SendAsync(["players", offset, PageSize], cancellationToken);
-            var count = ReadCount(response);
-            if (expected is not null && expected != count) throw InvalidMenu();
-            expected = count;
-            var items = Items(response, "players_loop", count);
-            if (offset + items.Count > count) throw InvalidMenu();
-            foreach (var item in items)
-            {
-                if (Text(item, "connected") == "1" && Text(item, "playerid") is { Length: > 0 } id) players.Add(id);
-            }
-            if (items.Count == 0 && offset < count) throw InvalidMenu();
-            offset += items.Count;
-        } while (offset < expected);
-        return players.Order(StringComparer.Ordinal).FirstOrDefault()
+    public Task<bool> IsInstalledAsync(CancellationToken cancellationToken) =>
+        discovery.IsInstalledAsync("bbcsounds", cancellationToken);
+
+    public async Task<string> SelectPlayerAsync(CancellationToken cancellationToken) =>
+        await discovery.FindConnectedPlayerAsync(cancellationToken)
             ?? throw new LmsRequestException("BBC Sounds browsing requires a connected LMS player.");
-    }
 
     public async Task<IReadOnlyList<JsonElement>> ReadMenuAsync(string player, string? path, CancellationToken cancellationToken)
     {

@@ -50,6 +50,6 @@ Canonical ID reconciliation, additional provider/plugin catalogues, managed corr
 
 ## Optional media providers
 
-- Provider implementation lives in matching `Providers/BbcSounds` feature folders across the existing layers; preserve their existing dependency direction. Registration is feature-owned. Shared catalogue orchestration, search, browse, reference handling and playback batching depend on the narrow provider interfaces in Abstractions, never BBC menu names, audio schemes or account details.
+- Provider implementation lives in matching feature folders under `Providers` across the existing layers. Registration is feature-owned. Shared catalogue orchestration, search, browse, reference handling and playback batching depend on the narrow provider interfaces in Abstractions. Provider menu names, audio schemes and account details belong in feature-owned code.
 - BBC-specific public search naming is confined to Contracts and its dedicated API mapper. Tool-log provider schema and labelled result mapping for subscriptions and stations live in a feature-owned provider module; shared renderers consume those groups.
 - BBC subscription and station persistence is canonical EF data; each has its own immutable, separately published disposable search snapshot. Provider availability never gates local catalogue or index readiness. No runtime plugin loader or new projects are required.

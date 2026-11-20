@@ -59,3 +59,9 @@ Read this before changing LMS configuration, JSON-RPC transport, response parsin
 - Episode lists and station menus preserve BBC order and labels. Station browsing exposes the plugin's station menu, recent programme links and schedule hierarchy. At a playable action menu, expose audio leaves and the exact `All Episodes` and `Tracklist` navigation actions only; never traverse or expose bookmark, subscribe, continue-listening or other account-changing actions. General BBC search remains outside the public integration.
 - Episode, live-station and rewind playback uses individual plugin-issued audio locators with native `playlist play`, `add` and `insert`. Confirm the new occurrence and expected queue size after mutation; an existing copy alone cannot confirm an addition. Do not retry an uncertain mutation. Shared services retain power, batching and queue-capacity policy.
 - LMS may reshuffle appended episodes. Require an increased episode-occurrence count and expected queue size with unchanged shuffle mode; enforce the requested position for unshuffled appends and all insertions, but do not require a shuffled append to appear last.
+
+## Qobuz adapter
+
+- `IQobuzClient` checks configuration through LMS JSON-RPC. Discover `qobuz` through Apps and Radio and use a connected player selected deterministically by ID to read the root menu.
+- The root menu's text-only window with zero counted items and an empty placeholder identifies missing account setup. Use the structure so the check works with translated prompts. A populated root menu indicates a saved account, while account validity and streaming access require separate checks.
+- Missing discovery entries mean the plugin is unavailable. Propagate LMS failures, missing connected players and unexpected menu shapes as request failures. Read account setup state through the menu and keep credentials in LMS.

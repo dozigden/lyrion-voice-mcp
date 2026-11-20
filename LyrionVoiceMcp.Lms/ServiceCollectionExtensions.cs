@@ -1,4 +1,5 @@
 using LyrionVoiceMcp.Lms.Providers.BbcSounds;
+using LyrionVoiceMcp.Lms.Providers.Qobuz;
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -31,6 +32,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ILmsQueueClient, LmsQueueClient>();
         services.AddTransient<ILmsPlaylistSearchClient, LmsSearchClient>();
         services.AddBbcSoundsLms();
+        services.AddQobuzLms();
         return services;
     }
 }
