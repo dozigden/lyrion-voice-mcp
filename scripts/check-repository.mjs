@@ -68,6 +68,9 @@ for (const ecosystem of ['npm', 'nuget', 'docker', 'github-actions']) {
     `  - package-ecosystem: "${ecosystem}"(?<body>[\\s\\S]*?)(?=\\n  - package-ecosystem:|$)`,
     'u'
   ));
+  if (!entry?.groups.body.match(/\n    open-pull-requests-limit: 0(?:\n|$)/u)) {
+    fail(`Dependabot version-update pull requests must be disabled for ${ecosystem}.`);
+  }
   if (!entry?.groups.body.match(/\n    cooldown:\n      default-days: 7(?:\n|$)/u)) {
     fail(`Dependabot must apply a seven-day cooldown to ${ecosystem} updates.`);
   }

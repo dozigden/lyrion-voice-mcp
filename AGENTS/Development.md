@@ -58,7 +58,7 @@ Use these configuration keys:
 - Check the licence, provenance, transitive dependency set, and redistribution requirements before adding a new package or frontend dependency.
 - Prefer an official or actively maintained implementation when equivalent choices exist. Do not accept a dependency merely because its declared licence is permissive when its package omits required notices or its API does not meet the use case.
 - Frontend installs disable dependency lifecycle scripts and reject releases younger than seven days through the committed `.npmrc`. Do not bypass either control casually; review and document any narrowly scoped exception.
-- Dependabot applies a seven-day cooldown to normal npm, NuGet, Docker, and GitHub Actions updates. Security updates are not delayed by that policy.
+- Use GitHub Dependabot alerts for vulnerability notifications. Disable both security-update and version-update pull requests. GitHub repository settings control security-update pull requests, and the zero pull-request limits in `.github/dependabot.yml` control version-update pull requests.
 - Keep NuGet restores locked and treat high or critical package advisories as errors. Container publication additionally runs `npm audit --audit-level=high` against the locked frontend graph.
 - Pin external GitHub Actions and Docker base images to immutable full digests. Retain the human-readable action version comment and image tag so automated updates remain reviewable.
 - Serialise release and nightly container publication. Validate the staged platform digests in both registries, create and compare the non-release `promotion-candidate` manifests, and only then move user-facing tags. A failed final registry write is retried and a rerun safely reapplies the same candidate.

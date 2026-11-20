@@ -3,6 +3,7 @@ version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/LyrionVoiceMcp.Web"
+    open-pull-requests-limit: 0
     schedule:
       interval: "weekly"
     cooldown:
@@ -10,6 +11,7 @@ updates:
 
   - package-ecosystem: "nuget"
     directory: "/"
+    open-pull-requests-limit: 0
     schedule:
       interval: "weekly"
     cooldown:
@@ -17,6 +19,7 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/"
+    open-pull-requests-limit: 0
     schedule:
       interval: "weekly"
     cooldown:
@@ -24,6 +27,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    open-pull-requests-limit: 0
     schedule:
       interval: "weekly"
     cooldown:
