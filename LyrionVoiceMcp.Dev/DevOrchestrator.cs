@@ -59,7 +59,7 @@ internal sealed class DevOrchestrator
             var delayTask = Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
             while (Console.KeyAvailable)
             {
-                HandleKey(Console.ReadKey(intercept: true), cancellationToken);
+                await HandleKeyAsync(Console.ReadKey(intercept: true), cancellationToken);
                 Render();
             }
 
@@ -67,7 +67,7 @@ internal sealed class DevOrchestrator
         }
     }
 
-    private void HandleKey(ConsoleKeyInfo key, CancellationToken cancellationToken)
+    private async Task HandleKeyAsync(ConsoleKeyInfo key, CancellationToken cancellationToken)
     {
         if (key.Modifiers.HasFlag(ConsoleModifiers.Control) && key.Key == ConsoleKey.C)
         {
@@ -101,6 +101,14 @@ internal sealed class DevOrchestrator
                 break;
             case ConsoleKey.A:
                 BeginOperation(() => StartAllAsync(cancellationToken));
+                break;
+            case ConsoleKey.M:
+                if (activeOperation is { IsCompleted: false })
+                {
+                    statusMessage = "Wait for the current service operation before opening the test agent.";
+                    break;
+                }
+                await RunOperationAsync(() => OpenTestAgentAsync(cancellationToken));
                 break;
             case ConsoleKey.X:
                 BeginOperation(StopAllWithStatusAsync);
@@ -182,6 +190,33 @@ internal sealed class DevOrchestrator
         await service.StopAsync();
         await StartServiceAsync(service, cancellationToken);
     }
+
+    private async Task OpenTestAgentAsync(CancellationToken cancellationToken)
+    {
+        Console.Clear();
+        Console.CursorVisible = true;
+        Console.WriteLine("Preparing the local MCP test agent...");
+        try
+        {
+            var codex = DevTestAgent.FindCodex();
+            if (!services[0].IsRunning) await StartServiceAsync(services[0], cancellationToken);
+            if (!services[0].IsRunning) throw new InvalidOperationException("API startup failed. Check the API log.");
+
+            Console.CancelKeyPress += KeepDashboardAlive;
+            Console.TreatControlCAsInput = false;
+            await DevTestAgent.RunAsync(codex, cancellationToken);
+            statusMessage = "Test agent closed.";
+        }
+        finally
+        {
+            Console.TreatControlCAsInput = true;
+            Console.CancelKeyPress -= KeepDashboardAlive;
+            Console.CursorVisible = false;
+            while (Console.KeyAvailable) Console.ReadKey(intercept: true);
+        }
+    }
+
+    private static void KeepDashboardAlive(object? sender, ConsoleCancelEventArgs args) => args.Cancel = true;
 
     private async Task StartAllAsync(CancellationToken cancellationToken)
     {
@@ -311,7 +346,7 @@ internal sealed class DevOrchestrator
 
         WriteLine(string.Empty, width);
         WriteLine(
-            "Keys: Up/Down  Space start/stop  R restart  A start all  X stop all  L logs  1-2 select  Q quit",
+            "Keys: Up/Down  Space start/stop  R restart  M test agent  A start all  X stop all  L logs  1-2 select  Q quit",
             width,
             ConsoleColor.Yellow);
         WriteLine($"Status: {statusMessage}", width, ConsoleColor.White);

@@ -8,7 +8,9 @@
 
 Use `dev.sh` or `dev.ps1` for the interactive BoardOil-inspired supervisor. Use `dev-startall.sh` or `dev-startall.ps1` when an unattended two-process run is needed.
 
-The supervisor manages only this repository's API and Vite processes. It may stop a port listener only after recognising the expected command line. Logs belong under ignored `.data/dev/logs`.
+Press **M** in the dashboard to open a fresh interactive Codex test agent. The supervisor starts the API if needed, waits for health, and launches Codex in a temporary read-only workspace with a required local MCP connection. Session overrides disable inherited MCP servers. The opening prompt requests `get_player_status`. Exiting Codex removes the temporary workspace and returns to the dashboard.
+
+The supervisor manages this repository's API and Vite processes and the test agent it launches. It may stop a port listener only after recognising the expected command line. Logs belong under ignored `.data/dev/logs`.
 
 ## Evaluation
 
