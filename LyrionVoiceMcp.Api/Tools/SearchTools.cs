@@ -20,7 +20,7 @@ public sealed class SearchTools(ISearchService searchService)
         ReadOnly = true,
         Destructive = false,
         Idempotent = true,
-        OpenWorld = false,
+        OpenWorld = true,
         UseStructuredContent = true,
         OutputSchemaType = typeof(SearchResponse))]
     [Description("Search the music library by optional name, exact genre, inclusive year range, rating, or a combination. Omit every input for broad varied track discovery. Reports a unique exact artist separately, returns 4+ top tracks separately, and varies selections. A year range can return albums and tracks; genre or rating makes the request track-only. * is not a wildcard.")]
@@ -31,6 +31,7 @@ public sealed class SearchTools(ISearchService searchService)
         [Description("Optional inclusive end year, supplied together with fromYear. It applies to canonical album year and effective track year. Reversed bounds are accepted and normalised. Four-digit years from 1000 through next year or two-digit years are accepted.")] int? toYear = null,
         [Description("Optional numeric track rating from 0 to 5, including decimals. Supply together with ratingMatch; do not put the rating in name.")] decimal? rating = null,
         [Description("Optional rating comparison supplied with rating. Use exact for exactly that rating. Use at_least for that rating or higher; rating 4 with at_least means 4+.")] string? ratingMatch = null,
+        [Description("Optional music provider. Use local or omit provider for ordinary library search. Use qobuz for a name-only Qobuz catalogue search.")] string? provider = null,
         CancellationToken cancellationToken = default)
     {
         var constraint = CreateRatingConstraint(rating, ratingMatch);
@@ -41,20 +42,14 @@ public sealed class SearchTools(ISearchService searchService)
 
         try
         {
-            var outcome = await searchService.SearchAsync(
-                new SearchCriteria(
-                    name,
-                    constraint.Value,
-                    genre,
-                    fromYear,
-                    toYear),
-                cancellationToken);
+            var criteria = new SearchCriteria(name, constraint.Value, genre, fromYear, toYear, provider);
+            var outcome = await searchService.SearchAsync(criteria, cancellationToken);
             return outcome switch
             {
                 SearchSucceeded succeeded => SuccessResult(MapResponse(
                     succeeded.Results,
                     succeeded.TopTracks,
-                    succeeded.ExactArtistMatch)),
+                    succeeded.ExactArtistMatch, criteria.UsesLocalSearch)),
                 SearchRejected rejected => ErrorResult(rejected.Message),
                 _ => throw new UnreachableException(
                     $"Unsupported search outcome {outcome.GetType().Name}.")
@@ -86,9 +81,9 @@ public sealed class SearchTools(ISearchService searchService)
     private static SearchResponse MapResponse(
         IReadOnlyList<SearchCandidateResult> candidates,
         IReadOnlyList<SearchCandidateResult> topTracks,
-        ExactArtistMatchResult? exactArtistMatch) =>
+        ExactArtistMatchResult? exactArtistMatch, bool usesLocalSearch) =>
         new(
-            ReferenceGuidance,
+            usesLocalSearch ? ReferenceGuidance : "Qobuz catalogue matches in provider order. Browse artists, albums or playlists. Pass playRef to play or manage_queue.",
             exactArtistMatch is null
                 ? null
                 : new SearchExactArtistMatch(
@@ -129,7 +124,7 @@ public sealed class SearchTools(ISearchService searchService)
             candidate.Title,
             candidate.Artist,
             candidate.Album,
-            candidate.NativeRating / 20m,
+            candidate.ProviderId is null ? candidate.NativeRating / 20m : null,
             candidate.Reference);
 
     private static (RatingSearchConstraint? Value, string? Error) CreateRatingConstraint(

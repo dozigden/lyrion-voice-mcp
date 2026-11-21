@@ -107,6 +107,40 @@ public sealed class QobuzClientTests
         Assert.DoesNotContain("playlist", handler.Commands);
     }
 
+    [Fact]
+    public async Task CatalogueSearchReadsOnlyQobuzBranchesAndUsesPluginOrder()
+    {
+        static object Link(string text, string path) => new { text, @params = new { item_id = path } };
+        static object Song(string title, string url) => new { text = title, presetParams = new { favorites_type = "audio", favorites_url = url } };
+        using var handler = new StubLms
+        {
+            Menu = """{"count":1,"item_loop":[{"text":"Find music"}]}""",
+            Search = command =>
+            {
+                object[] rows = command.Last() switch
+                {
+                    "search:Lantern" => [Link("Other", "other"), Link("Qobuz", "provider")],
+                    "item_id:provider" => [Link("Artists", "artists"), Link("Songs", "tracks"),
+                        Link("Playlists", "playlists"), Link("Releases", "albums")],
+                    "item_id:tracks" => [Song("Wax", "qobuz://97.flac"), Song("Wane", "qobuz://34.mp3")],
+                    "item_id:artists" => [Link("Lantern", "first-artist")],
+                    "item_id:albums" or "item_id:playlists" => [new { type = "text", text = "Empty", action = "none" }],
+                    _ => throw new InvalidOperationException("Unexpected menu request.")
+                };
+                return JsonSerializer.Serialize(new { count = rows.Length, offset = 0, item_loop = rows });
+            }
+        };
+        using var services = CreateServices(handler);
+        var client = services.GetRequiredService<IQobuzSearchClient>();
+
+        var results = await client.SearchAsync("Lantern", TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Lantern", "Wax", "Wane"], results.Select(item => item.Title));
+        Assert.IsType<QobuzSearchLocation>(results[0].BrowseTarget);
+        Assert.Null(results[0].MediaTarget);
+        Assert.Equal("qobuz://97.flac", Assert.IsType<QobuzAudioTarget>(results[1].MediaTarget).Url);
+    }
+
     private static ServiceProvider CreateServices(StubLms handler)
     {
         var services = new ServiceCollection();
@@ -123,6 +157,7 @@ public sealed class QobuzClientTests
             {"playerid":"fiction-player","connected":"1"}]}
             """;
         public Func<string[], string>? Browse { get; init; }
+        public Func<string[], string>? Search { get; init; }
         public string? Menu { get; init; }
         public List<string> Commands { get; } = [];
 
@@ -138,6 +173,8 @@ public sealed class QobuzClientTests
                 "apps" => Apps,
                 "radios" => """{"count":0}""",
                 "players" => Players,
+                "globalsearch" when Search is not null => Search(command),
+                "getstring" when Search is not null => """{"PLUGIN_QOBUZ_RELEASES":"Releases","ARTISTS":"Artists","SONGS":"Songs","PLAYLISTS":"Playlists"}""",
                 "getstring" => """{"PLUGIN_QOBUZ_NEW_RELEASES":"Nouveautés"}""",
                 "qobuz" when Browse is not null => Browse(command),
                 "qobuz" => Menu,

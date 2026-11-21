@@ -168,9 +168,11 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             .GetProperty("properties")
             .TryGetProperty("tracks", out _));
         Assert.Equal(
-            "number",
+            ["number", "null"],
             trackSchema.GetProperty("properties").GetProperty("rating")
-                .GetProperty("type").GetString());
+                .GetProperty("type").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal(["local", "qobuz", null], searchInputProperties.GetProperty("provider").GetProperty("enum")
+            .EnumerateArray().Select(value => value.GetString()));
         Assert.Contains(
             trackSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "rating");
@@ -289,7 +291,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
             "tools/call",
             33,
             """
-            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"genre":"Pop","fromYear":90,"toYear":99}}
+            {"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"api-tests","version":"0.1.0"},"io.modelcontextprotocol/clientCapabilities":{}},"name":"search","arguments":{"provider":"local","genre":"Pop","fromYear":90,"toYear":99}}
             """,
             "search");
 
@@ -299,6 +301,7 @@ public sealed class McpEndpointTests : IClassFixture<LyrionVoiceMcpApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Null(search.Criteria?.Query);
+        Assert.Equal("local", search.Criteria?.Provider);
         Assert.Equal("Pop", search.Criteria?.Genre);
         Assert.Equal(90, search.Criteria?.FromYear);
         Assert.Equal(99, search.Criteria?.ToYear);

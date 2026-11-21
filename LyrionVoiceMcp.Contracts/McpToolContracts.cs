@@ -24,8 +24,8 @@ public sealed record SearchTrack(
     string Title,
     string? Artist,
     string? Album,
-    [property: Description("The track's numeric 0 to 5 star rating, including decimals such as 4.5.")]
-    decimal Rating,
+    [property: Description("The track's numeric 0 to 5 star rating, or null when the provider supplies no library rating.")]
+    decimal? Rating,
     string PlayRef);
 
 public sealed record SearchPlaylist(

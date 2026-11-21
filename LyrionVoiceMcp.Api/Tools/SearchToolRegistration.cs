@@ -49,6 +49,7 @@ public static class SearchToolRegistration
             ?? throw new InvalidOperationException(
                 "The search MCP tool input schema did not contain ratingMatch.");
 
+        properties["provider"]!["enum"] = new JsonArray("local", "qobuz", null);
         rating["minimum"] = 0;
         rating["maximum"] = 5;
         ratingMatch["enum"] = new JsonArray("exact", "at_least");

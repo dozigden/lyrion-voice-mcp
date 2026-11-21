@@ -4,7 +4,7 @@ import type { ToolCall } from '../operational-history/operationalHistoryApi';
 const ns = nullable(string), nn = nullable(number);
 const artist = object({ name: string, browseRef: string });
 const album = object({ title: string, artist: ns, browseRef: string, playRef: string });
-const track = object({ title: string, artist: ns, album: ns, rating: number, playRef: string });
+const track = object({ title: string, artist: ns, album: ns, rating: nn, playRef: string });
 const playlist = object({ title: string, browseRef: string, playRef: string });
 const player = object({ id: string, name: string, poweredOn: boolean, mode: string, volume: nn, muted: nullable(boolean),
   nowPlaying: nullable(object({ title: string, artist: ns, album: ns, durationSeconds: nn, elapsedSeconds: nn })) });

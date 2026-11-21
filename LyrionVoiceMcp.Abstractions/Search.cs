@@ -382,7 +382,12 @@ public sealed record SearchCriteria(
     RatingSearchConstraint? RatingConstraint = null,
     string? Genre = null,
     int? FromYear = null,
-    int? ToYear = null);
+    int? ToYear = null,
+    string? Provider = null)
+{
+    public bool UsesLocalSearch =>
+        Provider is null || string.Equals(Provider.Trim(), "local", StringComparison.OrdinalIgnoreCase);
+}
 
 public enum SearchRejectionReason
 {
@@ -410,7 +415,7 @@ public interface ISearchService
     Task<SearchOutcome> SearchAsync(
         SearchCriteria criteria,
         CancellationToken cancellationToken) =>
-        criteria is { Query: not null, RatingConstraint: null, Genre: null, FromYear: null, ToYear: null }
+        criteria is { Provider: null, Query: not null, RatingConstraint: null, Genre: null, FromYear: null, ToYear: null }
             ? SearchAsync(criteria.Query, cancellationToken)
             : throw new NotSupportedException(
                 "This search service does not support structured constraints.");

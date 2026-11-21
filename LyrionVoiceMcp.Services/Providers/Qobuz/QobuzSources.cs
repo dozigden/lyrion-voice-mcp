@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace LyrionVoiceMcp.Services.Providers.Qobuz;
 
-internal sealed class QobuzBrowseSource(IQobuzClient client, IBrowseReferenceCodec references) : IProviderBrowseSource
+internal sealed class QobuzBrowseSource(IQobuzClient client, IBrowseReferenceCodec references, IQobuzSearchClient? search = null) : IProviderBrowseSource
 {
     public string ProviderId => "qobuz";
     private abstract record Location() : ProviderBrowseTarget("qobuz");
@@ -13,8 +13,8 @@ internal sealed class QobuzBrowseSource(IQobuzClient client, IBrowseReferenceCod
     private sealed record Releases : Location;
     private sealed record Album(QobuzAlbum Release) : Location;
     private sealed record Continuation(IReadOnlyList<Entry> Items, int Offset) : Location;
-    private sealed record Entry(string Title, BrowseItemKind Kind, Location? Location = null,
-        QobuzTrackTarget? Track = null, string? Artist = null, string? Album = null);
+    private sealed record Entry(string Title, BrowseItemKind Kind, ProviderBrowseTarget? Location = null,
+        ProviderMediaTarget? Track = null, string? Artist = null, string? Album = null, MediaIdentity? Identity = null);
 
     public async Task<IReadOnlyList<BrowseItemResult>> GetRootsAsync(CancellationToken cancellationToken)
     {
@@ -47,6 +47,11 @@ internal sealed class QobuzBrowseSource(IQobuzClient client, IBrowseReferenceCod
                     var tracks = await client.ReadTracksAsync(album.Release, cancellationToken);
                     return Page(tracks.Select(track => new Entry(track.Title, BrowseItemKind.Track,
                         Track: new QobuzTrackTarget(album.Release, track.Id), Artist: track.Artist, Album: album.Release.Title)).ToArray(), 0, correlationId);
+                case QobuzSearchLocation found when search is not null:
+                    var children = await search.BrowseAsync(found, cancellationToken);
+                    return Page(children.Select(child => new Entry(child.Title,
+                        child.Identity.Kind == MediaEntityKind.Album ? BrowseItemKind.Album : BrowseItemKind.Track,
+                        child.BrowseTarget, child.MediaTarget, child.Artist, child.Album, child.Identity)).ToArray(), 0, correlationId);
                 case Continuation page:
                     return Page(page.Items, page.Offset, correlationId);
                 default:
@@ -86,25 +91,32 @@ internal sealed class QobuzBrowseSource(IQobuzClient client, IBrowseReferenceCod
             _ => ReferenceDisplayKind.Category
         };
         var metadata = new ReferenceDisplayMetadata(kind, entry.Title, entry.Artist, entry.Album);
-        var media = entry.Track is { } track ? new PlayableMedia(new MediaIdentity(MediaEntityKind.Track,
-            track.TrackId, ProviderId), track) : null;
+        PlayableMedia? media = entry.Track switch
+        {
+            null => null,
+            QobuzTrackTarget track => new PlayableMedia(new MediaIdentity(MediaEntityKind.Track, track.TrackId, ProviderId), track),
+            _ => new PlayableMedia(entry.Identity!, entry.Track)
+        };
         var handle = references.Encode(new BrowseReferenceValue(null, media, correlationId, metadata, entry.Location));
         return new BrowseItemResult(handle, entry.Kind, entry.Title, entry.Artist, entry.Album, entry.Location is not null, media is not null);
     }
 }
 
-internal sealed class QobuzPlaybackSource(IQobuzClient client) : IProviderPlaybackSource
+internal sealed class QobuzPlaybackSource(IQobuzClient client, IQobuzSearchClient search) : IProviderPlaybackSource
 {
     public string ProviderId => "qobuz";
 
     public async Task<int> GetPlayableItemCountAsync(ProviderMediaTarget target, CancellationToken cancellationToken) =>
-        target is QobuzTrackTarget track && (await client.ReadTracksAsync(track.Album, cancellationToken))
-            .Any(item => item.Id == track.TrackId) ? 1 : 0;
+        target switch
+        {
+            QobuzTrackTarget track => (await client.ReadTracksAsync(track.Album, cancellationToken)).Any(item => item.Id == track.TrackId) ? 1 : 0,
+            _ => await search.GetPlayableCountAsync(target, cancellationToken)
+        };
 
     public Task SubmitAsync(string playerId, ProviderMediaTarget target, ProviderPlaybackCommand command,
         CancellationToken cancellationToken) => target is QobuzTrackTarget track
         ? client.SubmitAsync(playerId, track, command, cancellationToken)
-        : throw new LmsRequestException("Invalid streaming track reference.");
+        : search.SubmitAsync(playerId, target, command, cancellationToken);
 }
 
 internal static class QobuzServiceRegistration

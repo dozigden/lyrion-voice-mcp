@@ -65,6 +65,7 @@ internal static class ToolCallRequestSummary
     {
         var parts = new List<string>();
         Add(parts, Text(arguments, "name"));
+        Add(parts, Text(arguments, "provider"), "Provider: ");
         Add(parts, Text(arguments, "genre"), "Genre: ");
         var from = Number(arguments, "fromYear");
         var to = Number(arguments, "toYear");

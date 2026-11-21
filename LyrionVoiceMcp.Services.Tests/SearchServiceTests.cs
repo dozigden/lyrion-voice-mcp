@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using LyrionVoiceMcp.Abstractions;
 using LyrionVoiceMcp.Services;
+using LyrionVoiceMcp.Abstractions.Providers;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LyrionVoiceMcp.Services.Tests;
@@ -1229,8 +1230,10 @@ public sealed class SearchServiceTests
         Assert.Equal(50, request.ResultCount);
     }
 
-    [Fact]
-    public async Task RatingOnlySearchShouldUseStrictNameFreeConstraint()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("local")]
+    public async Task RatingOnlySearchShouldUseStrictNameFreeConstraint(string? provider)
     {
         var constraint = new RatingSearchConstraint(4.5m, RatingMatchMode.AtLeast);
         var tracks = new StubTrackResolver([
@@ -1251,7 +1254,7 @@ public sealed class SearchServiceTests
             tracks: tracks);
 
         var succeeded = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
-            new SearchCriteria(null, constraint),
+            new SearchCriteria(null, constraint, Provider: provider),
             TestContext.Current.CancellationToken));
 
         Assert.Single(succeeded.TopTracks);
@@ -1565,8 +1568,10 @@ public sealed class SearchServiceTests
             });
     }
 
-    [Fact]
-    public async Task ProviderProgrammeShouldCoexistWithAnExactArtistAndKeepItsCorrelation()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("local")]
+    public async Task ProviderProgrammeShouldCoexistWithAnExactArtistAndKeepItsCorrelation(string? provider)
     {
         var references = new ReferenceCodecTestContext();
         var observations = new RecordingSearchObservationStore();
@@ -1577,7 +1582,8 @@ public sealed class SearchServiceTests
         var service = CreateService(catalogue, new StubPlaylistSearch([]), references.Search, observations,
             browseCodec: references.Browse, providers: [new ProgrammeSource()]);
 
-        var result = Assert.IsType<SearchSucceeded>(await service.SearchAsync("Mira Vale", TestContext.Current.CancellationToken));
+        var result = Assert.IsType<SearchSucceeded>(await service.SearchAsync(
+            new SearchCriteria("Mira Vale", Provider: provider), TestContext.Current.CancellationToken));
 
         Assert.NotNull(result.ExactArtistMatch);
         var programme = Assert.Single(result.Results);
@@ -1624,6 +1630,53 @@ public sealed class SearchServiceTests
         }
     }
 
+    [Fact]
+    public async Task ExplicitProviderBypassesCatalogueAndRecordsSelectionIdentity()
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var references = new ReferenceCodecTestContext();
+        var observations = new RecordingSearchObservationStore();
+        var service = CreateService(catalogue, new StubPlaylistSearch([]), references.Search, observations,
+            explicitSources: [new FictionalSearchSource()]);
+
+        var outcome = await service.SearchAsync(new SearchCriteria("Lantern", Provider: "fiction"),
+            TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(Assert.IsType<SearchSucceeded>(outcome).Results);
+        var handle = references.Search.TryDecode(result.Reference)!;
+        Assert.Null(catalogue.Query);
+        Assert.Equal("fiction", observations.Recorded!.Provider);
+        Assert.Equal(handle.CorrelationId, Assert.Single(observations.Recorded.Candidates).CorrelationId);
+        Assert.IsType<FictionalTrack>(handle.ProviderMediaTarget);
+    }
+
+    [Theory]
+    [InlineData("unknown", "Lantern", null)]
+    [InlineData("fiction", "", null)]
+    [InlineData("fiction", "Lantern", "Pop")]
+    public async Task InvalidProviderRequestsDoNotFallBackToLibrary(string provider, string name, string? genre)
+    {
+        var catalogue = new StubCatalogueSearch([]);
+        var service = CreateService(catalogue, new StubPlaylistSearch([]), new ReferenceCodecTestContext().Search,
+            new RecordingSearchObservationStore(), explicitSources: [new FictionalSearchSource()]);
+
+        var result = await service.SearchAsync(new SearchCriteria(name, Genre: genre, Provider: provider),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SearchRejectionReason.InvalidQuery, Assert.IsType<SearchRejected>(result).Reason);
+        Assert.Null(catalogue.Query);
+    }
+
+    private sealed record FictionalTrack() : ProviderMediaTarget("fiction");
+
+    private sealed class FictionalSearchSource : IExplicitSearchSource
+    {
+        public string ProviderId => "fiction";
+        public Task<IReadOnlyList<ProviderSearchCandidate>> SearchAsync(string name, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ProviderSearchCandidate>>([new(new MediaIdentity(MediaEntityKind.Track,
+                "fictional-track", ProviderId), name, "provider_order", null, new FictionalTrack())]);
+    }
+
     private static SearchService CreateService(
         ICatalogueSearchResolver catalogue,
         ILmsPlaylistSearchClient playlists,
@@ -1635,7 +1688,8 @@ public sealed class SearchServiceTests
         ICatalogueTrackResolver? tracks = null,
         ICatalogueAlbumResolver? albums = null,
         ICatalogueSearchAvailabilityService? searchAvailability = null,
-        IEnumerable<LyrionVoiceMcp.Abstractions.Providers.IProviderSearchSource>? providers = null) => new(
+        IEnumerable<IProviderSearchSource>? providers = null,
+        IEnumerable<IExplicitSearchSource>? explicitSources = null) => new(
             catalogue,
             artistTracks ?? new EmptyArtistTrackResolver(),
             tracks ?? new EmptyTrackResolver(),
@@ -1651,7 +1705,7 @@ public sealed class SearchServiceTests
                 NullLogger<SearchObservationRecorder>.Instance),
             TimeProvider.System,
             searchAvailability ?? PassthroughCatalogueSearchAvailabilityService.Instance,
-            NullLogger<SearchService>.Instance, providers);
+            NullLogger<SearchService>.Instance, providers, explicitSources);
 
     private sealed class StubCatalogueSearch(
         IReadOnlyList<CatalogueSearchCandidate> results) : ICatalogueSearchResolver

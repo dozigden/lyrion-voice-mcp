@@ -41,7 +41,7 @@ internal sealed class SearchObservationRecorder(
                 SearchObservationStatus.Completed,
                 null,
                 totalDurationMilliseconds,
-                RetrievalDuration(catalogueRequests, playlists),
+                RetrievalDuration(catalogueRequests, playlists, context.Provider),
                 [.. catalogueRequests, .. playlists?.Requests ?? []],
                 CreateObservationCandidates(candidates)),
             cancellationToken);
@@ -59,7 +59,7 @@ internal sealed class SearchObservationRecorder(
                 SearchObservationStatus.Failed,
                 failure.Message,
                 elapsedMilliseconds,
-                RetrievalDuration(catalogueRequests, playlists),
+                RetrievalDuration(catalogueRequests, playlists, context.Provider),
                 [.. catalogueRequests, .. playlists?.Requests ?? []],
                 CreatePlaylistObservationCandidates(playlists)),
             cancellationToken);
@@ -95,7 +95,7 @@ internal sealed class SearchObservationRecorder(
                 SearchObservationStatus.Failed,
                 failure.Message,
                 totalDurationMilliseconds,
-                RetrievalDuration(catalogueRequests, playlists),
+                RetrievalDuration(catalogueRequests, playlists, context.Provider),
                 requests,
                 CreateObservationCandidates(candidates)),
             cancellationToken);
@@ -111,7 +111,7 @@ internal sealed class SearchObservationRecorder(
             candidate.Artist,
             candidate.Album,
             null,
-            candidate.Identity.Kind == MediaEntityKind.Track
+            candidate.Identity.Kind == MediaEntityKind.Track && candidate.Identity.ProviderId is null
                 ? candidate.NativeRating / 20m
                 : null,
             candidate.IsExactArtistMatch,
@@ -133,10 +133,10 @@ internal sealed class SearchObservationRecorder(
 
     private static long RetrievalDuration(
         IReadOnlyList<LmsSearchRequestObservation> catalogueRequests,
-        LmsSearchResponse? playlists)
+        LmsSearchResponse? playlists, string? provider)
     {
         var initialCatalogueDuration = catalogueRequests
-            .Where(request => request.Source == "catalogue-index")
+            .Where(request => request.Source == "catalogue-index" || request.Source == provider)
             .Select(request => request.DurationMilliseconds)
             .DefaultIfEmpty()
             .Max();
@@ -173,10 +173,8 @@ internal sealed class SearchObservationRecorder(
             !context.IncludesAlbums && (context.HasTrackConstraint || context.IsNameFree)
                 ? MediaEntityKind.Track
                 : null,
-            context.HasTrackConstraint || context.IsNameFree
-                ? "catalogue"
-                : "catalogue+lms",
-            "whole_library",
+            context.Provider ?? (context.HasTrackConstraint || context.IsNameFree ? "catalogue" : "catalogue+lms"),
+            context.Provider ?? "whole_library",
             context.Resolver.Name,
             context.Resolver.Version,
             status,
@@ -225,6 +223,7 @@ internal sealed record SearchObservationContext(
     SearchObservationInterpretation Interpretation,
     bool IncludesAlbums)
 {
+    public string? Provider { get; init; }
     public bool HasTrackConstraint =>
         RatingConstraint is not null || Genre is not null || YearRange is not null;
 

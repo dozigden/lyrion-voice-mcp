@@ -9,11 +9,19 @@ public sealed record ProviderSearchCandidate(
     string Title,
     string MatchSignal,
     ProviderBrowseTarget? BrowseTarget,
-    ProviderMediaTarget? MediaTarget = null);
+    ProviderMediaTarget? MediaTarget = null,
+    string? Artist = null,
+    string? Album = null);
 
 public sealed record ProviderSearchResult(
     IReadOnlyList<ProviderSearchCandidate> Candidates,
     LmsSearchRequestObservation Observation);
+
+public interface IExplicitSearchSource
+{
+    string ProviderId { get; }
+    Task<IReadOnlyList<ProviderSearchCandidate>> SearchAsync(string name, CancellationToken cancellationToken);
+}
 
 public interface IProviderSearchSource
 {

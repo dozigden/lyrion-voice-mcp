@@ -21,7 +21,7 @@ const result = computed(() => presentation.value.result);
 const allCapturedReferences = computed(() => props.call.referenceSnapshotsTruncated
   ? []
   : props.call.referenceSnapshots ?? []);
-const requestLabels: Record<string, string> = { name: 'Name', genre: 'Genre', fromYear: 'From year', toYear: 'To year', rating: 'Rating', ratingMatch: 'Rating match', player: 'Player', action: 'Action', items: 'Item references', browseRef: 'Browse reference' };
+const requestLabels: Record<string, string> = { name: 'Name', provider: 'Provider', genre: 'Genre', fromYear: 'From year', toYear: 'To year', rating: 'Rating', ratingMatch: 'Rating match', player: 'Player', action: 'Action', items: 'Item references', browseRef: 'Browse reference' };
 watch(() => props.call.id, () => { tab.value = 'details'; });
 function showDetails() { tab.value = 'details'; }
 function showRaw() { tab.value = 'raw'; }

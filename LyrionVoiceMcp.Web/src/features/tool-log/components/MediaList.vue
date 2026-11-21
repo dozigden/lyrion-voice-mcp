@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { seconds, label } from '../../../shared/format';
 defineProps<{
-  items: { title?: string; name?: string; artist?: string | null; album?: string | null; rating?: number; kind?: string; index?: number; durationSeconds?: number | null }[];
+  items: { title?: string; name?: string; artist?: string | null; album?: string | null; rating?: number | null; kind?: string; index?: number; durationSeconds?: number | null }[];
   vertical?: boolean; currentIndex?: number | null;
 }>();
 </script>
@@ -13,7 +13,7 @@ defineProps<{
       <div class="identity"><strong>{{ item.title ?? item.name }}</strong><span v-if="item.kind" class="muted">{{ label(item.kind) }}</span><span v-if="item.index !== undefined" class="muted">Index {{ item.index }}<b v-if="item.index === currentIndex"> · Current</b></span></div>
       <span v-if="item.artist !== undefined" class="muted artist">{{ item.artist ?? 'Artist not recorded' }}</span>
       <span v-if="item.album !== undefined" class="muted album">{{ item.album ?? 'Album not recorded' }}</span>
-      <span v-if="item.rating !== undefined" class="rating"><span aria-hidden="true">★ </span>{{ item.rating }}<span class="muted"> / 5</span></span>
+      <span v-if="item.rating != null" class="rating"><span aria-hidden="true">★ </span>{{ item.rating }}<span class="muted"> / 5</span></span>
       <span v-if="item.durationSeconds !== undefined" class="muted">{{ seconds(item.durationSeconds) }}</span>
     </li>
   </ul>

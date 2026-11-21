@@ -21,7 +21,8 @@ internal sealed partial class SearchService(
     TimeProvider timeProvider,
     ICatalogueSearchAvailabilityService searchAvailability,
     ILogger<SearchService> logger,
-    IEnumerable<IProviderSearchSource>? providers = null) : ISearchService
+    IEnumerable<IProviderSearchSource>? providers = null,
+    IEnumerable<IExplicitSearchSource>? explicitSources = null) : ISearchService
 {
     public Task<SearchOutcome> SearchAsync(
         string query,
@@ -89,6 +90,15 @@ internal sealed partial class SearchService(
             return new SearchRejected(
                 SearchRejectionReason.InvalidQuery,
                 "The rating must be from 0 to 5 and ratingMatch must be exact or at_least.");
+        }
+
+        if (!criteria.UsesLocalSearch)
+        {
+            var source = explicitSources?.SingleOrDefault(item => string.Equals(item.ProviderId, criteria.Provider?.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (source is null) return new SearchRejected(SearchRejectionReason.InvalidQuery, "Unknown search provider. Use local or qobuz, or omit provider.");
+            if (query is null || genre is not null || yearRange is not null || criteria.RatingConstraint is not null)
+                return new SearchRejected(SearchRejectionReason.InvalidQuery, $"Search with provider {source.ProviderId} requires a media name and supports name-only search.");
+            return await SearchProviderAsync(source, criteria.Query!, query, cancellationToken);
         }
 
         var trackConstraint = new CatalogueTrackSearchConstraint(
@@ -807,6 +817,29 @@ internal sealed partial class SearchService(
 
         ExceptionDispatchInfo.Capture(failure).Throw();
         throw new UnreachableException();
+    }
+
+    private async Task<SearchOutcome> SearchProviderAsync(IExplicitSearchSource source, string original, string query, CancellationToken cancellationToken)
+    {
+        var watch = Stopwatch.StartNew();
+        var observation = observationRecorder.Begin(original, query, new SearchResolverDescriptor(source.ProviderId, "1"))
+            with { Provider = source.ProviderId };
+        try
+        {
+            var matches = await source.SearchAsync(query, cancellationToken);
+            var candidates = matches.Select((match, i) => new SearchCandidateOccurrence(i + 1, Guid.NewGuid().ToString("N"),
+                match.Identity, match.Title, match.Artist, match.Album, MatchSignal: match.MatchSignal,
+                ProviderBrowseTarget: match.BrowseTarget, ProviderMediaTarget: match.MediaTarget)).ToArray();
+            var request = CatalogueRequest(source.ProviderId, "search", LmsSearchRequestStatus.Completed, null, watch.ElapsedMilliseconds, candidates.Length);
+            await observationRecorder.RecordCompletedAsync(observation, [request], null, candidates, watch.ElapsedMilliseconds, cancellationToken);
+            return new SearchSucceeded(candidates.Select(ToResult).ToArray(), []);
+        }
+        catch (LmsRequestException ex)
+        {
+            var request = CatalogueRequest(source.ProviderId, "search", LmsSearchRequestStatus.Failed, ex.Message, watch.ElapsedMilliseconds, 0);
+            await observationRecorder.RecordCatalogueFailureAsync(observation, [request], ex, watch.ElapsedMilliseconds, null, cancellationToken);
+            return new SearchRejected(SearchRejectionReason.SearchUnavailable, ex.Message);
+        }
     }
 
     private static LmsSearchRequestObservation CatalogueRequest(

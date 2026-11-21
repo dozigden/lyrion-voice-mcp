@@ -77,16 +77,18 @@ internal sealed partial class QobuzClient
         return releases;
     }
 
-    private async Task<List<JsonElement>> ReadMenuItemsAsync(string player, string? path, CancellationToken cancellationToken)
+    private async Task<List<JsonElement>> ReadMenuItemsAsync(string player, string? path, CancellationToken cancellationToken,
+        string menuCommand = PluginCommand, string? search = null, int limit = 10_000)
     {
         var items = new List<JsonElement>();
         int? total = null;
         do
         {
-            object[] command = path is null
-                ? [PluginCommand, "items", items.Count, PageSize, "menu:1"]
-                : [PluginCommand, "items", items.Count, PageSize, "menu:1", $"item_id:{path}"];
-            var response = await rpc.SendAsync(player, command, cancellationToken);
+            var size = Math.Min(PageSize, limit - items.Count);
+            var command = new List<object> { menuCommand, "items", items.Count, size, "menu:1" };
+            if (path is not null) command.Add($"item_id:{path}");
+            if (search is not null) command.Add($"search:{search}");
+            var response = await rpc.SendAsync(player, command.ToArray(), cancellationToken);
             if (LmsJson.ReadInt(response, "count") is not int count || count < 0 || count > 10_000
                 || (total.HasValue && count != total) || LmsJson.ReadInt(response, "offset") != items.Count)
                 throw InvalidBrowseMenu();
@@ -94,15 +96,15 @@ internal sealed partial class QobuzClient
                 throw InvalidBrowseMenu();
             total = count;
             if (!response.TryGetProperty("item_loop", out var loop) && count == 0) break;
-            if (loop.ValueKind != JsonValueKind.Array || loop.GetArrayLength() != Math.Min(PageSize, count - items.Count)
+            if (loop.ValueKind != JsonValueKind.Array || loop.GetArrayLength() != Math.Min(size, count - items.Count)
                 || loop.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.Object))
                 throw InvalidBrowseMenu();
             items.AddRange(loop.EnumerateArray());
-        } while (items.Count < total);
+        } while (items.Count < total && items.Count < limit);
         return items;
     }
 
-    private static string BrowsePath(JsonElement item)
+    private static string BrowsePath(JsonElement item, string command = PluginCommand)
     {
         var source = item;
         if (item.TryGetProperty("actions", out var actions))
@@ -111,10 +113,10 @@ internal sealed partial class QobuzClient
                 || source.ValueKind != JsonValueKind.Object || !source.TryGetProperty("cmd", out var cmd)
                 || cmd.ValueKind != JsonValueKind.Array || cmd.GetArrayLength() != 2
                 || cmd[0].ValueKind != JsonValueKind.String || cmd[1].ValueKind != JsonValueKind.String
-                || !cmd[0].ValueEquals("qobuz") || !cmd[1].ValueEquals("items")) throw InvalidBrowseMenu();
+                || !cmd[0].ValueEquals(command) || !cmd[1].ValueEquals("items")) throw InvalidBrowseMenu();
         }
         if (!source.TryGetProperty("params", out var parameters) || parameters.ValueKind != JsonValueKind.Object
-            || LmsJson.ReadString(parameters, "item_id") is not { Length: > 0 and <= 256 } path)
+            || LmsJson.ReadString(parameters, "item_id") is not { Length: > 0 and <= 8192 } path)
             throw InvalidBrowseMenu();
         return path;
     }

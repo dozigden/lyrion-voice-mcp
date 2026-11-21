@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace LyrionVoiceMcp.Lms.Providers.Qobuz;
 
-internal sealed partial class QobuzClient(LmsJsonRpcClient rpc) : IQobuzClient
+internal sealed partial class QobuzClient(LmsJsonRpcClient rpc) : IQobuzClient, IQobuzSearchClient
 {
     private const string PluginCommand = "qobuz";
     private const int PageSize = 50;
@@ -59,5 +59,7 @@ internal sealed partial class QobuzClient(LmsJsonRpcClient rpc) : IQobuzClient
 internal static class QobuzLmsRegistration
 {
     public static IServiceCollection AddQobuzLms(this IServiceCollection services) =>
-        services.AddTransient<IQobuzClient, QobuzClient>();
+        services.AddTransient<IQobuzClient, QobuzClient>()
+            .AddTransient<IQobuzSearchClient, QobuzClient>()
+            .AddTransient<LyrionVoiceMcp.Abstractions.Providers.IExplicitSearchSource, QobuzClient>();
 }
