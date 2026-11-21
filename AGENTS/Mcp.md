@@ -74,3 +74,8 @@ The first three-tool delivery slice was not a permanent limit. Add cohesive user
 - The available BBC subscription and station roots list their indexed entries alphabetically. A station result browses the plugin-provided schedules and programme menus without inventing hierarchy or exposing account mutations, and plays its live audio through the existing playback flow. Provider browse selects an available connected player internally without changing it. Missing player/provider/media state produces a useful tool error.
 - Shared opaque registry lifetime, capacity, correlation and metadata capture apply to provider references. Provider-owned typed targets are never encoded into public handles.
 - `exactArtistMatch` resolves only the local-library interpretation; callers must consider programme and station candidates before deciding whether the request is ambiguous. General BBC search and account mutations remain outside the tool surface.
+
+## Streaming new releases
+
+- Offer the Streaming browse root when the Qobuz configuration check succeeds. A missing or unavailable provider leaves the other browse roots usable.
+- New Releases lists browsable albums in provider order. Album browsing returns playable tracks in provider order. Page through the same ordered listing with opaque continuations. Pass track references to the existing play or queue tools.

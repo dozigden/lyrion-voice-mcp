@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace LyrionVoiceMcp.Lms.Providers.Qobuz;
 
-internal sealed class QobuzClient(LmsJsonRpcClient rpc) : IQobuzClient
+internal sealed partial class QobuzClient(LmsJsonRpcClient rpc) : IQobuzClient
 {
     private const string PluginCommand = "qobuz";
     private const int PageSize = 50;

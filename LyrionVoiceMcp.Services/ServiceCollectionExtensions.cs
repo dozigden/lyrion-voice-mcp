@@ -1,4 +1,5 @@
 using LyrionVoiceMcp.Services.Providers.BbcSounds;
+using LyrionVoiceMcp.Services.Providers.Qobuz;
 using LyrionVoiceMcp.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -65,6 +66,7 @@ public static class ServiceCollectionExtensions
                 provider.GetRequiredService<ReferenceHandleRegistry>()));
         services.AddSingleton(TimeProvider.System);
         services.AddBbcSoundsServices();
+        services.AddQobuzServices();
         return services;
     }
 }

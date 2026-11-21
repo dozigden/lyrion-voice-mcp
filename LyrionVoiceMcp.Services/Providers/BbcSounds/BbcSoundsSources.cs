@@ -42,14 +42,14 @@ internal sealed class BbcSoundsBrowseSource(
 {
     public string ProviderId => BbcSoundsProvider.Id;
 
-    public IReadOnlyList<BrowseItemResult> GetRoots()
+    public Task<IReadOnlyList<BrowseItemResult>> GetRootsAsync(CancellationToken cancellationToken)
     {
         var roots = new List<BrowseItemResult>();
         if (subscriptionIndex.Available)
             roots.Add(Item("BBC Sounds Subscriptions", BrowseItemKind.Category, new BbcBrowseTarget(), null));
         if (stationIndex.Available)
             roots.Add(Item("BBC Sounds Stations", BrowseItemKind.Category, new BbcStationRootBrowseTarget(), null));
-        return roots;
+        return Task.FromResult<IReadOnlyList<BrowseItemResult>>(roots);
     }
 
     public async Task<BrowseOutcome> BrowseAsync(

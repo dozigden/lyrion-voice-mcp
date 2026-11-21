@@ -10,6 +10,8 @@ namespace LyrionVoiceMcp.Lms.Providers.BbcSounds;
 
 internal sealed partial class BbcSoundsClient(BbcSoundsMenuClient menus, LmsJsonRpcClient rpc) : IBbcSoundsClient
 {
+    private readonly LmsProviderQueue queue = new(rpc, "BBC Sounds", AudioIdentity);
+
     private static JsonElement FindUnique(IReadOnlyList<JsonElement> items, Func<JsonElement, bool> predicate)
     {
         var matches = items.Where(predicate).Take(2).ToArray();
@@ -304,7 +306,7 @@ internal sealed partial class BbcSoundsClient(BbcSoundsMenuClient menus, LmsJson
         if (!ValidTarget(target)) throw new LmsRequestException("The BBC Sounds audio reference is invalid.");
         var episode = await ResolveAsync(target, cancellationToken)
             ?? throw new LmsRequestException("The BBC Sounds episode is no longer available.");
-        await SubmitAsync(playerId, episode.AudioUrl, AudioIdentity(episode.AudioUrl)!, command, cancellationToken);
+        await queue.SubmitAsync(playerId, episode.AudioUrl, AudioIdentity(episode.AudioUrl)!, command, cancellationToken);
     }
 
     public async Task SubmitAsync(string playerId, BbcAudioTarget target,
@@ -312,66 +314,8 @@ internal sealed partial class BbcSoundsClient(BbcSoundsMenuClient menus, LmsJson
     {
         if (!await IsAvailableAsync(target, cancellationToken))
             throw new LmsRequestException("The BBC Sounds audio item is no longer available.");
-        await SubmitAsync(playerId, target.AudioUrl, AudioIdentity(target.AudioUrl)!, command, cancellationToken);
+        await queue.SubmitAsync(playerId, target.AudioUrl, AudioIdentity(target.AudioUrl)!, command, cancellationToken);
     }
-
-    private async Task SubmitAsync(string playerId, string audioUrl, string audioIdentity,
-        ProviderPlaybackCommand command, CancellationToken cancellationToken)
-    {
-        var verb = command switch
-        {
-            ProviderPlaybackCommand.Load => "play",
-            ProviderPlaybackCommand.Add => "add",
-            ProviderPlaybackCommand.Insert => "insert",
-            _ => throw new ArgumentOutOfRangeException(nameof(command))
-        };
-        var before = await ReadQueueAsync(playerId, cancellationToken);
-        if (command != ProviderPlaybackCommand.Load && before.Items.Count >= 300)
-            throw new LmsRequestException("The LMS queue is full.");
-        if (command == ProviderPlaybackCommand.Insert && before.Items.Count > 0
-            && (before.CurrentIndex is null or < 0 || before.CurrentIndex >= before.Items.Count))
-            throw new LmsRequestException("LMS did not identify the current queue position.");
-        var expectedIndex = command switch
-        {
-            ProviderPlaybackCommand.Load => 0,
-            ProviderPlaybackCommand.Add => before.Items.Count,
-            ProviderPlaybackCommand.Insert => before.Items.Count == 0 ? 0 : (before.CurrentIndex ?? -1) + 1,
-            _ => throw new ArgumentOutOfRangeException(nameof(command))
-        };
-        await rpc.SendAsync(playerId, ["playlist", verb, audioUrl], cancellationToken);
-        // LMS may reshuffle an append. Confirm an additional occurrence even when
-        // its position changes; an older occurrence alone is never sufficient.
-        var after = await ReadQueueAsync(playerId, cancellationToken);
-        var expectedCount = command == ProviderPlaybackCommand.Load ? 1 : before.Items.Count + 1;
-        var expectedOccurrences = command == ProviderPlaybackCommand.Load ? 1 : AudioOccurrences(before, audioIdentity) + 1;
-        var shuffledAppend = command == ProviderPlaybackCommand.Add && before.ShuffleMode > 0;
-        var positionMatches = expectedIndex >= 0 && expectedIndex < after.Items.Count
-            && AudioIdentity(BbcSoundsMenuClient.Text(after.Items[expectedIndex], "url")) == audioIdentity;
-        if (after.Items.Count != expectedCount || after.ShuffleMode != before.ShuffleMode
-            || AudioOccurrences(after, audioIdentity) != expectedOccurrences
-            || (!shuffledAppend && !positionMatches))
-            throw new LmsRequestException("LMS did not confirm the submitted BBC Sounds item in the queue.");
-    }
-
-    private static int AudioOccurrences(QueueSnapshot queue, string identity) =>
-        queue.Items.Count(item => AudioIdentity(BbcSoundsMenuClient.Text(item, "url")) == identity);
-
-    private async Task<QueueSnapshot> ReadQueueAsync(string playerId, CancellationToken cancellationToken)
-    {
-        var queue = await rpc.SendAsync(playerId, ["status", 0, 300, "tags:u"], cancellationToken);
-        var count = LmsJson.ReadInt(queue, "playlist_tracks");
-        if (count is null or < 0 or > 300) throw new LmsRequestException("LMS returned an invalid queue count.");
-        var shuffle = LmsJson.ReadInt(queue, "playlist shuffle");
-        if (shuffle is null or < 0 or > 2) throw new LmsRequestException("LMS returned an invalid shuffle mode.");
-        if (!queue.TryGetProperty("playlist_loop", out var items))
-            return count == 0 ? new QueueSnapshot([], null, shuffle.Value) : throw BbcSoundsMenuClient.InvalidMenu();
-        if (items.ValueKind != JsonValueKind.Array || items.GetArrayLength() != count)
-            throw new LmsRequestException("LMS returned an incomplete queue.");
-        var index = LmsJson.ReadInt(queue, "playlist_cur_index");
-        return new QueueSnapshot(items.EnumerateArray().ToArray(), index, shuffle.Value);
-    }
-
-    private sealed record QueueSnapshot(IReadOnlyList<JsonElement> Items, int? CurrentIndex, int ShuffleMode);
 
     private static bool ValidTarget(BbcEpisodeTarget target) => Identifier().IsMatch(target.ShowId)
         && EpisodeAudioIdentity(target.AudioUrl) == target.EpisodeId;

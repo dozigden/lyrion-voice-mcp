@@ -24,7 +24,7 @@ public interface IProviderSearchSource
 public interface IProviderBrowseSource
 {
     string ProviderId { get; }
-    IReadOnlyList<BrowseItemResult> GetRoots();
+    Task<IReadOnlyList<BrowseItemResult>> GetRootsAsync(CancellationToken cancellationToken);
     Task<BrowseOutcome> BrowseAsync(
         ProviderBrowseTarget target, string? correlationId, CancellationToken cancellationToken);
 }

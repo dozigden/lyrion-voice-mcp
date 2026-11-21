@@ -25,7 +25,7 @@ public sealed class BrowseTools(IBrowseService browseService)
         OpenWorld = true,
         UseStructuredContent = true,
         OutputSchemaType = typeof(BrowseResponse))]
-    [Description("Browse the configured Lyrion Music Server's library and available provider subscriptions. Omit browseRef to list its roots, including Ratings, or pass a browseRef returned by search or browse to descend.")]
+    [Description("Browse the configured Lyrion Music Server's library and available media providers, including Streaming for new releases. Omit browseRef to list its roots, including Ratings, or pass a browseRef returned by search or browse to descend.")]
     public async Task<CallToolResult> BrowseAsync(
         [Description("An opaque browseRef returned by search or browse. Omit it to list the browse roots; pass returned browseRefs back to browse to continue through the tree.")] string? browseRef = null,
         CancellationToken cancellationToken = default)

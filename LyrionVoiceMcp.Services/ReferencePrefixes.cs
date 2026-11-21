@@ -27,6 +27,7 @@ internal static class ReferencePrefixes
         {
             return value.DisplayMetadata?.Kind switch
             {
+                ReferenceDisplayKind.Album => "album_",
                 ReferenceDisplayKind.Station => "station_",
                 ReferenceDisplayKind.Category => "provider_",
                 _ => "programmes_"

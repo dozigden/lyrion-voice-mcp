@@ -80,6 +80,33 @@ public sealed class QobuzClientTests
         Assert.Equal("LMS returned HTTP 503.", exception.Message);
     }
 
+    [Fact]
+    public async Task AlbumBrowseReadsOnlyNavigationAndKeepsAudioRowsInMenuOrder()
+    {
+        using var handler = new StubLms { Browse = command => command.Last() switch
+        {
+            "menu:1" => """{"count":1,"offset":0,"item_loop":[{"text":"Nouveautés","actions":{"go":{"cmd":["qobuz","items"],"params":{"item_id":"7"}}}}]}""",
+            "item_id:7" => """{"count":1,"offset":0,"item_loop":[{"text":"Paper Moons","params":{"item_id":"7.0","touchToPlay":1}}]}""",
+            "item_id:7.0" => """
+                {"count":3,"offset":0,"item_loop":[
+                {"text":"Wax","presetParams":{"favorites_type":"audio","favorites_url":"qobuz://91.flac"}},
+                {"text":"Description","type":"actions"},
+                {"text":"Wane","goAction":"play","presetParams":{"favorites_type":"audio","favorites_url":"qobuz://12.mp3"}}]}
+                """,
+            _ => throw new InvalidOperationException("Unexpected navigation.")
+        } };
+        using var services = CreateServices(handler);
+        var client = services.GetRequiredService<IQobuzClient>();
+        var token = TestContext.Current.CancellationToken;
+        var album = Assert.Single(await client.ReadReleasesAsync(token));
+
+        var tracks = await client.ReadTracksAsync(album, token);
+
+        Assert.Equal(["91", "12"], tracks.Select(track => track.Id));
+        Assert.Equal("Wane", tracks[1].Title);
+        Assert.DoesNotContain("playlist", handler.Commands);
+    }
+
     private static ServiceProvider CreateServices(StubLms handler)
     {
         var services = new ServiceCollection();
@@ -95,6 +122,7 @@ public sealed class QobuzClientTests
             {"count":3,"players_loop":[{"playerid":"z","connected":1},{"playerid":"a","connected":0},
             {"playerid":"fiction-player","connected":"1"}]}
             """;
+        public Func<string[], string>? Browse { get; init; }
         public string? Menu { get; init; }
         public List<string> Commands { get; } = [];
 
@@ -110,10 +138,12 @@ public sealed class QobuzClientTests
                 "apps" => Apps,
                 "radios" => """{"count":0}""",
                 "players" => Players,
+                "getstring" => """{"PLUGIN_QOBUZ_NEW_RELEASES":"Nouveautés"}""",
+                "qobuz" when Browse is not null => Browse(command),
                 "qobuz" => Menu,
                 _ => throw new InvalidOperationException("Unexpected LMS command.")
             };
-            if (command[0] == "qobuz")
+            if (command[0] == "qobuz" && Browse is null)
             {
                 Assert.Equal("fiction-player", parameters[0].GetString());
                 Assert.Equal(new[] { "qobuz", "items", "0", "50", "menu:1" }, command);

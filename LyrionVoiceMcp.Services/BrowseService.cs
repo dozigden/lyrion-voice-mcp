@@ -21,7 +21,8 @@ public sealed class BrowseService(
 
         if (reference is null)
         {
-            return new BrowseSucceeded(RootItems().Concat(providerSources.SelectMany(source => source.GetRoots())).ToArray(), null);
+            var providerRoots = await Task.WhenAll(providerSources.Select(source => source.GetRootsAsync(cancellationToken)));
+            return new BrowseSucceeded(RootItems().Concat(providerRoots.SelectMany(items => items)).ToArray(), null);
         }
 
         var decoded = DecodeReference(reference);
